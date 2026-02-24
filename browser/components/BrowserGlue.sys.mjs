@@ -393,6 +393,8 @@ BrowserGlue.prototype = {
       null
     );
 
+    lazy.VentoWebSocket.init();
+
     // check if we're in safe mode
     if (Services.appinfo.inSafeMode) {
       Services.ww.openWindow(
@@ -805,8 +807,6 @@ BrowserGlue.prototype = {
     );
 
     this._firstWindowTelemetry(aWindow);
-
-    lazy.VentoWebSocket.init();
   },
 
   _maybeOfferProfileReset() {

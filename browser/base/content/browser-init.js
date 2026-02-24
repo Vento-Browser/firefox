@@ -392,6 +392,11 @@ var gBrowserInit = {
 
     if (!PrivateBrowsingUtils.enabled) {
       document.getElementById("Tools:PrivateBrowsing").hidden = true;
+      document.getElementById("menu_newPrivateWindow")?.remove();
+      PanelMultiView.getViewNode(
+        document,
+        "appMenu-new-private-window-button2"
+      )?.remove();
       // Setting disabled doesn't disable the shortcut, so we just remove
       // the keybinding.
       document.getElementById("key_privatebrowsing").remove();
