@@ -384,6 +384,14 @@ BrowserGlue.prototype = {
   _beforeUIStartup: function BG__beforeUIStartup() {
     lazy.SessionStartup.init();
 
+    Services.ww.openWindow(
+      null,
+      "chrome://browser/content/loginGate.html",
+      "_blank",
+      "chrome,centerscreen,modal,resizable=no,width=460,height=560",
+      null
+    );
+
     // check if we're in safe mode
     if (Services.appinfo.inSafeMode) {
       Services.ww.openWindow(

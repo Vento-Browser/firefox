@@ -1,0 +1,325 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src chrome: resource:; img-src chrome: resource: data:; style-src chrome: resource: 'unsafe-inline'; connect-src http: https:;"
+    />
+    <title>Connect</title>
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link
+      rel="stylesheet"
+      href="chrome://global/skin/design-system/tokens-shared.css"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--background-color-canvas, Window);
+        color: var(--text-color, WindowText);
+        font: message-box;
+        height: 100%;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100%;
+        padding: 24px;
+        box-sizing: border-box;
+        overflow-y: auto;
+      }
+
+      .view {
+        width: 360px;
+        max-width: 100%;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.3em;
+        font-weight: 600;
+        color: var(--text-color, WindowText);
+      }
+
+      .description {
+        margin: 0 0 20px;
+        font-size: 0.9em;
+        color: var(--text-color-deemphasized, GrayText);
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 14px;
+      }
+
+      label {
+        font-size: 0.875em;
+        font-weight: 500;
+      }
+
+      input[type="text"],
+      input[type="email"],
+      input[type="password"] {
+        font: inherit;
+        font-size: 1em;
+        padding: 8px 10px;
+        border: 1px solid var(--border-color-interactive, ThreeDShadow);
+        border-radius: var(--border-radius-small, 4px);
+        background: var(--background-color-canvas, Field);
+        color: var(--text-color, FieldText);
+        box-sizing: border-box;
+        width: 100%;
+      }
+
+      input:focus {
+        outline: 2px solid var(--color-accent-primary, Highlight);
+        outline-offset: -1px;
+        border-color: transparent;
+      }
+
+      .primary-btn {
+        display: block;
+        width: 100%;
+        margin-top: 20px;
+        padding: 10px 16px;
+        font: inherit;
+        font-size: 1em;
+        font-weight: 600;
+        background-color: var(--color-accent-primary, Highlight);
+        color: var(--color-accent-primary-content, HighlightText);
+        border: none;
+        border-radius: var(--border-radius-small, 4px);
+        cursor: pointer;
+      }
+
+      .primary-btn:hover:not(:disabled) {
+        background-color: var(--color-accent-primary-hover, SelectedItem);
+      }
+
+      .primary-btn:active:not(:disabled) {
+        background-color: var(--color-accent-primary-active, SelectedItem);
+      }
+
+      .primary-btn:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .error {
+        margin: 10px 0 0;
+        padding: 8px 10px;
+        font-size: 0.875em;
+        color: var(--text-color-error);
+        background-color: var(--background-color-critical);
+        border-radius: var(--border-radius-small, 4px);
+      }
+
+      .success {
+        margin: 10px 0 0;
+        padding: 8px 10px;
+        font-size: 0.875em;
+        background-color: var(--background-color-success);
+        border-radius: var(--border-radius-small, 4px);
+      }
+
+      .info-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        background: var(--background-color-box, -moz-Dialog);
+        border-radius: var(--border-radius-small, 4px);
+        border: 1px solid var(--border-color-card, ThreeDShadow);
+      }
+
+      .info-label {
+        font-size: 0.8em;
+        font-weight: 500;
+        color: var(--text-color-deemphasized, GrayText);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      code {
+        font-family: monospace;
+        font-size: 1.1em;
+        word-break: break-all;
+        user-select: all;
+        cursor: text;
+      }
+
+      details {
+        margin-bottom: 16px;
+        font-size: 0.875em;
+      }
+
+      summary {
+        cursor: pointer;
+        color: var(--text-color-deemphasized, GrayText);
+        margin-bottom: 6px;
+      }
+
+      .totp-qr {
+        display: block;
+        margin: 0 auto 16px;
+        width: 200px;
+        height: 200px;
+        image-rendering: pixelated;
+      }
+
+      textarea {
+        font: inherit;
+        font-family: monospace;
+        font-size: 0.8em;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        border: 1px solid var(--border-color-interactive, ThreeDShadow);
+        border-radius: var(--border-radius-small, 4px);
+        background: var(--background-color-canvas, Field);
+        color: var(--text-color, FieldText);
+        resize: none;
+        user-select: all;
+        cursor: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- View: Login -->
+      <div id="view-login" class="view">
+        <h1>Connect</h1>
+        <form id="loginForm">
+          <div class="field">
+            <label for="server">Server</label>
+            <input
+              type="text"
+              id="server"
+              name="server"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </div>
+          <p id="login-error" hidden></p>
+          <button type="submit" class="primary-btn">Connect</button>
+        </form>
+      </div>
+
+      <!-- View: TOTP Setup (first login) -->
+      <div id="view-totp-setup" class="view" hidden>
+        <h1>Set Up Two-Factor Authentication</h1>
+        <p class="description" id="totp-setup-description">
+          Scan the QR code below in your authenticator app, then enter the
+          generated code.
+        </p>
+        <img
+          id="totp-qr-code"
+          class="totp-qr"
+          alt="QR code for authenticator app"
+        />
+        <details>
+          <summary>Can't scan? Use the secret key</summary>
+          <div class="info-block">
+            <span class="info-label">Secret key</span>
+            <code id="totp-secret"></code>
+          </div>
+          <details>
+            <summary>Show full URL</summary>
+            <textarea id="totp-url" readonly rows="3"></textarea>
+          </details>
+        </details>
+        <form id="totpSetupForm">
+          <div class="field">
+            <label for="totp-setup-code">Code from authenticator app</label>
+            <input
+              type="text"
+              id="totp-setup-code"
+              inputmode="numeric"
+              maxlength="6"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              spellcheck="false"
+            />
+          </div>
+          <p id="totp-setup-error" hidden></p>
+          <button type="submit" class="primary-btn">Verify</button>
+        </form>
+      </div>
+
+      <!-- View: TOTP Verify (subsequent logins) -->
+      <div id="view-totp-verify" class="view" hidden>
+        <h1>Two-Factor Authentication</h1>
+        <p class="description">Enter the code from your authenticator app.</p>
+        <form id="totpVerifyForm">
+          <div class="field">
+            <label for="totp-verify-code">Authentication code</label>
+            <input
+              type="text"
+              id="totp-verify-code"
+              inputmode="numeric"
+              maxlength="6"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              spellcheck="false"
+            />
+          </div>
+          <p id="totp-verify-error" hidden></p>
+          <button type="submit" class="primary-btn">Connect</button>
+        </form>
+      </div>
+
+      <!-- View: Forced Password Change -->
+      <div id="view-password-change" class="view" hidden>
+        <h1>Change Password</h1>
+        <p class="description">
+          You must set a new password before continuing.
+        </p>
+        <form id="passwordChangeForm">
+          <div class="field">
+            <label for="new-password">New password</label>
+            <input
+              type="password"
+              id="new-password"
+              autocomplete="new-password"
+            />
+          </div>
+          <div class="field">
+            <label for="confirm-password">Confirm password</label>
+            <input
+              type="password"
+              id="confirm-password"
+              autocomplete="new-password"
+            />
+          </div>
+          <p id="password-change-error" hidden></p>
+          <button type="submit" class="primary-btn">Change Password</button>
+        </form>
+      </div>
+    </div>
+    <script src="chrome://browser/content/loginGate.js"></script>
+  </body>
+</html>
