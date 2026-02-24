@@ -654,6 +654,86 @@ menupopup::part(drop-indicator) {
   height: 16px;
 }
 
+/* Vento WebSocket connection status indicator */
+#vento-ws-indicator {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+}
+
+#vento-ws-status-dot,
+#vento-ws-overlay-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--icon-color-deemphasized);
+
+  &[data-status="connected"] {
+    background-color: var(--icon-color-success);
+  }
+
+  &[data-status="connecting"] {
+    background-color: var(--icon-color-warning);
+    animation: vento-ws-pulse 1.2s ease-in-out infinite;
+  }
+
+  &[data-status="error"] {
+    background-color: var(--text-color-error);
+  }
+}
+
+#vento-ws-overlay-dot {
+  position: absolute;
+  top: 16px;
+  inset-inline-end: 20px;
+  width: 10px;
+  height: 10px;
+}
+
+@keyframes vento-ws-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Vento offline state — hide toolbars but keep window controls accessible */
+:root[vento-ws-offline] {
+  #toolbar-menubar,
+  #nav-bar,
+  #PersonalToolbar {
+    display: none;
+  }
+
+  #TabsToolbar {
+    pointer-events: none;
+  }
+
+  #TabsToolbar .titlebar-buttonbox-container {
+    pointer-events: auto;
+  }
+}
+
+/* Vento offline overlay — shown while not connected to the backend */
+#vento-ws-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  color-scheme: light dark;
+  background-color: var(--background-color-canvas, Canvas);
+  color: var(--text-color, CanvasText);
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25em;
+  font-weight: 500;
+  pointer-events: all;
+  -moz-window-dragging: drag;
+}
+
 /* Content analysis indicator */
 .content-analysis-indicator {
   :root:not([contentanalysisactive]) &,

@@ -70,6 +70,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
+  VentoWebSocket: "resource:///modules/VentoWebSocket.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
   WebProtocolHandlerRegistrar:
     "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
@@ -804,6 +805,8 @@ BrowserGlue.prototype = {
     );
 
     this._firstWindowTelemetry(aWindow);
+
+    lazy.VentoWebSocket.init();
   },
 
   _maybeOfferProfileReset() {

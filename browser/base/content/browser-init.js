@@ -720,6 +720,8 @@ var gBrowserInit = {
 
     CaptivePortalWatcher.delayedStartup();
 
+    gVentoWsIndicator.init();
+
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
       document.documentElement.setAttribute("sessionrestored", "true");
@@ -1229,6 +1231,7 @@ var gBrowserInit = {
 
       BrowserOffline.uninit();
       PanelUI.uninit();
+      gVentoWsIndicator.uninit();
     }
 
     // Final window teardown, do this last.
@@ -1242,5 +1245,86 @@ var gBrowserInit = {
       { categoryName: "browser-window-unload" },
       window
     );
+  },
+};
+
+var gVentoWsIndicator = {
+  _observer: null,
+  _overlay: null,
+  _overlayDot: null,
+  _keyBlocker: null,
+
+  init() {
+    const dot = document.getElementById("vento-ws-status-dot");
+    if (!dot) {
+      return;
+    }
+
+    const { VentoWebSocket } = ChromeUtils.importESModule(
+      "resource:///modules/VentoWebSocket.sys.mjs"
+    );
+
+    const NS = "http://www.w3.org/1999/xhtml";
+    const overlay = document.createElementNS(NS, "div");
+    overlay.id = "vento-ws-overlay";
+
+    const overlayDot = document.createElementNS(NS, "div");
+    overlayDot.id = "vento-ws-overlay-dot";
+    overlay.appendChild(overlayDot);
+
+    const msg = document.createElementNS(NS, "span");
+    msg.textContent = "Connecting\u2026";
+    overlay.appendChild(msg);
+
+    document.body.appendChild(overlay);
+    this._overlay = overlay;
+    this._overlayDot = overlayDot;
+
+    this._keyBlocker = e => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+
+    this._observer = {
+      observe: (_subject, _topic, status) => {
+        dot.dataset.status = status;
+        this._overlayDot.dataset.status = status;
+        this._updateOverlay(status);
+      },
+    };
+    Services.obs.addObserver(this._observer, "vento-ws-status-changed");
+
+    this._updateOverlay(VentoWebSocket.status);
+  },
+
+  _updateOverlay(status) {
+    const connected = status === "connected";
+    this._overlay.style.display = connected ? "none" : "flex";
+    this._overlayDot.dataset.status = status;
+    document.documentElement.toggleAttribute("vento-ws-offline", !connected);
+    if (connected) {
+      window.removeEventListener("keydown", this._keyBlocker, {
+        capture: true,
+      });
+    } else {
+      window.addEventListener("keydown", this._keyBlocker, { capture: true });
+    }
+  },
+
+  uninit() {
+    if (this._observer) {
+      Services.obs.removeObserver(this._observer, "vento-ws-status-changed");
+      this._observer = null;
+    }
+    if (this._overlay) {
+      this._overlay.remove();
+      this._overlay = null;
+    }
+    if (this._keyBlocker) {
+      window.removeEventListener("keydown", this._keyBlocker, {
+        capture: true,
+      });
+      this._keyBlocker = null;
+    }
   },
 };

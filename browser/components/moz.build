@@ -109,6 +109,7 @@ EXTRA_JS_MODULES += [
     "BrowserContentHandler.sys.mjs",
     "BrowserGlue.sys.mjs",
     "distribution.sys.mjs",
+    "VentoWebSocket.sys.mjs",
 ]
 
 MOZ_SRC_FILES += [

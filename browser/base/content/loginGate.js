@@ -69,6 +69,7 @@ function setLoading(form, loading) {
 }
 
 function onSuccess(accessToken) {
+  Services.prefs.setStringPref("browser.logingate.serverUrl", state.server);
   Services.prefs.setStringPref("browser.logingate.accessToken", accessToken);
   state.connected = true;
   window.close();
@@ -273,9 +274,14 @@ document
     }
   });
 
-
 window.addEventListener("unload", () => {
   if (!state.connected) {
-    Services.startup.quit(Services.startup.eAttemptQuit);
+    const isReauth = Services.prefs.getBoolPref(
+      "browser.logingate.reauth",
+      false
+    );
+    if (!isReauth) {
+      Services.startup.quit(Services.startup.eAttemptQuit);
+    }
   }
 });
