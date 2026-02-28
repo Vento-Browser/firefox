@@ -274,6 +274,68 @@ document
     }
   });
 
+async function checkExistingSession() {
+  let token, serverUrl;
+  try {
+    token = Services.prefs.getStringPref("browser.logingate.accessToken", "");
+    serverUrl = Services.prefs.getStringPref(
+      "browser.logingate.serverUrl",
+      ""
+    );
+  } catch {
+    return;
+  }
+
+  if (!token || !serverUrl) {
+    return;
+  }
+
+  state.server = serverUrl;
+
+  try {
+    const { ok, data } = await apiFetch(
+      "GET",
+      "/api/auth/validate",
+      undefined,
+      token
+    );
+    if (!ok) {
+      return;
+    }
+
+    document.getElementById("profile-server").textContent = serverUrl;
+    document.getElementById("profile-display-name").textContent =
+      data.display_name ?? data.email ?? "";
+    document.getElementById("profile-email").textContent = data.email ?? "";
+
+    const perms = data.permissions ?? [];
+    if (perms.length > 0) {
+      document.getElementById("profile-permissions").textContent =
+        perms.join(", ");
+    } else {
+      document.getElementById("profile-permissions-block").hidden = true;
+    }
+
+    state.connected = true;
+    showView("view-profile");
+  } catch {
+    // Token invalid or server unreachable — show login form as usual.
+  }
+}
+
+document.getElementById("continue-btn").addEventListener("click", () => {
+  window.close();
+});
+
+document.getElementById("logout-btn").addEventListener("click", () => {
+  Services.prefs.clearUserPref("browser.logingate.accessToken");
+  Services.prefs.clearUserPref("browser.logingate.serverUrl");
+  state.server = "";
+  showView("view-login");
+});
+
+checkExistingSession();
+
 window.addEventListener("unload", () => {
   if (!state.connected) {
     const isReauth = Services.prefs.getBoolPref(

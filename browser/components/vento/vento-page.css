@@ -1,0 +1,355 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+vento-page {
+  display: contents;
+}
+
+/* ── Category icons ───────────────────────────────────────── */
+
+.category[name="dashboard"] {
+  background-image: url("chrome://browser/skin/home.svg");
+}
+
+.category[name="users"] {
+  background-image: url("chrome://global/skin/icons/edit.svg");
+}
+
+.category[name="profile"] {
+  background-image: url("chrome://global/skin/icons/settings.svg");
+}
+
+/* ── Widen content — aboutaddons.css caps at 664px ─────────── */
+
+#main,
+.main-heading {
+  max-width: 960px;
+  padding-inline-end: 28px;
+}
+
+/* ── Status banner ────────────────────────────────────────── */
+
+.status-banner {
+  padding: 10px 14px;
+  border-radius: var(--border-radius-small, 4px);
+  margin-block-end: 20px;
+  font-size: 13px;
+}
+
+.status-banner-success {
+  background: color-mix(in srgb, green 12%, transparent);
+  color: color-mix(in srgb, green 70%, black);
+}
+
+.status-banner-error {
+  background: color-mix(in srgb, red 12%, transparent);
+  color: color-mix(in srgb, red 70%, black);
+}
+
+/* ── Badges ───────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.badge-active {
+  background: color-mix(in srgb, green 15%, transparent);
+  color: color-mix(in srgb, green 70%, black);
+}
+
+.badge-inactive {
+  background: color-mix(in srgb, gray 20%, transparent);
+  color: var(--text-color-deemphasized, gray);
+}
+
+.badge-perm {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-primary, #0060df) 12%,
+    transparent
+  );
+  color: var(--color-accent-primary, #0060df);
+}
+
+.badge-totp {
+  background: color-mix(in srgb, orange 15%, transparent);
+  color: color-mix(in srgb, orange 70%, black);
+}
+
+/* ── Users table ──────────────────────────────────────────── */
+
+.users-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: 12px;
+}
+
+.users-count {
+  font-size: 13px;
+  color: var(--text-color-deemphasized, gray);
+}
+
+.vento-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  border: 1px solid var(--border-color, #e0e0e6);
+  border-radius: var(--border-radius-small, 4px);
+  overflow: hidden;
+}
+
+.vento-table th {
+  text-align: start;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color-deemphasized, gray);
+  background: var(--background-color-canvas, #f9f9fb);
+  border-block-end: 1px solid var(--border-color, #e0e0e6);
+  white-space: nowrap;
+}
+
+.vento-table td {
+  padding: 10px 14px;
+  border-block-end: 1px solid var(--border-color, #e0e0e6);
+  vertical-align: middle;
+}
+
+.vento-table tbody tr:last-child > td {
+  border-block-end: none;
+}
+
+.vento-table tbody tr:hover > td {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-primary, #0060df) 4%,
+    transparent
+  );
+}
+
+.vento-table tbody tr.editing-row > td {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-primary, #0060df) 5%,
+    transparent
+  );
+}
+
+.vento-table tr.edit-expand-row > td {
+  background: var(--background-color-canvas, #f9f9fb);
+  border-block-end: 1px solid var(--border-color, #e0e0e6);
+}
+
+.vento-table tr.edit-expand-row:hover > td {
+  background: var(--background-color-canvas, #f9f9fb);
+}
+
+.user-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-name {
+  font-weight: 500;
+}
+
+.perm-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.col-actions {
+  text-align: end;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Permissions expand row ───────────────────────────────── */
+
+.perms-expand {
+  padding: 4px 0;
+}
+
+.perms-expand-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color-deemphasized, gray);
+  margin-block-end: 10px;
+}
+
+.perms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin-block-end: 14px;
+}
+
+.perm-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.perms-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Create user form ─────────────────────────────────────── */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  margin-block-end: 12px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vento-input {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: var(--border-radius-small, 4px);
+  background: var(--background-color-box, white);
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.vento-input:focus {
+  border-color: var(--color-accent-primary, #0060df);
+  outline: none;
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in srgb,
+      var(--color-accent-primary, #0060df) 30%,
+      transparent
+    );
+}
+
+.form-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-block-end: 14px;
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-error {
+  font-size: 12px;
+  color: color-mix(in srgb, red 70%, black);
+  margin-block-end: 10px;
+}
+
+/* ── Pagination ───────────────────────────────────────────── */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-block-start: 14px;
+  font-size: 13px;
+  color: var(--text-color-deemphasized, gray);
+}
+
+/* ── Profile ──────────────────────────────────────────────── */
+
+.info-label {
+  font-weight: 600;
+  color: var(--text-color-deemphasized, gray);
+}
+
+/* ── Dashboard ────────────────────────────────────────────── */
+
+.dashboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  color: var(--text-color-deemphasized, gray);
+  font-size: 13px;
+  border: 1px solid var(--border-color, #e0e0e6);
+  border-radius: var(--border-radius-small, 4px);
+}
+
+/* ── Loading / not-auth ───────────────────────────────────── */
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 80px 0;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border-color, #e0e0e6);
+  border-top-color: var(--color-accent-primary, #0060df);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.not-auth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 40px;
+  text-align: center;
+  gap: 8px;
+  color: var(--text-color-deemphasized, gray);
+}
+
+.not-auth h2 {
+  font-size: 1.1em;
+  margin: 0;
+  color: inherit;
+}
+
+.not-auth p {
+  margin: 0;
+  font-size: 13px;
+}

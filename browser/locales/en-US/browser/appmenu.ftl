@@ -19,6 +19,9 @@ appmenuitem-banner-update-unsupported =
 appmenuitem-banner-update-restart =
     .label = Update available — restart now
 
+appmenuitem-vento-panel =
+    .label = Vento Panel
+
 appmenuitem-new-tab =
     .label = New tab
 appmenuitem-new-window =

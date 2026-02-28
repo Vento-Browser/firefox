@@ -606,6 +606,13 @@ export default class SidebarMain extends MozLitElement {
   }
 
   async showView(view) {
+    if (view === "viewVentoSidebar") {
+      window.openTrustedLinkIn(
+        "chrome://browser/content/sidebar/vento-page.html",
+        "tab"
+      );
+      return;
+    }
     const { currentID, toolsAndExtensions } = window.SidebarController;
     let isToolOpening =
       (!currentID || (currentID && currentID !== view)) &&

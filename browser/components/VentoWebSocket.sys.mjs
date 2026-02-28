@@ -5,20 +5,27 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  VentoProxy: "resource:///modules/VentoProxy.sys.mjs",
 });
 
 const PREF_ACCESS_TOKEN = "browser.logingate.accessToken";
 const PREF_SERVER_URL = "browser.logingate.serverUrl";
 const AUTH_INTERVAL_MS = 10_000;
 const RECONNECT_DELAY_MS = 5_000;
+const PROXY_CHECK_INTERVAL_MS = 15_000;
+const PROXY_CHECK_TIMEOUT_MS = 5_000;
 
 export const VentoWebSocket = {
   _initialized: false,
   _ws: null,
   _authTimer: null,
   _reconnectTimer: null,
+  _proxyCheckTimer: null,
+  _proxyHost: null,
+  _proxyHealthPort: null,
   _status: "disconnected",
 
   get status() {
@@ -30,7 +37,24 @@ export const VentoWebSocket = {
       return;
     }
     this._initialized = true;
+    this._applyBlockingState();
     this._connect();
+  },
+
+  _applyBlockingState() {
+    const prefs = Services.prefs;
+    prefs.setIntPref("network.proxy.type", 1);
+    prefs.setStringPref("network.proxy.socks", "127.0.0.1");
+    prefs.setIntPref("network.proxy.socks_port", 1);
+    prefs.setIntPref("network.proxy.socks_version", 5);
+    prefs.setBoolPref("network.proxy.socks_remote_dns", true);
+    prefs.setBoolPref("network.proxy.failover_direct", false);
+    const server = this._serverUrl();
+    if (server) {
+      lazy.VentoProxy.allowServer(server);
+    } else {
+      prefs.setStringPref("network.proxy.no_proxies_on", "");
+    }
   },
 
   _setStatus(status) {
@@ -56,6 +80,8 @@ export const VentoWebSocket = {
       this._setStatus("disconnected");
       return;
     }
+
+    lazy.VentoProxy.allowServer(server);
 
     const wsUrl = server.replace(/^http/, "ws") + "/ws";
     this._setStatus("connecting");
@@ -91,6 +117,8 @@ export const VentoWebSocket = {
       }
       this._ws = null;
       this._stopAuthTimer();
+      this._stopProxyCheck();
+      this._applyBlockingState();
       this._setStatus("disconnected");
       this._scheduleReconnect();
     });
@@ -126,6 +154,49 @@ export const VentoWebSocket = {
     }
   },
 
+  _startProxyCheck() {
+    this._stopProxyCheck();
+    this._proxyCheckTimer = lazy.setInterval(
+      () => this._checkProxy(),
+      PROXY_CHECK_INTERVAL_MS
+    );
+  },
+
+  _stopProxyCheck() {
+    if (this._proxyCheckTimer !== null) {
+      lazy.clearInterval(this._proxyCheckTimer);
+      this._proxyCheckTimer = null;
+    }
+  },
+
+  async _checkProxy() {
+    if (!this._proxyHost || !this._proxyHealthPort) {
+      return;
+    }
+    const url = `http://${this._proxyHost}:${this._proxyHealthPort}/health`;
+    const controller = new AbortController();
+    const timeoutId = lazy.setTimeout(
+      () => controller.abort(),
+      PROXY_CHECK_TIMEOUT_MS
+    );
+    let ok = false;
+    try {
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      ok = resp.ok;
+    } catch {}
+    lazy.clearTimeout(timeoutId);
+
+    if (!ok && this._status === "connected") {
+      this._stopProxyCheck();
+      this._applyBlockingState();
+      this._setStatus("error");
+      this._scheduleReconnect();
+    }
+  },
+
   _scheduleReconnect() {
     if (this._reconnectTimer !== null) {
       return;
@@ -145,6 +216,17 @@ export const VentoWebSocket = {
     }
     switch (msg.type) {
       case "auth_ok":
+        if (msg.proxy_host && msg.proxy_port) {
+          lazy.VentoProxy.apply(
+            msg.proxy_host,
+            msg.proxy_port,
+            this._serverUrl(),
+            this._token()
+          );
+          this._proxyHost = msg.proxy_host;
+          this._proxyHealthPort = msg.proxy_port + 1;
+          this._startProxyCheck();
+        }
         this._setStatus("connected");
         break;
       case "auth_error":
@@ -161,6 +243,7 @@ export const VentoWebSocket = {
     if (ws) {
       ws.close();
     }
+    this._applyBlockingState();
     Services.prefs.setBoolPref("browser.logingate.reauth", true);
     Services.ww.openWindow(
       null,

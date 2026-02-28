@@ -5,6 +5,48 @@
 menu-view-genai-chat =
   .label = AI Chatbot
 
+## Labels for Vento Panel sidebar
+
+menu-view-vento-panel =
+  .label = Vento Panel
+
+sidebar-menu-vento-label = Vento Panel
+
+sidebar-vento-title = Vento Panel
+
+sidebar-vento-panel-header =
+  .heading = Vento Panel
+
+sidebar-vento-not-auth-title = Not authenticated
+
+sidebar-vento-not-auth-desc =
+  Set the <code>vento.auth.token</code> preference to your JWT access token.
+
+sidebar-vento-nav-dashboard = Dashboard
+sidebar-vento-nav-profile = Profile
+sidebar-vento-nav-users = Users
+
+sidebar-vento-dashboard-empty = Dashboard — coming soon.
+
+sidebar-vento-profile-email = Email
+sidebar-vento-profile-name = Display name
+sidebar-vento-profile-permissions = Permissions
+
+sidebar-vento-user-active = active
+sidebar-vento-user-inactive = inactive
+
+sidebar-vento-action-edit-perms = Edit permissions
+sidebar-vento-action-deactivate = Deactivate
+sidebar-vento-action-activate = Activate
+sidebar-vento-action-save = Save
+sidebar-vento-action-cancel = Cancel
+sidebar-vento-action-create-user = New user
+
+sidebar-vento-field-email = Email
+sidebar-vento-field-name = Display name
+sidebar-vento-field-password = Password
+sidebar-vento-field-temp-pw = Temporary password (user will be asked to change on first login)
+
 menu-view-contextual-password-manager =
   .label = Passwords
 

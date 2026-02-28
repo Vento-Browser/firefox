@@ -1,0 +1,42 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Vento</title>
+    <link rel="localization" href="browser/sidebar.ftl" />
+
+    <!-- Design tokens + in-content common styles (category buttons etc.) -->
+    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
+    <!-- Layout, sidebar, sticky heading — reuse about:addons stylesheet verbatim -->
+    <link
+      rel="stylesheet"
+      href="chrome://mozapps/content/extensions/aboutaddons.css"
+    />
+    <!-- Vento-specific styles (icons, content, forms) -->
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/vento/vento-page.css"
+    />
+
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-card.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-button.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://browser/content/vento/vento-page.mjs"
+    ></script>
+  </head>
+  <body>
+    <vento-page></vento-page>
+  </body>
+</html>

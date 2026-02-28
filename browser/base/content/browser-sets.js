@@ -236,6 +236,9 @@ document.addEventListener(
           case "Tools:ChatsHistory":
             FirefoxViewHandler.openTab("chats");
             break;
+          case "Tools:VentoPanel":
+            SidebarController.toggle("viewVentoSidebar");
+            break;
           case "Tools:Sanitize":
             Sanitizer.showUI(window);
             break;

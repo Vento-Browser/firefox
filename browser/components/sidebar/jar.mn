@@ -24,4 +24,7 @@ browser.jar:
     content/browser/sidebar/sidebar-tab-list.css
     content/browser/sidebar/sidebar-tab-list.mjs
     content/browser/sidebar/sidebar-tab-row.css
+    content/browser/sidebar/sidebar-vento.css
+    content/browser/sidebar/sidebar-vento.html
+    content/browser/sidebar/sidebar-vento.mjs
     content/browser/sidebar/sidebar.css

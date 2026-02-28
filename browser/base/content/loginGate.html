@@ -197,10 +197,59 @@
         user-select: all;
         cursor: text;
       }
+
+      .secondary-btn {
+        display: block;
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px 16px;
+        font: inherit;
+        font-size: 1em;
+        font-weight: 600;
+        background-color: transparent;
+        color: var(--text-color-error);
+        border: 1px solid var(--text-color-error);
+        border-radius: var(--border-radius-small, 4px);
+        cursor: pointer;
+      }
+
+      .secondary-btn:hover {
+        background-color: var(--background-color-critical);
+      }
+
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--text-color-success);
+        margin-inline-end: 6px;
+        vertical-align: middle;
+      }
     </style>
   </head>
   <body>
     <div class="container">
+      <!-- View: Profile (already logged in) -->
+      <div id="view-profile" class="view" hidden>
+        <h1><span class="status-dot"></span>Connected</h1>
+        <p class="description" id="profile-server"></p>
+        <div class="info-block">
+          <span class="info-label">Name</span>
+          <span id="profile-display-name"></span>
+        </div>
+        <div class="info-block">
+          <span class="info-label">Email</span>
+          <span id="profile-email"></span>
+        </div>
+        <div class="info-block" id="profile-permissions-block">
+          <span class="info-label">Permissions</span>
+          <span id="profile-permissions"></span>
+        </div>
+        <button id="continue-btn" class="primary-btn">Continue</button>
+        <button id="logout-btn" class="secondary-btn">Disconnect</button>
+      </div>
+
       <!-- View: Login -->
       <div id="view-login" class="view">
         <h1>Connect</h1>

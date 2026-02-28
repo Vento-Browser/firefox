@@ -39,3 +39,14 @@ pref("signon.management.page.breach-alerts.enabled", false);
 
 // DevTools console paste enabled
 pref("devtools.selfxss.count", 5);
+
+// Proxy hardening — prevent traffic leaks regardless of proxy state.
+// These are defaults; proxy host/port are set as user prefs after auth_ok.
+pref("network.proxy.type", 1);
+pref("network.proxy.failover_direct", false);
+pref("network.proxy.socks_remote_dns", true);
+pref("network.proxy.allow_hijacking_localhost", true);
+pref("media.peerconnection.enabled", false);
+pref("media.peerconnection.ice.no_host", true);
+pref("media.peerconnection.ice.default_address_only", true);
+pref("network.http.http3.enable", false);

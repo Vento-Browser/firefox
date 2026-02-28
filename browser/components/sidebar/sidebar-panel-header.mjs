@@ -29,6 +29,7 @@ export class SidebarPanelHeader extends MozLitElement {
       <link rel="stylesheet" href="chrome://browser/content/sidebar/sidebar-panel-header.css"></link>
       <div class="sidebar-panel-heading">
         <h4 class="text-truncated-ellipsis">${this.heading}</h4>
+        <slot name="action-buttons"></slot>
         <moz-button
           iconsrc="chrome://global/skin/icons/close.svg"
           data-l10n-id="sidebar-panel-header-close-button"
