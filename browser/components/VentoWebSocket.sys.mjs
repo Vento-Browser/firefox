@@ -17,6 +17,9 @@ const AUTH_INTERVAL_MS = 10_000;
 const RECONNECT_DELAY_MS = 5_000;
 const PROXY_CHECK_INTERVAL_MS = 15_000;
 const PROXY_CHECK_TIMEOUT_MS = 5_000;
+const QUALITY_EXCELLENT_MS = 80;
+const QUALITY_GOOD_MS = 250;
+const QUALITY_FAIR_MS = 600;
 
 export const VentoWebSocket = {
   _initialized: false,
@@ -27,9 +30,14 @@ export const VentoWebSocket = {
   _proxyHost: null,
   _proxyHealthPort: null,
   _status: "disconnected",
+  _quality: null,
 
   get status() {
     return this._status;
+  },
+
+  get quality() {
+    return this._quality;
   },
 
   init() {
@@ -62,7 +70,18 @@ export const VentoWebSocket = {
       return;
     }
     this._status = status;
+    if (status !== "connected") {
+      this._setQuality(null);
+    }
     Services.obs.notifyObservers(null, "vento-ws-status-changed", status);
+  },
+
+  _setQuality(q) {
+    if (this._quality === q) {
+      return;
+    }
+    this._quality = q;
+    Services.obs.notifyObservers(null, "vento-proxy-quality-changed", q ?? "");
   },
 
   _serverUrl() {
@@ -180,21 +199,39 @@ export const VentoWebSocket = {
       PROXY_CHECK_TIMEOUT_MS
     );
     let ok = false;
+    let latencyMs = null;
     try {
+      const t0 = Date.now();
       const resp = await fetch(url, {
         signal: controller.signal,
         cache: "no-store",
       });
+      latencyMs = Date.now() - t0;
       ok = resp.ok;
     } catch {}
     lazy.clearTimeout(timeoutId);
 
-    if (!ok && this._status === "connected") {
-      this._stopProxyCheck();
-      this._applyBlockingState();
-      this._setStatus("error");
-      this._scheduleReconnect();
+    if (!ok) {
+      if (this._status === "connected") {
+        this._stopProxyCheck();
+        this._applyBlockingState();
+        this._setStatus("error");
+        this._scheduleReconnect();
+      }
+      return;
     }
+
+    let quality;
+    if (latencyMs < QUALITY_EXCELLENT_MS) {
+      quality = "excellent";
+    } else if (latencyMs < QUALITY_GOOD_MS) {
+      quality = "good";
+    } else if (latencyMs < QUALITY_FAIR_MS) {
+      quality = "fair";
+    } else {
+      quality = "poor";
+    }
+    this._setQuality(quality);
   },
 
   _scheduleReconnect() {
@@ -226,6 +263,7 @@ export const VentoWebSocket = {
           this._proxyHost = msg.proxy_host;
           this._proxyHealthPort = msg.proxy_port + 1;
           this._startProxyCheck();
+          this._checkProxy();
         }
         this._setStatus("connected");
         break;
@@ -243,6 +281,7 @@ export const VentoWebSocket = {
     if (ws) {
       ws.close();
     }
+    this._stopProxyCheck();
     this._applyBlockingState();
     Services.prefs.setBoolPref("browser.logingate.reauth", true);
     Services.ww.openWindow(

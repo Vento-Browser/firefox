@@ -654,31 +654,75 @@ menupopup::part(drop-indicator) {
   height: 16px;
 }
 
-/* Vento WebSocket connection status indicator */
+/* Vento WebSocket connection quality indicator — signal bars */
 #vento-ws-indicator {
   display: flex;
   align-items: center;
   padding: 0 6px;
 }
 
-#vento-ws-status-dot,
-#vento-ws-overlay-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--icon-color-deemphasized);
+#vento-ws-status-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 12px;
+  width: 15px;
 
-  &[data-status="connected"] {
-    background-color: var(--icon-color-success);
+  .vento-bar {
+    display: block;
+    width: 2.5px;
+    border-radius: 1px;
+    background-color: var(--icon-color-deemphasized);
+
+    &:nth-child(1) { height: 25%; }
+    &:nth-child(2) { height: 50%; }
+    &:nth-child(3) { height: 75%; }
+    &:nth-child(4) { height: 100%; }
   }
 
-  &[data-status="connecting"] {
-    background-color: var(--icon-color-warning);
+  /* Connecting — all bars pulse */
+  &[data-status="connecting"] .vento-bar {
     animation: vento-ws-pulse 1.2s ease-in-out infinite;
   }
 
-  &[data-status="error"] {
+  /* Error — all bars red */
+  &[data-status="error"] .vento-bar {
     background-color: var(--text-color-error);
+  }
+
+  /* Connected but quality not yet measured — bars pulse faintly */
+  &[data-status="connected"] .vento-bar {
+    animation: vento-ws-pulse 1.2s ease-in-out infinite;
+  }
+
+  /* Quality excellent — all 4 bars green */
+  &[data-status="quality-excellent"] .vento-bar {
+    background-color: var(--icon-color-success);
+  }
+
+  /* Quality good — bars 1-3 green, bar 4 stays gray */
+  &[data-status="quality-good"] {
+    .vento-bar:nth-child(1),
+    .vento-bar:nth-child(2),
+    .vento-bar:nth-child(3) {
+      background-color: var(--icon-color-success);
+    }
+  }
+
+  /* Quality fair — bars 1-2 orange */
+  &[data-status="quality-fair"] {
+    .vento-bar:nth-child(1),
+    .vento-bar:nth-child(2) {
+      background-color: var(--icon-color-warning);
+    }
+  }
+
+  /* Quality poor — bar 1 red, whole indicator pulses */
+  &[data-status="quality-poor"] {
+    .vento-bar:nth-child(1) {
+      background-color: var(--text-color-error);
+    }
+    animation: vento-ws-pulse 2s ease-in-out infinite;
   }
 }
 
@@ -688,6 +732,17 @@ menupopup::part(drop-indicator) {
   inset-inline-end: 20px;
   width: 10px;
   height: 10px;
+  border-radius: 50%;
+  background-color: var(--icon-color-deemphasized);
+
+  &[data-status="connecting"] {
+    background-color: var(--icon-color-warning);
+    animation: vento-ws-pulse 1.2s ease-in-out infinite;
+  }
+
+  &[data-status="error"] {
+    background-color: var(--text-color-error);
+  }
 }
 
 @keyframes vento-ws-pulse {

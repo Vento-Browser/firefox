@@ -1255,13 +1255,16 @@ var gBrowserInit = {
 
 var gVentoWsIndicator = {
   _observer: null,
+  _qualityObserver: null,
   _overlay: null,
   _overlayDot: null,
   _keyBlocker: null,
+  _currentStatus: "disconnected",
+  _currentQuality: null,
 
   init() {
-    const dot = document.getElementById("vento-ws-status-dot");
-    if (!dot) {
+    const bars = document.getElementById("vento-ws-status-bars");
+    if (!bars) {
       return;
     }
 
@@ -1292,14 +1295,69 @@ var gVentoWsIndicator = {
 
     this._observer = {
       observe: (_subject, _topic, status) => {
-        dot.dataset.status = status;
+        this._currentStatus = status;
+        if (status !== "connected") {
+          this._currentQuality = null;
+        }
+        this._updateBars();
         this._overlayDot.dataset.status = status;
         this._updateOverlay(status);
       },
     };
     Services.obs.addObserver(this._observer, "vento-ws-status-changed");
 
+    this._qualityObserver = {
+      observe: (_subject, _topic, quality) => {
+        this._currentQuality = quality || null;
+        this._updateBars();
+      },
+    };
+    Services.obs.addObserver(
+      this._qualityObserver,
+      "vento-proxy-quality-changed"
+    );
+
+    this._currentStatus = VentoWebSocket.status;
+    this._currentQuality = VentoWebSocket.quality;
+    this._updateBars();
     this._updateOverlay(VentoWebSocket.status);
+  },
+
+  _updateBars() {
+    const bars = document.getElementById("vento-ws-status-bars");
+    if (!bars) {
+      return;
+    }
+    bars.dataset.status = this._dotStatus();
+    bars.title = this._dotTooltip();
+  },
+
+  _dotStatus() {
+    if (this._currentStatus === "connected" && this._currentQuality) {
+      return `quality-${this._currentQuality}`;
+    }
+    return this._currentStatus;
+  },
+
+  _dotTooltip() {
+    switch (this._dotStatus()) {
+      case "quality-excellent":
+        return "Proxy: Excellent (< 80 ms)";
+      case "quality-good":
+        return "Proxy: Good (< 250 ms)";
+      case "quality-fair":
+        return "Proxy: Fair (< 600 ms)";
+      case "quality-poor":
+        return "Proxy: Poor (> 600 ms)";
+      case "connected":
+        return "Proxy: Connected";
+      case "connecting":
+        return "Proxy: Connecting\u2026";
+      case "error":
+        return "Proxy: Error";
+      default:
+        return "Proxy: Disconnected";
+    }
   },
 
   _updateOverlay(status) {
@@ -1320,6 +1378,13 @@ var gVentoWsIndicator = {
     if (this._observer) {
       Services.obs.removeObserver(this._observer, "vento-ws-status-changed");
       this._observer = null;
+    }
+    if (this._qualityObserver) {
+      Services.obs.removeObserver(
+        this._qualityObserver,
+        "vento-proxy-quality-changed"
+      );
+      this._qualityObserver = null;
     }
     if (this._overlay) {
       this._overlay.remove();

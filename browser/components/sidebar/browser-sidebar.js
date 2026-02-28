@@ -19,7 +19,6 @@ const toolsNameMap = {
   viewHistorySidebar: "history",
   viewBookmarksSidebar: "bookmarks",
   viewCPMSidebar: "passwords",
-  viewVentoSidebar: "vento",
 };
 const EXPAND_ON_HOVER_DEBOUNCE_TIMEOUT_MS = 1000;
 const LAUNCHER_SPLITTER_WIDTH = 4;
@@ -229,16 +228,6 @@ var SidebarController = {
         recordSidebarVersion: true,
       }
     );
-
-    this.registerPrefSidebar("browser.vento.panel.enabled", "viewVentoSidebar", {
-      name: "vento",
-      elementId: "sidebar-switcher-vento",
-      url: "chrome://browser/content/sidebar/sidebar-vento.html",
-      menuId: "menu_ventoSidebar",
-      menuL10nId: "menu-view-vento-panel",
-      revampL10nId: "sidebar-menu-vento-label",
-      iconUrl: "chrome://browser/skin/login.svg",
-    });
 
     if (this.sidebarRevampEnabled) {
       this._sidebars.set("viewCustomizeSidebar", {
@@ -1084,11 +1073,6 @@ var SidebarController = {
       } else {
         commandID = this.DEFAULT_SIDEBAR_ID;
       }
-    }
-
-    if (commandID === "viewVentoSidebar") {
-      openTrustedLinkIn("about:vento", "tab");
-      return Promise.resolve();
     }
 
     if (this.isOpen && commandID == this.currentID) {

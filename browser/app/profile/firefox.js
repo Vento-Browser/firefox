@@ -2234,9 +2234,6 @@ pref("sidebar.new-sidebar.has-used", false);
 
 pref("sidebar.notification.badge.aichat", false);
 
-// Vento Panel sidebar
-pref("browser.vento.panel.enabled", true);
-
 pref("browser.ml.chat.enabled", true);
 pref("browser.ml.chat.hideLocalhost", true);
 pref("browser.ml.chat.maxLength", 7000);

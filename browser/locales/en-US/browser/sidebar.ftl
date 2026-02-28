@@ -26,6 +26,7 @@ sidebar-vento-nav-dashboard = Dashboard
 sidebar-vento-nav-profile = Profile
 sidebar-vento-nav-users = Users
 
+sidebar-vento-dashboard-online-label = Online users
 sidebar-vento-dashboard-empty = Dashboard — coming soon.
 
 sidebar-vento-profile-email = Email
@@ -45,7 +46,6 @@ sidebar-vento-action-create-user = New user
 sidebar-vento-field-email = Email
 sidebar-vento-field-name = Display name
 sidebar-vento-field-password = Password
-sidebar-vento-field-temp-pw = Temporary password (user will be asked to change on first login)
 
 menu-view-contextual-password-manager =
   .label = Passwords

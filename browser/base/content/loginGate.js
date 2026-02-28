@@ -308,13 +308,13 @@ async function checkExistingSession() {
       data.display_name ?? data.email ?? "";
     document.getElementById("profile-email").textContent = data.email ?? "";
 
-    const perms = data.permissions ?? [];
-    if (perms.length > 0) {
-      document.getElementById("profile-permissions").textContent =
-        perms.join(", ");
-    } else {
-      document.getElementById("profile-permissions-block").hidden = true;
-    }
+    // const perms = data.permissions ?? [];
+    // if (perms.length > 0) {
+    //   document.getElementById("profile-permissions").textContent =
+    //     perms.join(", ");
+    // } else {
+    //   document.getElementById("profile-permissions-block").hidden = true;
+    // }
 
     state.connected = true;
     showView("view-profile");

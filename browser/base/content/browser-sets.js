@@ -237,7 +237,7 @@ document.addEventListener(
             FirefoxViewHandler.openTab("chats");
             break;
           case "Tools:VentoPanel":
-            SidebarController.toggle("viewVentoSidebar");
+            switchToTabHavingURI("about:vento", true);
             break;
           case "Tools:Sanitize":
             Sanitizer.showUI(window);

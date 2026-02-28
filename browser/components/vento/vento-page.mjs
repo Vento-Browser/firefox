@@ -13,7 +13,7 @@ import "chrome://global/content/elements/moz-button.mjs";
 
 const VENTO_TOKEN_PREF = "browser.logingate.accessToken";
 const VENTO_API_URL_PREF = "browser.logingate.serverUrl";
-const ALL_PERMS = ["USERS_READ", "USERS_MANAGE", "USERS_PERMISSIONS", "ADMIN"];
+const ALL_PERMS = ["USERS_READ", "USERS_MANAGE", "USERS_PERMISSIONS", "ADMIN", "USERS_READ_ONLINE_STATUS"];
 const PER_PAGE = 50;
 
 const NAV_PAGES = [
@@ -35,6 +35,7 @@ export class VentoPage extends MozLitElement {
     users: { type: Array },
     usersPage: { type: Number },
     usersTotal: { type: Number },
+    userFilter: { type: String },
     editingUserId: { type: Number },
     editingPerms: { type: Array },
     statusMsg: { type: Object },
@@ -42,6 +43,13 @@ export class VentoPage extends MozLitElement {
     createForm: { type: Object },
     createLoading: { type: Boolean },
     createError: { type: String },
+    createPasswordVisible: { type: Boolean },
+    passwordCopied: { type: Boolean },
+    dashboardStats: { type: Object },
+    dashboardOnlineUsers: { type: Array },
+    dashboardLoading: { type: Boolean },
+    metricsHistory: { type: Array },
+    currentMetrics: { type: Object },
   };
 
   constructor() {
@@ -52,6 +60,7 @@ export class VentoPage extends MozLitElement {
     this.users = [];
     this.usersPage = 1;
     this.usersTotal = 0;
+    this.userFilter = "";
     this.editingUserId = null;
     this.editingPerms = [];
     this.statusMsg = null;
@@ -60,10 +69,19 @@ export class VentoPage extends MozLitElement {
       email: "",
       display_name: "",
       password: "",
-      temporary_password: false,
     };
     this.createLoading = false;
     this.createError = "";
+    this.createPasswordVisible = false;
+    this.passwordCopied = false;
+    this.dashboardStats = null;
+    this.dashboardOnlineUsers = null;
+    this.dashboardLoading = false;
+    this.metricsHistory = [];
+    this.currentMetrics = null;
+    // Non-reactive WS state (not Lit properties).
+    this._ws = null;
+    this._wsReconnectTimer = null;
   }
 
   get #apiBase() {
@@ -77,9 +95,105 @@ export class VentoPage extends MozLitElement {
     return Services.prefs.getStringPref(VENTO_TOKEN_PREF, "");
   }
 
+  get #wsUrl() {
+    return this.#apiBase.replace(/^http(s?):\/\//, "ws$1://") + "/ws";
+  }
+
   async connectedCallback() {
     super.connectedCallback();
     await this.#loadCurrentUser();
+    if (this.authUser) {
+      if (this.activePage === "dashboard") {
+        this.#loadDashboard();
+      }
+      this.#connectWs();
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.#disconnectWs();
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────
+
+  #connectWs() {
+    if (this._ws) {
+      return;
+    }
+    const token = this.#token;
+    if (!token) {
+      return;
+    }
+    let ws;
+    try {
+      ws = new WebSocket(this.#wsUrl);
+    } catch {
+      return;
+    }
+    this._ws = ws;
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "auth", token }));
+    });
+
+    ws.addEventListener("message", e => {
+      try {
+        this.#handleWsMessage(JSON.parse(e.data));
+      } catch {
+        // ignore malformed frames
+      }
+    });
+
+    ws.addEventListener("close", () => {
+      if (this._ws === ws) {
+        this._ws = null;
+      }
+      // Reconnect after 5 s unless the component was unmounted.
+      this._wsReconnectTimer = setTimeout(() => {
+        this._wsReconnectTimer = null;
+        this.#connectWs();
+      }, 5000);
+    });
+
+    ws.addEventListener("error", () => {
+      // close event fires right after — handled there.
+    });
+  }
+
+  #disconnectWs() {
+    if (this._wsReconnectTimer) {
+      clearTimeout(this._wsReconnectTimer);
+      this._wsReconnectTimer = null;
+    }
+    if (this._ws) {
+      this._ws.close();
+      this._ws = null;
+    }
+  }
+
+  #handleWsMessage(msg) {
+    switch (msg.type) {
+      case "metrics_history":
+        this.metricsHistory = msg.snapshots ?? [];
+        if (this.metricsHistory.length) {
+          this.currentMetrics =
+            this.metricsHistory[this.metricsHistory.length - 1];
+        }
+        break;
+      case "metrics": {
+        const snap = {
+          cpu_usage: msg.cpu_usage,
+          memory_used_mb: msg.memory_used_mb,
+          memory_total_mb: msg.memory_total_mb,
+          timestamp: msg.timestamp,
+        };
+        this.currentMetrics = snap;
+        const next = [...this.metricsHistory, snap];
+        this.metricsHistory = next.length > 90 ? next.slice(-90) : next;
+        break;
+      }
+    }
   }
 
   async #api(path, opts = {}) {
@@ -111,17 +225,40 @@ export class VentoPage extends MozLitElement {
     }
   }
 
+  async #loadDashboard() {
+    this.dashboardLoading = true;
+    try {
+      this.dashboardStats = await this.#api("/api/auth/dashboard");
+      if (
+        this.#hasPermission("USERS_READ") &&
+        this.#hasPermission("USERS_READ_ONLINE_STATUS")
+      ) {
+        const data = await this.#api(
+          "/api/auth/users?page=1&per_page=200"
+        );
+        this.dashboardOnlineUsers = data.users.filter(u => u.online);
+      }
+    } catch {
+      // keep previous state on error
+    } finally {
+      this.dashboardLoading = false;
+    }
+  }
+
   #hasPermission(perm) {
     return this.authUser?.permissions?.includes(perm) ?? false;
   }
 
   #navigate(page) {
     this.activePage = page;
+    this.userFilter = "";
     this.editingUserId = null;
     this.statusMsg = null;
     this.showCreateForm = false;
     if (page === "users") {
       this.#loadUsers(1);
+    } else if (page === "dashboard") {
+      this.#loadDashboard();
     }
   }
 
@@ -184,11 +321,40 @@ export class VentoPage extends MozLitElement {
       email: "",
       display_name: "",
       password: "",
-      temporary_password: false,
     };
     this.createError = "";
     this.showCreateForm = true;
     this.editingUserId = null;
+    this.createPasswordVisible = false;
+    this.passwordCopied = false;
+  }
+
+  #generatePassword() {
+    const charset =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+";
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const password = Array.from(array, b => charset[b % charset.length]).join(
+      ""
+    );
+    this.createForm = { ...this.createForm, password };
+    this.createPasswordVisible = true;
+    this.passwordCopied = false;
+  }
+
+  async #copyPassword() {
+    if (!this.createForm.password) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(this.createForm.password);
+      this.passwordCopied = true;
+      setTimeout(() => {
+        this.passwordCopied = false;
+      }, 2000);
+    } catch {
+      // clipboard not available
+    }
   }
 
   #updateCreateField(field, value) {
@@ -196,8 +362,7 @@ export class VentoPage extends MozLitElement {
   }
 
   async #submitCreateUser() {
-    const { email, display_name, password, temporary_password } =
-      this.createForm;
+    const { email, display_name, password } = this.createForm;
     if (!email || !display_name || !password) {
       this.createError = "All fields are required.";
       return;
@@ -211,7 +376,7 @@ export class VentoPage extends MozLitElement {
     try {
       await this.#api("/api/auth/users", {
         method: "POST",
-        body: { email, display_name, password, temporary_password },
+        body: { email, display_name, password },
       });
       this.showCreateForm = false;
       this.#showStatus("User created successfully.");
@@ -238,9 +403,12 @@ export class VentoPage extends MozLitElement {
   }
 
   #logout() {
+    this.#disconnectWs();
     Services.prefs.setStringPref(VENTO_TOKEN_PREF, "");
     this.authUser = null;
     this.activePage = "dashboard";
+    this.metricsHistory = [];
+    this.currentMetrics = null;
   }
 
   // ── Render ───────────────────────────────────────────────
@@ -283,6 +451,8 @@ export class VentoPage extends MozLitElement {
             !!this.authUser,
             () => html`
               <div class="sticky-container">
+                <div class="main-search">
+                </div>
                 <div class="main-heading">
                   <h1 class="header-name">${pageTitle}</h1>
                 </div>
@@ -350,7 +520,153 @@ export class VentoPage extends MozLitElement {
   // ── Dashboard ────────────────────────────────────────────
 
   #dashboardPage() {
-    return html`<div class="dashboard-empty">Dashboard — coming soon.</div>`;
+    const count = this.dashboardStats?.online_users_count ?? "—";
+    const canSeeWho =
+      this.#hasPermission("USERS_READ") &&
+      this.#hasPermission("USERS_READ_ONLINE_STATUS");
+    const onlineUsers = this.dashboardOnlineUsers ?? [];
+
+    const m = this.currentMetrics;
+    const cpuPct = m ? m.cpu_usage.toFixed(1) + "%" : "—";
+    const memPct =
+      m && m.memory_total_mb
+        ? ((m.memory_used_mb / m.memory_total_mb) * 100).toFixed(1) + "%"
+        : "—";
+    const memLabel =
+      m && m.memory_total_mb
+        ? `${(m.memory_used_mb / 1024).toFixed(1)} / ${(m.memory_total_mb / 1024).toFixed(1)} GB`
+        : "Memory";
+
+    return html`
+      <div class="dashboard">
+        <div class="dashboard-stat-row">
+          <div class="stat-card stat-card--online">
+            <span class="stat-value">${count}</span>
+            <span class="stat-label">Users online</span>
+          </div>
+          <div class="stat-card stat-card--cpu">
+            <span class="stat-value">${cpuPct}</span>
+            <span class="stat-label">CPU</span>
+          </div>
+          <div class="stat-card stat-card--mem">
+            <span class="stat-value">${memPct}</span>
+            <span class="stat-label">${memLabel}</span>
+          </div>
+        </div>
+
+        <moz-card heading="System load · 15 min">
+          ${this.#renderMetricsChart()}
+        </moz-card>
+
+        ${when(
+          canSeeWho,
+          () => html`
+            <moz-card heading="Online now">
+              ${when(
+                this.dashboardLoading,
+                () => html`
+                  <div class="loading-state" style="padding:20px 0">
+                    <div class="spinner"></div>
+                  </div>
+                `,
+                () => html`
+                  ${when(
+                    onlineUsers.length,
+                    () => html`
+                      <ul class="online-users-list">
+                        ${onlineUsers.map(
+                          u => html`
+                            <li class="online-user-item">
+                              <span class="user-avatar">
+                                ${u.display_name[0].toUpperCase()}
+                              </span>
+                              <span class="online-user-name"
+                                >${u.display_name}</span
+                              >
+                              <span class="online-user-email">${u.email}</span>
+                            </li>
+                          `
+                        )}
+                      </ul>
+                    `,
+                    () => html`
+                      <p class="dashboard-empty-msg">
+                        No users are currently online.
+                      </p>
+                    `
+                  )}
+                `
+              )}
+            </moz-card>
+          `
+        )}
+
+        <div class="dashboard-refresh">
+          <moz-button
+            type="ghost"
+            size="small"
+            @click=${() => this.#loadDashboard()}
+          >
+            Refresh
+          </moz-button>
+        </div>
+      </div>
+    `;
+  }
+
+  #renderMetricsChart() {
+    const data = this.metricsHistory;
+    if (!data.length) {
+      return html`<p class="dashboard-empty-msg">Waiting for data…</p>`;
+    }
+
+    const W = 900;
+    const H = 120;
+    const n = data.length;
+    const xOf = i => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+    const yOf = v => H - (Math.max(0, Math.min(100, v)) / 100) * H;
+
+    const cpuPts = data
+      .map((p, i) => `${xOf(i).toFixed(1)},${yOf(p.cpu_usage).toFixed(1)}`)
+      .join(" ");
+    const memPts = data
+      .map((p, i) => {
+        const pct =
+          p.memory_total_mb > 0
+            ? (p.memory_used_mb / p.memory_total_mb) * 100
+            : 0;
+        return `${xOf(i).toFixed(1)},${yOf(pct).toFixed(1)}`;
+      })
+      .join(" ");
+
+    // Grid lines at 25 %, 50 %, 75 % — y values with H = 120:
+    //   75 % → y = 30,  50 % → y = 60,  25 % → y = 90
+    return html`
+      <div class="metrics-chart-wrap">
+        <svg
+          class="metrics-chart"
+          viewBox="0 0 900 120"
+          preserveAspectRatio="none"
+        >
+          <line x1="0" y1="30" x2="900" y2="30" class="chart-grid-line"></line>
+          <line x1="0" y1="60" x2="900" y2="60" class="chart-grid-line"></line>
+          <line x1="0" y1="90" x2="900" y2="90" class="chart-grid-line"></line>
+          <polyline
+            points=${cpuPts}
+            class="chart-line chart-line--cpu"
+          ></polyline>
+          <polyline
+            points=${memPts}
+            class="chart-line chart-line--mem"
+          ></polyline>
+        </svg>
+        <div class="chart-legend">
+          <span class="chart-legend-item chart-legend-item--cpu">CPU</span>
+          <span class="chart-legend-item chart-legend-item--mem">Memory</span>
+          <span class="chart-legend-time">← 15 min ago · now →</span>
+        </div>
+      </div>
+    `;
   }
 
   // ── Profile ──────────────────────────────────────────────
@@ -391,7 +707,36 @@ export class VentoPage extends MozLitElement {
     const totalPages = Math.ceil(this.usersTotal / PER_PAGE) || 1;
     const canManage = this.#hasPermission("USERS_MANAGE");
     const canEditPerms = this.#hasPermission("USERS_PERMISSIONS");
+    const canSeeOnline = this.#hasPermission("USERS_READ_ONLINE_STATUS");
     const hasAnyAction = canManage || canEditPerms;
+    const colCount = hasAnyAction ? 5 : 4;
+
+    // Client-side filter
+    const q = this.userFilter.trim().toLowerCase();
+    const filtered = q
+      ? this.users.filter(
+          u =>
+            u.display_name.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q)
+        )
+      : this.users;
+
+    // Split into groups
+    let activeUsers = filtered.filter(u => u.is_active);
+    const inactiveUsers = filtered.filter(u => !u.is_active);
+
+    // Sort active: online first when we have that permission
+    if (canSeeOnline && activeUsers.length) {
+      activeUsers = [...activeUsers].sort((a, b) => {
+        if (a.online && !b.online) {
+          return -1;
+        }
+        if (!a.online && b.online) {
+          return 1;
+        }
+        return 0;
+      });
+    }
 
     return html`
       ${when(this.showCreateForm, () => this.#createUserForm())}
@@ -414,6 +759,10 @@ export class VentoPage extends MozLitElement {
         )}
       </div>
 
+      <div class="users-filter">
+
+      </div>
+
       ${when(
         this.isLoading,
         () => html`
@@ -434,8 +783,48 @@ export class VentoPage extends MozLitElement {
               </tr>
             </thead>
             <tbody>
-              ${this.users.map(u =>
-                this.#userRow(u, canManage, canEditPerms, hasAnyAction)
+              <tr class="group-header-row">
+                <td colspan=${colCount}>
+                  <div class="group-header-cell">
+                    <span class="group-header-label">Active</span>
+                    <span class="group-header-count"
+                      >${activeUsers.length}</span
+                    >
+                  </div>
+                </td>
+              </tr>
+              ${activeUsers.map(u =>
+                this.#userRow(
+                  u,
+                  canManage,
+                  canEditPerms,
+                  hasAnyAction,
+                  canSeeOnline
+                )
+              )}
+              ${when(
+                !!inactiveUsers.length,
+                () => html`
+                  <tr class="group-header-row">
+                    <td colspan=${colCount}>
+                      <div class="group-header-cell">
+                        <span class="group-header-label">Inactive</span>
+                        <span class="group-header-count"
+                          >${inactiveUsers.length}</span
+                        >
+                      </div>
+                    </td>
+                  </tr>
+                  ${inactiveUsers.map(u =>
+                    this.#userRow(
+                      u,
+                      canManage,
+                      canEditPerms,
+                      hasAnyAction,
+                      canSeeOnline
+                    )
+                  )}
+                `
               )}
             </tbody>
           </table>
@@ -467,11 +856,36 @@ export class VentoPage extends MozLitElement {
     `;
   }
 
-  #userRow(u, canManage, canEditPerms, hasAnyAction) {
+  #userRow(u, canManage, canEditPerms, hasAnyAction, canSeeOnline) {
     const isSelf = u.id === this.authUser?.user_id;
     const isEditing = this.editingUserId === u.id;
     const showEdit = canEditPerms && !isSelf;
     const showToggle = canManage && !isSelf;
+
+    let statusCell;
+    if (canSeeOnline) {
+      if (u.is_active) {
+        const isOnline = u.online === true;
+        statusCell = html`<span
+          class=${classMap({
+            "online-dot": true,
+            "online-dot--on": isOnline,
+            "online-dot--off": !isOnline,
+          })}
+          title=${isOnline ? "Online" : "Offline"}
+        ></span>`;
+      } else {
+        statusCell = html`<span
+          class="online-dot online-dot--inactive"
+          title="Inactive"
+        ></span>`;
+      }
+    } else {
+      statusCell = html`<span
+        class="badge ${u.is_active ? "badge-active" : "badge-inactive"}"
+        >${u.is_active ? "Active" : "Inactive"}</span
+      >`;
+    }
 
     return html`
       <tr class=${classMap({ "editing-row": isEditing })}>
@@ -485,13 +899,7 @@ export class VentoPage extends MozLitElement {
           </div>
         </td>
         <td>${u.email}</td>
-        <td>
-          <span
-            class="badge ${u.is_active ? "badge-active" : "badge-inactive"}"
-          >
-            ${u.is_active ? "Active" : "Inactive"}
-          </span>
-        </td>
+        <td>${statusCell}</td>
         <td>
           ${u.permissions.length
             ? html`
@@ -614,25 +1022,34 @@ export class VentoPage extends MozLitElement {
               @input=${e => this.#updateCreateField("email", e.target.value)}
             />
           </div>
-          <div class="form-field">
+          <div class="form-field password-field">
             <label>Password</label>
-            <input
-              class="vento-input"
-              type="password"
-              .value=${this.createForm.password}
-              @input=${e => this.#updateCreateField("password", e.target.value)}
-            />
+            <div class="password-input-row">
+              <input
+                class="vento-input"
+                type=${this.createPasswordVisible ? "text" : "password"}
+                .value=${this.createForm.password}
+                @input=${e =>
+                  this.#updateCreateField("password", e.target.value)}
+              />
+              <moz-button
+                type="ghost"
+                size="small"
+                @click=${() => this.#generatePassword()}
+              >
+                Generate
+              </moz-button>
+              <moz-button
+                type="ghost"
+                size="small"
+                ?disabled=${!this.createForm.password}
+                @click=${() => this.#copyPassword()}
+              >
+                ${this.passwordCopied ? "Copied!" : "Copy"}
+              </moz-button>
+            </div>
           </div>
         </div>
-        <label class="form-check-row">
-          <input
-            type="checkbox"
-            .checked=${this.createForm.temporary_password}
-            @change=${e =>
-              this.#updateCreateField("temporary_password", e.target.checked)}
-          />
-          Temporary password (user must change on first login)
-        </label>
         ${when(
           this.createError,
           () => html`<div class="form-error">${this.createError}</div>`
