@@ -20,6 +20,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   LoginManagerContextMenu:
     "resource://gre/modules/LoginManagerContextMenu.sys.mjs",
+  VentoLoginCache:
+    "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -371,6 +373,7 @@ export class nsContextMenu {
     this.initMediaPlayerItems();
     this.initLeaveDOMFullScreenItems();
     this.initPasswordManagerItems();
+    this.initVentoFillItems();
     this.initViewSourceItems();
     this.initScreenshotItem();
     this.initPasswordControlItems();
@@ -1299,6 +1302,65 @@ export class nsContextMenu {
     this.showItem("fill-login", true);
 
     this.setItemAttr("passwordmgr-items-separator", "ensureHidden", null);
+  }
+
+  initVentoFillItems() {
+    if (!this.onTextInput && !this.onPassword) {
+      this.showItem("vento-fill-login", false);
+      return;
+    }
+
+    const documentURI = this.contentData?.documentURIObject;
+    if (!documentURI) {
+      this.showItem("vento-fill-login", false);
+      return;
+    }
+
+    const entries = lazy.VentoLoginCache.findForOrigin(documentURI.spec);
+    if (!entries.length) {
+      this.showItem("vento-fill-login", false);
+      return;
+    }
+
+    // Populate submenu (cleared on each open so it's always fresh).
+    const popup = this.document.getElementById("vento-fill-login-popup");
+    popup.replaceChildren();
+    for (const entry of entries) {
+      const item = this.document.createXULElement("menuitem");
+      item.setAttribute("label", entry.title || entry.username || `Credential #${entry.id}`);
+      item.addEventListener("command", () => {
+        this.ventoFillCredential(entry.id, entry.username, entry.title);
+      });
+      popup.appendChild(item);
+    }
+
+    this.showItem("vento-fill-login", true);
+  }
+
+  ventoFillCredential(credentialId, username, credentialTitle) {
+    const apiBase = Services.prefs.getStringPref(
+      "browser.logingate.serverUrl",
+      ""
+    );
+    const bearerToken = Services.prefs.getStringPref(
+      "browser.logingate.accessToken",
+      ""
+    );
+    if (!apiBase || !bearerToken) {
+      console.warn("VentoFill: serverUrl or accessToken pref not set");
+      return;
+    }
+    try {
+      const actor =
+        this.browser.browsingContext.currentWindowContext.getActor(
+          "VentoPassword"
+        );
+      actor
+        .directFill({ credentialId, username, credentialTitle, apiBase, bearerToken })
+        .catch(e => console.error("VentoFill: directFill failed:", e));
+    } catch (e) {
+      console.error("VentoFill: could not get VentoPassword actor:", e);
+    }
   }
 
   initSyncItems() {

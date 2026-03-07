@@ -11,17 +11,39 @@ import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://global/content/elements/moz-button.mjs";
 
+// Register the JSWindowActor pair used for autofill.  Wrapped in try/catch so
+// it is safe if this module is loaded more than once (e.g. two about:vento tabs).
+try {
+  ChromeUtils.registerWindowActor("VentoPassword", {
+    parent: {
+      esModuleURI:
+        "chrome://browser/content/vento/VentoPasswordParent.sys.mjs",
+    },
+    child: {
+      esModuleURI:
+        "chrome://browser/content/vento/VentoPasswordChild.sys.mjs",
+    },
+    allFrames: false,
+    includeChrome: false,
+  });
+} catch {
+  // Already registered — second about:vento tab opened.
+}
+
 const VENTO_TOKEN_PREF = "browser.logingate.accessToken";
 const VENTO_API_URL_PREF = "browser.logingate.serverUrl";
-const ALL_PERMS = ["USERS_READ", "USERS_MANAGE", "USERS_PERMISSIONS", "ADMIN", "USERS_READ_ONLINE_STATUS"];
+const ALL_PERMS = ["USERS_READ", "USERS_MANAGE", "USERS_PERMISSIONS", "ADMIN", "USERS_READ_ONLINE_STATUS", "PASSWORDS_MANAGE"];
 const PER_PAGE = 50;
+const PW_PER_PAGE = 50;
 
 const NAV_PAGES = [
   { id: "dashboard", label: "Dashboard" },
   { id: "users", label: "Users", perm: "USERS_READ" },
+  { id: "passwords", label: "Hidden Passwords" },
   { id: "profile", label: "Profile" },
 ];
 
+/** Main Vento admin panel page component. */
 export class VentoPage extends MozLitElement {
   // Render into light DOM so document-level CSS from vento-page.html applies.
   createRenderRoot() {
@@ -50,6 +72,25 @@ export class VentoPage extends MozLitElement {
     dashboardLoading: { type: Boolean },
     metricsHistory: { type: Array },
     currentMetrics: { type: Object },
+    // Passwords page
+    passwords: { type: Array },
+    passwordsTotal: { type: Number },
+    passwordsPage: { type: Number },
+    passwordsLoading: { type: Boolean },
+    showCreatePwForm: { type: Boolean },
+    createPwForm: { type: Object },
+    createPwLoading: { type: Boolean },
+    createPwError: { type: String },
+    editingPwId: { type: Number },
+    editPwForm: { type: Object },
+    // Access dialog
+    accessDialogOpen: { type: Boolean },
+    accessPasswordId: { type: Number },
+    accessPasswordTitle: { type: String },
+    accessAllUsers: { type: Array },
+    accessChecked: { type: Array },
+    accessFilter: { type: String },
+    accessLoading: { type: Boolean },
   };
 
   constructor() {
@@ -79,6 +120,25 @@ export class VentoPage extends MozLitElement {
     this.dashboardLoading = false;
     this.metricsHistory = [];
     this.currentMetrics = null;
+    // Passwords page
+    this.passwords = [];
+    this.passwordsTotal = 0;
+    this.passwordsPage = 1;
+    this.passwordsLoading = false;
+    this.showCreatePwForm = false;
+    this.createPwForm = { title: "", url: "", username: "", value: "" };
+    this.createPwLoading = false;
+    this.createPwError = "";
+    this.editingPwId = null;
+    this.editPwForm = { title: "", url: "", username: "", value: "" };
+    // Access dialog
+    this.accessDialogOpen = false;
+    this.accessPasswordId = null;
+    this.accessPasswordTitle = "";
+    this.accessAllUsers = [];
+    this.accessChecked = [];
+    this.accessFilter = "";
+    this.accessLoading = false;
     // Non-reactive WS state (not Lit properties).
     this._ws = null;
     this._wsReconnectTimer = null;
@@ -255,10 +315,14 @@ export class VentoPage extends MozLitElement {
     this.editingUserId = null;
     this.statusMsg = null;
     this.showCreateForm = false;
+    this.showCreatePwForm = false;
+    this.editingPwId = null;
     if (page === "users") {
       this.#loadUsers(1);
     } else if (page === "dashboard") {
       this.#loadDashboard();
+    } else if (page === "passwords") {
+      this.#loadPasswords(1);
     }
   }
 
@@ -411,6 +475,262 @@ export class VentoPage extends MozLitElement {
     this.currentMetrics = null;
   }
 
+  // ── Passwords ────────────────────────────────────────────
+
+  async #loadPasswords(page) {
+    this.passwordsLoading = true;
+    this.passwordsPage = page;
+    try {
+      const data = await this.#api(
+        `/api/passwords?page=${page}&per_page=${PW_PER_PAGE}`
+      );
+      this.passwords = data.passwords;
+      this.passwordsTotal = data.total;
+    } catch (e) {
+      this.#showStatus(e.message, "error");
+    } finally {
+      this.passwordsLoading = false;
+    }
+  }
+
+  #openCreatePwForm() {
+    this.createPwForm = { title: "", url: "", username: "", value: "" };
+    this.createPwError = "";
+    this.showCreatePwForm = true;
+    this.editingPwId = null;
+  }
+
+  #updateCreatePwField(field, value) {
+    this.createPwForm = { ...this.createPwForm, [field]: value };
+  }
+
+  async #submitCreatePw() {
+    const { title, url, username, value } = this.createPwForm;
+    if (!title || !value) {
+      this.createPwError = "Title and password value are required.";
+      return;
+    }
+    this.createPwLoading = true;
+    this.createPwError = "";
+    try {
+      await this.#api("/api/passwords", {
+        method: "POST",
+        body: { title, url, username, value },
+      });
+      this.showCreatePwForm = false;
+      this.#showStatus("Password entry created.");
+      await this.#loadPasswords(1);
+    } catch (e) {
+      this.createPwError = e.message;
+    } finally {
+      this.createPwLoading = false;
+    }
+  }
+
+  #startEditPw(pw) {
+    this.editingPwId = pw.id;
+    this.editPwForm = {
+      title: pw.title,
+      url: pw.url,
+      username: pw.username,
+      value: "",
+    };
+    this.showCreatePwForm = false;
+  }
+
+  #updateEditPwField(field, value) {
+    this.editPwForm = { ...this.editPwForm, [field]: value };
+  }
+
+  #cancelEditPw() {
+    this.editingPwId = null;
+  }
+
+  async #submitEditPw(id) {
+    const { title, url, username, value } = this.editPwForm;
+    const body = {};
+    if (title) {
+      body.title = title;
+    }
+    if (url !== undefined) {
+      body.url = url;
+    }
+    if (username !== undefined) {
+      body.username = username;
+    }
+    if (value) {
+      body.value = value;
+    }
+    try {
+      await this.#api(`/api/passwords/${id}`, { method: "PUT", body });
+      this.editingPwId = null;
+      this.#showStatus("Password entry updated.");
+      await this.#loadPasswords(this.passwordsPage);
+    } catch (e) {
+      this.#showStatus(e.message, "error");
+    }
+  }
+
+  async #deletePw(id) {
+    try {
+      await this.#api(`/api/passwords/${id}`, { method: "DELETE" });
+      this.#showStatus("Password entry deleted.");
+      await this.#loadPasswords(this.passwordsPage);
+    } catch (e) {
+      this.#showStatus(e.message, "error");
+    }
+  }
+
+  async #openAccessDialog(pw) {
+    this.accessPasswordId = pw.id;
+    this.accessPasswordTitle = pw.title;
+    this.accessFilter = "";
+    this.accessChecked = [];
+    this.accessAllUsers = [];
+    this.accessDialogOpen = true;
+    this.accessLoading = true;
+    try {
+      const [accessData, usersData] = await Promise.all([
+        this.#api(`/api/passwords/${pw.id}/access`),
+        this.#api(`/api/auth/users?page=1&per_page=500`),
+      ]);
+      this.accessChecked = accessData.user_ids;
+      this.accessAllUsers = (usersData.users ?? []).filter(
+        u => u.id !== this.authUser?.user_id
+      );
+    } catch (e) {
+      this.#showStatus(e.message, "error");
+      this.accessDialogOpen = false;
+    } finally {
+      this.accessLoading = false;
+    }
+  }
+
+  #closeAccessDialog() {
+    this.accessDialogOpen = false;
+    this.accessPasswordId = null;
+  }
+
+  #toggleAccessUser(userId) {
+    if (this.accessChecked.includes(userId)) {
+      this.accessChecked = this.accessChecked.filter(id => id !== userId);
+    } else {
+      this.accessChecked = [...this.accessChecked, userId];
+    }
+  }
+
+  async #savePasswordAccess() {
+    this.accessLoading = true;
+    try {
+      await this.#api(`/api/passwords/${this.accessPasswordId}/access`, {
+        method: "PUT",
+        body: { user_ids: this.accessChecked },
+      });
+      this.accessDialogOpen = false;
+      this.#showStatus("Access list saved.");
+    } catch (e) {
+      this.#showStatus(e.message, "error");
+    } finally {
+      this.accessLoading = false;
+    }
+  }
+
+  /**
+   * Securely fill a credential into a browser tab via VentoPasswordParent.
+   *
+   * The plaintext password is fetched and tokenised entirely in the parent
+   * process by VentoPasswordParent.secureFill().  Only an opaque fill token
+   * crosses the IPC boundary to the content process.  VentoNetworkObserver
+   * intercepts the outgoing HTTP request and substitutes the token with the
+   * real password at the network layer.
+   *
+   * Tab selection priority:
+   *   1. Tabs whose hostname matches the password URL (most recently accessed).
+   *   2. Any other open tab (most recently accessed) as a fallback.
+   *
+   * @param {object} pw Password entry object from the list response.
+   */
+  async #fillPassword(pw) {
+    // 1. Find the best target tab.
+    const win = Services.wm.getMostRecentBrowserWindow();
+    if (!win?.gBrowser) {
+      this.#showStatus("No browser window found.", "error");
+      return;
+    }
+    const { gBrowser } = win;
+
+    // Extract hostname from the stored URL for domain matching.
+    let pwHostname = "";
+    if (pw.url) {
+      try {
+        const href = /^https?:\/\//i.test(pw.url)
+          ? pw.url
+          : `https://${pw.url}`;
+        pwHostname = new URL(href).hostname.toLowerCase();
+      } catch {
+        // Stored value is not a parseable URL; skip domain matching.
+      }
+    }
+
+    const candidates = Array.from(gBrowser.tabs).filter(
+      t => !t.closing && t.linkedBrowser?.currentURI?.spec !== "about:vento"
+    );
+
+    // Sort candidates: domain matches first, then by last-accessed time.
+    candidates.sort((a, b) => {
+      const hostnameOf = tab => {
+        try {
+          return new URL(tab.linkedBrowser.currentURI.spec).hostname.toLowerCase();
+        } catch {
+          return "";
+        }
+      };
+      const aMatch = pwHostname && hostnameOf(a) === pwHostname ? 1 : 0;
+      const bMatch = pwHostname && hostnameOf(b) === pwHostname ? 1 : 0;
+      if (bMatch !== aMatch) {
+        return bMatch - aMatch; // domain match first
+      }
+      return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0); // then most recent
+    });
+
+    if (!candidates.length) {
+      this.#showStatus("No other tab found to fill into.", "error");
+      return;
+    }
+
+    const targetTab = candidates[0];
+    const bc = targetTab.linkedBrowser?.browsingContext;
+    if (!bc?.currentWindowGlobal) {
+      this.#showStatus("Target tab is not ready.", "error");
+      return;
+    }
+
+    // 2. Ask the parent actor to fetch the secret, issue a fill token, and
+    //    forward only the token to the content process.  The plaintext never
+    //    crosses the IPC boundary.
+    try {
+      const actor = bc.currentWindowGlobal.getActor("VentoPassword");
+      const result = await actor.secureFill({
+        credentialId: pw.id,
+        username: pw.username,
+        allowedUrl: pw.url,
+        apiBase: this.#apiBase,
+        bearerToken: this.#token,
+      });
+      if (result?.filled) {
+        this.#showStatus("Password filled.");
+        gBrowser.selectedTab = targetTab;
+      } else {
+        this.#showStatus(
+          `Could not fill: ${result?.reason ?? "no password field found"}`,
+          "error"
+        );
+      }
+    } catch (e) {
+      this.#showStatus(`Fill failed: ${e.message}`, "error");
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────
 
   render() {
@@ -512,6 +832,8 @@ export class VentoPage extends MozLitElement {
         return this.#usersPage();
       case "profile":
         return this.#profilePage();
+      case "passwords":
+        return this.#passwordsPage();
       default:
         return this.#dashboardPage();
     }
@@ -1074,6 +1396,383 @@ export class VentoPage extends MozLitElement {
           </moz-button>
         </div>
       </moz-card>
+    `;
+  }
+  // ── Passwords page ───────────────────────────────────────
+
+  #passwordsPage() {
+    const canManage = this.#hasPermission("PASSWORDS_MANAGE");
+    const totalPages = Math.ceil(this.passwordsTotal / PW_PER_PAGE) || 1;
+
+    return html`
+      ${when(this.showCreatePwForm, () => this.#createPwForm())}
+      ${when(this.accessDialogOpen, () => this.#accessDialog())}
+
+      <div class="users-toolbar">
+        <span class="users-count">
+          ${this.passwordsTotal}
+          ${this.passwordsTotal === 1 ? "entry" : "entries"}
+        </span>
+        ${when(
+          canManage && !this.showCreatePwForm,
+          () => html`
+            <moz-button type="primary" @click=${() => this.#openCreatePwForm()}>
+              New entry
+            </moz-button>
+          `
+        )}
+      </div>
+
+      ${when(
+        this.passwordsLoading,
+        () => html`<div class="loading-state"><div class="spinner"></div></div>`
+      )}
+      ${when(
+        !this.passwordsLoading,
+        () => html`
+          <table class="vento-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>URL</th>
+                <th>Username</th>
+                <th class="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${this.passwords.length
+                ? this.passwords.map(pw => this.#pwRow(pw, canManage))
+                : html`
+                    <tr>
+                      <td
+                        colspan="4"
+                        style="text-align:center;padding:24px;color:var(--text-color-deemphasized,gray)"
+                      >
+                        No entries yet.
+                      </td>
+                    </tr>
+                  `}
+            </tbody>
+          </table>
+
+          ${when(
+            totalPages > 1,
+            () => html`
+              <div class="pagination">
+                <moz-button
+                  type="ghost"
+                  size="small"
+                  ?disabled=${this.passwordsPage <= 1}
+                  @click=${() => this.#loadPasswords(this.passwordsPage - 1)}
+                  iconsrc="chrome://global/skin/icons/arrow-left.svg"
+                ></moz-button>
+                <span>${this.passwordsPage} / ${totalPages}</span>
+                <moz-button
+                  type="ghost"
+                  size="small"
+                  ?disabled=${this.passwordsPage >= totalPages}
+                  @click=${() => this.#loadPasswords(this.passwordsPage + 1)}
+                  iconsrc="chrome://global/skin/icons/arrow-right.svg"
+                ></moz-button>
+              </div>
+            `
+          )}
+        `
+      )}
+    `;
+  }
+
+  #pwRow(pw, canManage) {
+    const isEditing = this.editingPwId === pw.id;
+
+    return html`
+      <tr class=${classMap({ "editing-row": isEditing })}>
+        <td>${pw.title}</td>
+        <td>
+          ${pw.url
+            ? html`<a
+                href=${pw.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="pw-url-link"
+                >${pw.url}</a
+              >`
+            : html`<span style="color:var(--text-color-deemphasized,gray)"
+                >—</span
+              >`}
+        </td>
+        <td>${pw.username || html`<span style="color:var(--text-color-deemphasized,gray)">—</span>`}</td>
+        <td class="col-actions">
+          <div class="row-actions">
+            ${when(
+              canManage,
+              () => html`
+                <moz-button
+                  type="ghost"
+                  size="small"
+                  @click=${() =>
+                    isEditing ? this.#cancelEditPw() : this.#startEditPw(pw)}
+                >
+                  ${isEditing ? "Cancel" : "Edit"}
+                </moz-button>
+                <moz-button
+                  type="ghost"
+                  size="small"
+                  @click=${() => this.#openAccessDialog(pw)}
+                >
+                  Access
+                </moz-button>
+                <moz-button
+                  type="ghost"
+                  size="small"
+                  @click=${() => this.#deletePw(pw.id)}
+                >
+                  Delete
+                </moz-button>
+              `
+            )}
+            <moz-button
+              type="ghost"
+              size="small"
+              iconsrc="chrome://browser/skin/login.svg"
+              @click=${() => this.#fillPassword(pw)}
+            >
+              Fill
+            </moz-button>
+          </div>
+        </td>
+      </tr>
+
+      ${when(
+        isEditing,
+        () => html`
+          <tr class="edit-expand-row">
+            <td colspan="4">
+              <div class="perms-expand">
+                <div class="pw-edit-grid">
+                  <div class="form-field">
+                    <label>Title</label>
+                    <input
+                      class="vento-input"
+                      type="text"
+                      .value=${this.editPwForm.title}
+                      @input=${e =>
+                        this.#updateEditPwField("title", e.target.value)}
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label>URL</label>
+                    <input
+                      class="vento-input"
+                      type="text"
+                      .value=${this.editPwForm.url}
+                      @input=${e =>
+                        this.#updateEditPwField("url", e.target.value)}
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label>Username</label>
+                    <input
+                      class="vento-input"
+                      type="text"
+                      .value=${this.editPwForm.username}
+                      @input=${e =>
+                        this.#updateEditPwField("username", e.target.value)}
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label>New password value (leave blank to keep current)</label>
+                    <input
+                      class="vento-input"
+                      type="password"
+                      .value=${this.editPwForm.value}
+                      @input=${e =>
+                        this.#updateEditPwField("value", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div class="perms-actions">
+                  <moz-button
+                    type="primary"
+                    size="small"
+                    @click=${() => this.#submitEditPw(pw.id)}
+                  >
+                    Save
+                  </moz-button>
+                  <moz-button
+                    type="ghost"
+                    size="small"
+                    @click=${() => this.#cancelEditPw()}
+                  >
+                    Cancel
+                  </moz-button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        `
+      )}
+    `;
+  }
+
+  #createPwForm() {
+    return html`
+      <moz-card heading="New password entry">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Title</label>
+            <input
+              class="vento-input"
+              type="text"
+              .value=${this.createPwForm.title}
+              @input=${e => this.#updateCreatePwField("title", e.target.value)}
+            />
+          </div>
+          <div class="form-field">
+            <label>URL</label>
+            <input
+              class="vento-input"
+              type="text"
+              .value=${this.createPwForm.url}
+              @input=${e => this.#updateCreatePwField("url", e.target.value)}
+            />
+          </div>
+          <div class="form-field">
+            <label>Username</label>
+            <input
+              class="vento-input"
+              type="text"
+              .value=${this.createPwForm.username}
+              @input=${e =>
+                this.#updateCreatePwField("username", e.target.value)}
+            />
+          </div>
+          <div class="form-field">
+            <label>Password value</label>
+            <input
+              class="vento-input"
+              type="password"
+              .value=${this.createPwForm.value}
+              @input=${e => this.#updateCreatePwField("value", e.target.value)}
+            />
+          </div>
+        </div>
+        ${when(
+          this.createPwError,
+          () => html`<div class="form-error">${this.createPwError}</div>`
+        )}
+        <div class="form-actions">
+          <moz-button
+            type="primary"
+            size="small"
+            ?disabled=${this.createPwLoading}
+            @click=${() => this.#submitCreatePw()}
+          >
+            Create entry
+          </moz-button>
+          <moz-button
+            type="ghost"
+            size="small"
+            @click=${() => {
+              this.showCreatePwForm = false;
+            }}
+          >
+            Cancel
+          </moz-button>
+        </div>
+      </moz-card>
+    `;
+  }
+
+  #accessDialog() {
+    const q = this.accessFilter.trim().toLowerCase();
+    const filtered = q
+      ? this.accessAllUsers.filter(
+          u =>
+            u.display_name.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q)
+        )
+      : this.accessAllUsers;
+
+    return html`
+      <div
+        class="access-overlay"
+        @click=${e => {
+          if (e.target === e.currentTarget) {
+            this.#closeAccessDialog();
+          }
+        }}
+      >
+        <div class="access-dialog-card">
+          <h3 class="access-dialog-title">
+            Access — ${this.accessPasswordTitle}
+          </h3>
+
+          <input
+            class="vento-input access-filter-input"
+            type="text"
+            placeholder="Filter by name or email…"
+            .value=${this.accessFilter}
+            @input=${e => {
+              this.accessFilter = e.target.value;
+            }}
+          />
+
+          ${when(
+            this.accessLoading && !this.accessAllUsers.length,
+            () => html`
+              <div class="loading-state" style="padding:20px 0">
+                <div class="spinner"></div>
+              </div>
+            `,
+            () => html`
+              <div class="access-user-list">
+                ${filtered.length
+                  ? filtered.map(
+                      u => html`
+                        <label class="access-user-item">
+                          <input
+                            type="checkbox"
+                            .checked=${this.accessChecked.includes(u.id)}
+                            @change=${() => this.#toggleAccessUser(u.id)}
+                          />
+                          <span class="access-user-name"
+                            >${u.display_name}</span
+                          >
+                          <span class="access-user-email">${u.email}</span>
+                        </label>
+                      `
+                    )
+                  : html`
+                      <p
+                        style="color:var(--text-color-deemphasized,gray);font-size:13px;margin:8px 0"
+                      >
+                        No users found.
+                      </p>
+                    `}
+              </div>
+            `
+          )}
+
+          <div class="access-dialog-footer">
+            <moz-button
+              type="primary"
+              size="small"
+              ?disabled=${this.accessLoading}
+              @click=${() => this.#savePasswordAccess()}
+            >
+              Save
+            </moz-button>
+            <moz-button
+              type="ghost"
+              size="small"
+              @click=${() => this.#closeAccessDialog()}
+            >
+              Cancel
+            </moz-button>
+          </div>
+        </div>
+      </div>
     `;
   }
 }

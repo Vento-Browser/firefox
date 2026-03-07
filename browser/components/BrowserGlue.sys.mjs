@@ -70,6 +70,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
+  VentoLoginCache:
+    "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
+  VentoNetworkObserver: "resource:///modules/VentoNetworkObserver.sys.mjs",
   VentoWebSocket: "resource:///modules/VentoWebSocket.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
   WebProtocolHandlerRegistrar:
@@ -394,6 +397,56 @@ BrowserGlue.prototype = {
     );
 
     lazy.VentoWebSocket.init();
+    lazy.VentoNetworkObserver.init();
+    lazy.VentoLoginCache.init();
+
+    // Register the form-detector actor pair that provides native-style
+    // autofill for Vento credentials.  The child listens for
+    // DOMInputPasswordAdded on every page; the parent fetches the credential
+    // from the backend and issues a fill token without sending the plaintext
+    // to the content process.
+    // Register the fill actor used by both the Vento Panel and the context menu.
+    try {
+      ChromeUtils.registerWindowActor("VentoPassword", {
+        parent: {
+          esModuleURI:
+            "chrome://browser/content/vento/VentoPasswordParent.sys.mjs",
+        },
+        child: {
+          esModuleURI:
+            "chrome://browser/content/vento/VentoPasswordChild.sys.mjs",
+        },
+        allFrames: false,
+        includeChrome: false,
+      });
+    } catch {
+      // Actor already registered (e.g. second about:vento tab opened first).
+    }
+
+    try {
+      ChromeUtils.registerWindowActor("VentoFormDetector", {
+        parent: {
+          esModuleURI:
+            "chrome://browser/content/vento/VentoFormDetectorParent.sys.mjs",
+        },
+        child: {
+          esModuleURI:
+            "chrome://browser/content/vento/VentoFormDetectorChild.sys.mjs",
+          events: {
+            // pageshow fires on every page navigation and bfcache restore.
+            // We use it instead of DOMFormHasPassword / DOMInputPasswordAdded
+            // because those events are gated on signon.autofillForms, which
+            // is intentionally set to false in the Vento branding prefs.
+            pageshow: { mozSystemGroup: true },
+          },
+        },
+        allFrames: true,
+        includeChrome: false,
+        messageManagerGroups: ["browsers"],
+      });
+    } catch {
+      // Actor already registered (e.g. during a restart-less reload in tests).
+    }
 
     // check if we're in safe mode
     if (Services.appinfo.inSafeMode) {

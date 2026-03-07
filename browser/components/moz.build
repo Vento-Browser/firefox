@@ -110,6 +110,7 @@ EXTRA_JS_MODULES += [
     "BrowserContentHandler.sys.mjs",
     "BrowserGlue.sys.mjs",
     "distribution.sys.mjs",
+    "VentoNetworkObserver.sys.mjs",
     "VentoProxy.sys.mjs",
     "VentoWebSocket.sys.mjs",
 ]

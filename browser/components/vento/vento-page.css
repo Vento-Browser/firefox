@@ -20,6 +20,10 @@ vento-page {
   background-image: url("chrome://global/skin/icons/settings.svg");
 }
 
+.category[name="passwords"] {
+  background-image: url("chrome://browser/skin/login.svg");
+}
+
 /* ── Widen content — aboutaddons.css caps at 664px ─────────── */
 
 #main,
@@ -603,4 +607,114 @@ vento-page {
 .not-auth p {
   margin: 0;
   font-size: 13px;
+}
+
+/* ── Passwords page ─────────────────────────────────────────── */
+
+.pw-url-link {
+  font-size: 12px;
+  color: var(--color-accent-primary);
+  text-decoration: none;
+  max-width: 200px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pw-url-link:hover {
+  text-decoration: underline;
+}
+
+.pw-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  margin-block-end: 14px;
+}
+
+/* ── Access dialog ───────────────────────────────────────────── */
+
+.access-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.access-dialog-card {
+  background: var(--background-color-box, var(--color-canvas));
+  border: 1px solid var(--border-color-default, var(--border-color));
+  border-radius: var(--border-radius-medium, 6px);
+  padding: 20px 24px;
+  width: 440px;
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.access-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.access-user-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 300px;
+}
+
+.access-user-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--border-radius-small, 4px);
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+
+.access-user-item:hover {
+  background: color-mix(in srgb, var(--color-accent-primary) 8%, transparent);
+}
+
+.access-user-name {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.access-user-email {
+  font-size: 12px;
+  color: var(--text-color-deemphasized, gray);
+  margin-inline-start: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-dialog-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--border-color-default, var(--border-color));
 }

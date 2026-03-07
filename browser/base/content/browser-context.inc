@@ -278,6 +278,11 @@
                 data-l10n-id="main-context-menu-manage-passwords"
                 hidden="true"
                 />
+      <menu id="vento-fill-login"
+            data-l10n-id="main-context-menu-vento-fill"
+            hidden="true">
+        <menupopup id="vento-fill-login-popup" />
+      </menu>
       <menuseparator id="passwordmgr-items-separator"/>
       <menuitem id="context-undo"
                 data-l10n-id="text-action-undo"

@@ -363,6 +363,10 @@ main-context-menu-manage-passwords =
     .label = Manage Passwords
     .accesskey = M
 
+main-context-menu-vento-fill =
+    .label = Fill with Hidden Password
+    .accesskey = V
+
 main-context-menu-add-engine =
     .label = Add Search Engine
     .accesskey = S
