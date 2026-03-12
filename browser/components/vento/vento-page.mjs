@@ -2,17 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  classMap,
-  html,
-  when,
-} from "chrome://global/content/vendor/lit.all.mjs";
-import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
-// eslint-disable-next-line import/no-unassigned-import
-import "chrome://global/content/elements/moz-button.mjs";
-
-// Register the JSWindowActor pair used for autofill.  Wrapped in try/catch so
-// it is safe if this module is loaded more than once (e.g. two about:vento tabs).
 try {
   ChromeUtils.registerWindowActor("VentoPassword", {
     parent: {
@@ -32,1749 +21,1892 @@ try {
 
 const VENTO_TOKEN_PREF = "browser.logingate.accessToken";
 const VENTO_API_URL_PREF = "browser.logingate.serverUrl";
-const ALL_PERMS = ["USERS_READ", "USERS_MANAGE", "USERS_PERMISSIONS", "ADMIN", "USERS_READ_ONLINE_STATUS", "PASSWORDS_MANAGE"];
+const ALL_PERMS = [
+  "USERS_READ",
+  "USERS_MANAGE",
+  "USERS_PERMISSIONS",
+  "ADMIN",
+  "USERS_READ_ONLINE_STATUS",
+  "PASSWORDS_MANAGE",
+];
 const PER_PAGE = 50;
 const PW_PER_PAGE = 50;
-
-const NAV_PAGES = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "users", label: "Users", perm: "USERS_READ" },
-  { id: "passwords", label: "Hidden Passwords" },
-  { id: "profile", label: "Profile" },
-];
-
-/** Main Vento admin panel page component. */
-export class VentoPage extends MozLitElement {
-  // Render into light DOM so document-level CSS from vento-page.html applies.
-  createRenderRoot() {
-    return this;
-  }
-
-  static properties = {
-    activePage: { type: String },
-    isLoading: { type: Boolean },
-    authUser: { type: Object },
-    users: { type: Array },
-    usersPage: { type: Number },
-    usersTotal: { type: Number },
-    userFilter: { type: String },
-    editingUserId: { type: Number },
-    editingPerms: { type: Array },
-    statusMsg: { type: Object },
-    showCreateForm: { type: Boolean },
-    createForm: { type: Object },
-    createLoading: { type: Boolean },
-    createError: { type: String },
-    createPasswordVisible: { type: Boolean },
-    passwordCopied: { type: Boolean },
-    dashboardStats: { type: Object },
-    dashboardOnlineUsers: { type: Array },
-    dashboardLoading: { type: Boolean },
-    metricsHistory: { type: Array },
-    currentMetrics: { type: Object },
-    // Passwords page
-    passwords: { type: Array },
-    passwordsTotal: { type: Number },
-    passwordsPage: { type: Number },
-    passwordsLoading: { type: Boolean },
-    showCreatePwForm: { type: Boolean },
-    createPwForm: { type: Object },
-    createPwLoading: { type: Boolean },
-    createPwError: { type: String },
-    editingPwId: { type: Number },
-    editPwForm: { type: Object },
-    // Access dialog
-    accessDialogOpen: { type: Boolean },
-    accessPasswordId: { type: Number },
-    accessPasswordTitle: { type: String },
-    accessAllUsers: { type: Array },
-    accessChecked: { type: Array },
-    accessFilter: { type: String },
-    accessLoading: { type: Boolean },
-  };
-
-  constructor() {
-    super();
-    this.activePage = "dashboard";
-    this.isLoading = false;
-    this.authUser = null;
-    this.users = [];
-    this.usersPage = 1;
-    this.usersTotal = 0;
-    this.userFilter = "";
-    this.editingUserId = null;
-    this.editingPerms = [];
-    this.statusMsg = null;
-    this.showCreateForm = false;
-    this.createForm = {
-      email: "",
-      display_name: "",
-      password: "",
-    };
-    this.createLoading = false;
-    this.createError = "";
-    this.createPasswordVisible = false;
-    this.passwordCopied = false;
-    this.dashboardStats = null;
-    this.dashboardOnlineUsers = null;
-    this.dashboardLoading = false;
-    this.metricsHistory = [];
-    this.currentMetrics = null;
-    // Passwords page
-    this.passwords = [];
-    this.passwordsTotal = 0;
-    this.passwordsPage = 1;
-    this.passwordsLoading = false;
-    this.showCreatePwForm = false;
-    this.createPwForm = { title: "", url: "", username: "", value: "" };
-    this.createPwLoading = false;
-    this.createPwError = "";
-    this.editingPwId = null;
-    this.editPwForm = { title: "", url: "", username: "", value: "" };
-    // Access dialog
-    this.accessDialogOpen = false;
-    this.accessPasswordId = null;
-    this.accessPasswordTitle = "";
-    this.accessAllUsers = [];
-    this.accessChecked = [];
-    this.accessFilter = "";
-    this.accessLoading = false;
-    // Non-reactive WS state (not Lit properties).
-    this._ws = null;
-    this._wsReconnectTimer = null;
-  }
-
-  get #apiBase() {
-    return Services.prefs.getStringPref(
-      VENTO_API_URL_PREF,
-      "http://localhost:3000"
-    );
-  }
-
-  get #token() {
-    return Services.prefs.getStringPref(VENTO_TOKEN_PREF, "");
-  }
-
-  get #wsUrl() {
-    return this.#apiBase.replace(/^http(s?):\/\//, "ws$1://") + "/ws";
-  }
-
-  async connectedCallback() {
-    super.connectedCallback();
-    await this.#loadCurrentUser();
-    if (this.authUser) {
-      if (this.activePage === "dashboard") {
-        this.#loadDashboard();
-      }
-      this.#connectWs();
-    }
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this.#disconnectWs();
-  }
-
-  // ── WebSocket ─────────────────────────────────────────────
-
-  #connectWs() {
-    if (this._ws) {
-      return;
-    }
-    const token = this.#token;
-    if (!token) {
-      return;
-    }
-    let ws;
-    try {
-      ws = new WebSocket(this.#wsUrl);
-    } catch {
-      return;
-    }
-    this._ws = ws;
-
-    ws.addEventListener("open", () => {
-      ws.send(JSON.stringify({ type: "auth", token }));
-    });
-
-    ws.addEventListener("message", e => {
-      try {
-        this.#handleWsMessage(JSON.parse(e.data));
-      } catch {
-        // ignore malformed frames
-      }
-    });
-
-    ws.addEventListener("close", () => {
-      if (this._ws === ws) {
-        this._ws = null;
-      }
-      // Reconnect after 5 s unless the component was unmounted.
-      this._wsReconnectTimer = setTimeout(() => {
-        this._wsReconnectTimer = null;
-        this.#connectWs();
-      }, 5000);
-    });
-
-    ws.addEventListener("error", () => {
-      // close event fires right after — handled there.
-    });
-  }
-
-  #disconnectWs() {
-    if (this._wsReconnectTimer) {
-      clearTimeout(this._wsReconnectTimer);
-      this._wsReconnectTimer = null;
-    }
-    if (this._ws) {
-      this._ws.close();
-      this._ws = null;
-    }
-  }
-
-  #handleWsMessage(msg) {
-    switch (msg.type) {
-      case "metrics_history":
-        this.metricsHistory = msg.snapshots ?? [];
-        if (this.metricsHistory.length) {
-          this.currentMetrics =
-            this.metricsHistory[this.metricsHistory.length - 1];
-        }
-        break;
-      case "metrics": {
-        const snap = {
-          cpu_usage: msg.cpu_usage,
-          memory_used_mb: msg.memory_used_mb,
-          memory_total_mb: msg.memory_total_mb,
-          timestamp: msg.timestamp,
-        };
-        this.currentMetrics = snap;
-        const next = [...this.metricsHistory, snap];
-        this.metricsHistory = next.length > 90 ? next.slice(-90) : next;
-        break;
-      }
-    }
-  }
-
-  async #api(path, opts = {}) {
-    const headers = { "Content-Type": "application/json" };
-    const token = this.#token;
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-    const res = await fetch(`${this.#apiBase}${path}`, {
-      method: opts.method ?? "GET",
-      headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error ?? `HTTP ${res.status}`);
-    }
-    return data;
-  }
-
-  async #loadCurrentUser() {
-    if (!this.#token) {
-      return;
-    }
-    try {
-      this.authUser = await this.#api("/api/auth/validate");
-    } catch {
-      this.authUser = null;
-    }
-  }
-
-  async #loadDashboard() {
-    this.dashboardLoading = true;
-    try {
-      this.dashboardStats = await this.#api("/api/auth/dashboard");
-      if (
-        this.#hasPermission("USERS_READ") &&
-        this.#hasPermission("USERS_READ_ONLINE_STATUS")
-      ) {
-        const data = await this.#api(
-          "/api/auth/users?page=1&per_page=200"
-        );
-        this.dashboardOnlineUsers = data.users.filter(u => u.online);
-      }
-    } catch {
-      // keep previous state on error
-    } finally {
-      this.dashboardLoading = false;
-    }
-  }
-
-  #hasPermission(perm) {
-    return this.authUser?.permissions?.includes(perm) ?? false;
-  }
-
-  #navigate(page) {
-    this.activePage = page;
-    this.userFilter = "";
-    this.editingUserId = null;
-    this.statusMsg = null;
-    this.showCreateForm = false;
-    this.showCreatePwForm = false;
-    this.editingPwId = null;
-    if (page === "users") {
-      this.#loadUsers(1);
-    } else if (page === "dashboard") {
-      this.#loadDashboard();
-    } else if (page === "passwords") {
-      this.#loadPasswords(1);
-    }
-  }
-
-  #showStatus(text, type = "success") {
-    this.statusMsg = { text, type };
-    setTimeout(() => {
-      this.statusMsg = null;
-    }, 3500);
-  }
-
-  async #loadUsers(page) {
-    this.isLoading = true;
-    this.usersPage = page;
-    try {
-      const data = await this.#api(
-        `/api/auth/users?page=${page}&per_page=${PER_PAGE}`
-      );
-      this.users = data.users;
-      this.usersTotal = data.total;
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    } finally {
-      this.isLoading = false;
-    }
-  }
-
-  async #setUserActive(userId, isActive) {
-    try {
-      await this.#api(`/api/auth/users/${userId}/active`, {
-        method: "PUT",
-        body: { is_active: isActive },
-      });
-      this.#showStatus(isActive ? "User activated." : "User deactivated.");
-      await this.#loadUsers(this.usersPage);
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    }
-  }
-
-  #startEditPerms(user) {
-    this.editingUserId = user.id;
-    this.editingPerms = [...user.permissions];
-    this.showCreateForm = false;
-  }
-
-  #cancelEditPerms() {
-    this.editingUserId = null;
-  }
-
-  #togglePerm(perm) {
-    if (this.editingPerms.includes(perm)) {
-      this.editingPerms = this.editingPerms.filter(p => p !== perm);
-    } else {
-      this.editingPerms = [...this.editingPerms, perm];
-    }
-  }
-
-  #openCreateForm() {
-    this.createForm = {
-      email: "",
-      display_name: "",
-      password: "",
-    };
-    this.createError = "";
-    this.showCreateForm = true;
-    this.editingUserId = null;
-    this.createPasswordVisible = false;
-    this.passwordCopied = false;
-  }
-
-  #generatePassword() {
-    const charset =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+";
-    const array = new Uint8Array(16);
-    crypto.getRandomValues(array);
-    const password = Array.from(array, b => charset[b % charset.length]).join(
-      ""
-    );
-    this.createForm = { ...this.createForm, password };
-    this.createPasswordVisible = true;
-    this.passwordCopied = false;
-  }
-
-  async #copyPassword() {
-    if (!this.createForm.password) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(this.createForm.password);
-      this.passwordCopied = true;
-      setTimeout(() => {
-        this.passwordCopied = false;
-      }, 2000);
-    } catch {
-      // clipboard not available
-    }
-  }
-
-  #updateCreateField(field, value) {
-    this.createForm = { ...this.createForm, [field]: value };
-  }
-
-  async #submitCreateUser() {
-    const { email, display_name, password } = this.createForm;
-    if (!email || !display_name || !password) {
-      this.createError = "All fields are required.";
-      return;
-    }
-    if (password.length < 8) {
-      this.createError = "Password must be at least 8 characters.";
-      return;
-    }
-    this.createLoading = true;
-    this.createError = "";
-    try {
-      await this.#api("/api/auth/users", {
-        method: "POST",
-        body: { email, display_name, password },
-      });
-      this.showCreateForm = false;
-      this.#showStatus("User created successfully.");
-      await this.#loadUsers(1);
-    } catch (e) {
-      this.createError = e.message;
-    } finally {
-      this.createLoading = false;
-    }
-  }
-
-  async #savePerms(userId) {
-    try {
-      await this.#api(`/api/auth/users/${userId}/permissions`, {
-        method: "PUT",
-        body: { permissions: this.editingPerms },
-      });
-      this.editingUserId = null;
-      this.#showStatus("Permissions updated.");
-      await this.#loadUsers(this.usersPage);
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    }
-  }
-
-  #logout() {
-    this.#disconnectWs();
-    Services.prefs.setStringPref(VENTO_TOKEN_PREF, "");
-    this.authUser = null;
-    this.activePage = "dashboard";
-    this.metricsHistory = [];
-    this.currentMetrics = null;
-  }
-
-  // ── Passwords ────────────────────────────────────────────
-
-  async #loadPasswords(page) {
-    this.passwordsLoading = true;
-    this.passwordsPage = page;
-    try {
-      const data = await this.#api(
-        `/api/passwords?page=${page}&per_page=${PW_PER_PAGE}`
-      );
-      this.passwords = data.passwords;
-      this.passwordsTotal = data.total;
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    } finally {
-      this.passwordsLoading = false;
-    }
-  }
-
-  #openCreatePwForm() {
-    this.createPwForm = { title: "", url: "", username: "", value: "" };
-    this.createPwError = "";
-    this.showCreatePwForm = true;
-    this.editingPwId = null;
-  }
-
-  #updateCreatePwField(field, value) {
-    this.createPwForm = { ...this.createPwForm, [field]: value };
-  }
-
-  async #submitCreatePw() {
-    const { title, url, username, value } = this.createPwForm;
-    if (!title || !value) {
-      this.createPwError = "Title and password value are required.";
-      return;
-    }
-    this.createPwLoading = true;
-    this.createPwError = "";
-    try {
-      await this.#api("/api/passwords", {
-        method: "POST",
-        body: { title, url, username, value },
-      });
-      this.showCreatePwForm = false;
-      this.#showStatus("Password entry created.");
-      await this.#loadPasswords(1);
-    } catch (e) {
-      this.createPwError = e.message;
-    } finally {
-      this.createPwLoading = false;
-    }
-  }
-
-  #startEditPw(pw) {
-    this.editingPwId = pw.id;
-    this.editPwForm = {
-      title: pw.title,
-      url: pw.url,
-      username: pw.username,
-      value: "",
-    };
-    this.showCreatePwForm = false;
-  }
-
-  #updateEditPwField(field, value) {
-    this.editPwForm = { ...this.editPwForm, [field]: value };
-  }
-
-  #cancelEditPw() {
-    this.editingPwId = null;
-  }
-
-  async #submitEditPw(id) {
-    const { title, url, username, value } = this.editPwForm;
-    const body = {};
-    if (title) {
-      body.title = title;
-    }
-    if (url !== undefined) {
-      body.url = url;
-    }
-    if (username !== undefined) {
-      body.username = username;
-    }
-    if (value) {
-      body.value = value;
-    }
-    try {
-      await this.#api(`/api/passwords/${id}`, { method: "PUT", body });
-      this.editingPwId = null;
-      this.#showStatus("Password entry updated.");
-      await this.#loadPasswords(this.passwordsPage);
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    }
-  }
-
-  async #deletePw(id) {
-    try {
-      await this.#api(`/api/passwords/${id}`, { method: "DELETE" });
-      this.#showStatus("Password entry deleted.");
-      await this.#loadPasswords(this.passwordsPage);
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    }
-  }
-
-  async #openAccessDialog(pw) {
-    this.accessPasswordId = pw.id;
-    this.accessPasswordTitle = pw.title;
-    this.accessFilter = "";
-    this.accessChecked = [];
-    this.accessAllUsers = [];
-    this.accessDialogOpen = true;
-    this.accessLoading = true;
-    try {
-      const [accessData, usersData] = await Promise.all([
-        this.#api(`/api/passwords/${pw.id}/access`),
-        this.#api(`/api/auth/users?page=1&per_page=500`),
-      ]);
-      this.accessChecked = accessData.user_ids;
-      this.accessAllUsers = (usersData.users ?? []).filter(
-        u => u.id !== this.authUser?.user_id
-      );
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-      this.accessDialogOpen = false;
-    } finally {
-      this.accessLoading = false;
-    }
-  }
-
-  #closeAccessDialog() {
-    this.accessDialogOpen = false;
-    this.accessPasswordId = null;
-  }
-
-  #toggleAccessUser(userId) {
-    if (this.accessChecked.includes(userId)) {
-      this.accessChecked = this.accessChecked.filter(id => id !== userId);
-    } else {
-      this.accessChecked = [...this.accessChecked, userId];
-    }
-  }
-
-  async #savePasswordAccess() {
-    this.accessLoading = true;
-    try {
-      await this.#api(`/api/passwords/${this.accessPasswordId}/access`, {
-        method: "PUT",
-        body: { user_ids: this.accessChecked },
-      });
-      this.accessDialogOpen = false;
-      this.#showStatus("Access list saved.");
-    } catch (e) {
-      this.#showStatus(e.message, "error");
-    } finally {
-      this.accessLoading = false;
-    }
-  }
-
-  /**
-   * Securely fill a credential into a browser tab via VentoPasswordParent.
-   *
-   * The plaintext password is fetched and tokenised entirely in the parent
-   * process by VentoPasswordParent.secureFill().  Only an opaque fill token
-   * crosses the IPC boundary to the content process.  VentoNetworkObserver
-   * intercepts the outgoing HTTP request and substitutes the token with the
-   * real password at the network layer.
-   *
-   * Tab selection priority:
-   *   1. Tabs whose hostname matches the password URL (most recently accessed).
-   *   2. Any other open tab (most recently accessed) as a fallback.
-   *
-   * @param {object} pw Password entry object from the list response.
-   */
-  async #fillPassword(pw) {
-    // 1. Find the best target tab.
-    const win = Services.wm.getMostRecentBrowserWindow();
-    if (!win?.gBrowser) {
-      this.#showStatus("No browser window found.", "error");
-      return;
-    }
-    const { gBrowser } = win;
-
-    // Extract hostname from the stored URL for domain matching.
-    let pwHostname = "";
-    if (pw.url) {
-      try {
-        const href = /^https?:\/\//i.test(pw.url)
-          ? pw.url
-          : `https://${pw.url}`;
-        pwHostname = new URL(href).hostname.toLowerCase();
-      } catch {
-        // Stored value is not a parseable URL; skip domain matching.
-      }
-    }
-
-    const candidates = Array.from(gBrowser.tabs).filter(
-      t => !t.closing && t.linkedBrowser?.currentURI?.spec !== "about:vento"
-    );
-
-    // Sort candidates: domain matches first, then by last-accessed time.
-    candidates.sort((a, b) => {
-      const hostnameOf = tab => {
-        try {
-          return new URL(tab.linkedBrowser.currentURI.spec).hostname.toLowerCase();
-        } catch {
-          return "";
-        }
-      };
-      const aMatch = pwHostname && hostnameOf(a) === pwHostname ? 1 : 0;
-      const bMatch = pwHostname && hostnameOf(b) === pwHostname ? 1 : 0;
-      if (bMatch !== aMatch) {
-        return bMatch - aMatch; // domain match first
-      }
-      return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0); // then most recent
-    });
-
-    if (!candidates.length) {
-      this.#showStatus("No other tab found to fill into.", "error");
-      return;
-    }
-
-    const targetTab = candidates[0];
-    const bc = targetTab.linkedBrowser?.browsingContext;
-    if (!bc?.currentWindowGlobal) {
-      this.#showStatus("Target tab is not ready.", "error");
-      return;
-    }
-
-    // 2. Ask the parent actor to fetch the secret, issue a fill token, and
-    //    forward only the token to the content process.  The plaintext never
-    //    crosses the IPC boundary.
-    try {
-      const actor = bc.currentWindowGlobal.getActor("VentoPassword");
-      const result = await actor.secureFill({
-        credentialId: pw.id,
-        username: pw.username,
-        allowedUrl: pw.url,
-        apiBase: this.#apiBase,
-        bearerToken: this.#token,
-      });
-      if (result?.filled) {
-        this.#showStatus("Password filled.");
-        gBrowser.selectedTab = targetTab;
-      } else {
-        this.#showStatus(
-          `Could not fill: ${result?.reason ?? "no password field found"}`,
-          "error"
-        );
-      }
-    } catch (e) {
-      this.#showStatus(`Fill failed: ${e.message}`, "error");
-    }
-  }
-
-  // ── Render ───────────────────────────────────────────────
-
-  render() {
-    const visiblePages = NAV_PAGES.filter(
-      p => !p.perm || this.#hasPermission(p.perm)
-    );
-    const pageTitle =
-      NAV_PAGES.find(p => p.id === this.activePage)?.label ?? "Vento";
-
-    return html`
-      <div id="full">
-        <div id="sidebar">
-          <div id="categories">
-            ${when(
-              !!this.authUser,
-              () =>
-                visiblePages.map(
-                  p => html`
-                    <button
-                      class=${classMap({
-                        category: true,
-                        selected: this.activePage === p.id,
-                      })}
-                      name=${p.id}
-                      @click=${() => this.#navigate(p.id)}
-                    >
-                      <span class="category-name">${p.label}</span>
-                    </button>
-                  `
-                )
-            )}
-          </div>
-          <div class="spacer"></div>
-        </div>
-
-        <div id="content">
-          ${when(
-            !!this.authUser,
-            () => html`
-              <div class="sticky-container">
-                <div class="main-search">
-                </div>
-                <div class="main-heading">
-                  <h1 class="header-name">${pageTitle}</h1>
-                </div>
-              </div>
-            `
-          )}
-          <div id="main">
-            ${when(!this.#token, () => this.#notAuthTpl())}
-            ${when(
-              !!this.#token && !this.authUser,
-              () => html`
-                <div class="loading-state">
-                  <div class="spinner"></div>
-                </div>
-              `
-            )}
-            ${when(!!this.authUser, () => this.#appTpl())}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Not authenticated ────────────────────────────────────
-
-  #notAuthTpl() {
-    return html`
-      <div class="not-auth">
-        <h2>Not authenticated</h2>
-        <p>
-          Set the <code>browser.logingate.accessToken</code> preference to your
-          JWT access token.
-        </p>
-      </div>
-    `;
-  }
-
-  // ── Authenticated shell ──────────────────────────────────
-
-  #appTpl() {
-    return html`
-      ${when(
-        this.statusMsg,
-        () => html`
-          <div class="status-banner status-banner-${this.statusMsg.type}">
-            ${this.statusMsg.text}
-          </div>
-        `
-      )}
-      ${this.#pageTpl()}
-    `;
-  }
-
-  #pageTpl() {
-    switch (this.activePage) {
-      case "users":
-        return this.#usersPage();
-      case "profile":
-        return this.#profilePage();
-      case "passwords":
-        return this.#passwordsPage();
-      default:
-        return this.#dashboardPage();
-    }
-  }
-
-  // ── Dashboard ────────────────────────────────────────────
-
-  #dashboardPage() {
-    const count = this.dashboardStats?.online_users_count ?? "—";
-    const canSeeWho =
-      this.#hasPermission("USERS_READ") &&
-      this.#hasPermission("USERS_READ_ONLINE_STATUS");
-    const onlineUsers = this.dashboardOnlineUsers ?? [];
-
-    const m = this.currentMetrics;
-    const cpuPct = m ? m.cpu_usage.toFixed(1) + "%" : "—";
-    const memPct =
-      m && m.memory_total_mb
-        ? ((m.memory_used_mb / m.memory_total_mb) * 100).toFixed(1) + "%"
-        : "—";
-    const memLabel =
-      m && m.memory_total_mb
-        ? `${(m.memory_used_mb / 1024).toFixed(1)} / ${(m.memory_total_mb / 1024).toFixed(1)} GB`
-        : "Memory";
-
-    return html`
-      <div class="dashboard">
-        <div class="dashboard-stat-row">
-          <div class="stat-card stat-card--online">
-            <span class="stat-value">${count}</span>
-            <span class="stat-label">Users online</span>
-          </div>
-          <div class="stat-card stat-card--cpu">
-            <span class="stat-value">${cpuPct}</span>
-            <span class="stat-label">CPU</span>
-          </div>
-          <div class="stat-card stat-card--mem">
-            <span class="stat-value">${memPct}</span>
-            <span class="stat-label">${memLabel}</span>
-          </div>
-        </div>
-
-        <moz-card heading="System load · 15 min">
-          ${this.#renderMetricsChart()}
-        </moz-card>
-
-        ${when(
-          canSeeWho,
-          () => html`
-            <moz-card heading="Online now">
-              ${when(
-                this.dashboardLoading,
-                () => html`
-                  <div class="loading-state" style="padding:20px 0">
-                    <div class="spinner"></div>
-                  </div>
-                `,
-                () => html`
-                  ${when(
-                    onlineUsers.length,
-                    () => html`
-                      <ul class="online-users-list">
-                        ${onlineUsers.map(
-                          u => html`
-                            <li class="online-user-item">
-                              <span class="user-avatar">
-                                ${u.display_name[0].toUpperCase()}
-                              </span>
-                              <span class="online-user-name"
-                                >${u.display_name}</span
-                              >
-                              <span class="online-user-email">${u.email}</span>
-                            </li>
-                          `
-                        )}
-                      </ul>
-                    `,
-                    () => html`
-                      <p class="dashboard-empty-msg">
-                        No users are currently online.
-                      </p>
-                    `
-                  )}
-                `
-              )}
-            </moz-card>
-          `
-        )}
-
-        <div class="dashboard-refresh">
-          <moz-button
-            type="ghost"
-            size="small"
-            @click=${() => this.#loadDashboard()}
-          >
-            Refresh
-          </moz-button>
-        </div>
-      </div>
-    `;
-  }
-
-  #renderMetricsChart() {
-    const data = this.metricsHistory;
-    if (!data.length) {
-      return html`<p class="dashboard-empty-msg">Waiting for data…</p>`;
-    }
-
-    const W = 900;
-    const H = 120;
-    const n = data.length;
-    const xOf = i => (n === 1 ? W / 2 : (i / (n - 1)) * W);
-    const yOf = v => H - (Math.max(0, Math.min(100, v)) / 100) * H;
-
-    const cpuPts = data
-      .map((p, i) => `${xOf(i).toFixed(1)},${yOf(p.cpu_usage).toFixed(1)}`)
-      .join(" ");
-    const memPts = data
-      .map((p, i) => {
-        const pct =
-          p.memory_total_mb > 0
-            ? (p.memory_used_mb / p.memory_total_mb) * 100
-            : 0;
-        return `${xOf(i).toFixed(1)},${yOf(pct).toFixed(1)}`;
-      })
-      .join(" ");
-
-    // Grid lines at 25 %, 50 %, 75 % — y values with H = 120:
-    //   75 % → y = 30,  50 % → y = 60,  25 % → y = 90
-    return html`
-      <div class="metrics-chart-wrap">
-        <svg
-          class="metrics-chart"
-          viewBox="0 0 900 120"
-          preserveAspectRatio="none"
-        >
-          <line x1="0" y1="30" x2="900" y2="30" class="chart-grid-line"></line>
-          <line x1="0" y1="60" x2="900" y2="60" class="chart-grid-line"></line>
-          <line x1="0" y1="90" x2="900" y2="90" class="chart-grid-line"></line>
-          <polyline
-            points=${cpuPts}
-            class="chart-line chart-line--cpu"
-          ></polyline>
-          <polyline
-            points=${memPts}
-            class="chart-line chart-line--mem"
-          ></polyline>
-        </svg>
-        <div class="chart-legend">
-          <span class="chart-legend-item chart-legend-item--cpu">CPU</span>
-          <span class="chart-legend-item chart-legend-item--mem">Memory</span>
-          <span class="chart-legend-time">← 15 min ago · now →</span>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Profile ──────────────────────────────────────────────
-
-  #profilePage() {
-    const u = this.authUser;
-    return html`
-      <moz-card heading="Account">
-        <div class="addon-detail-row">
-          <span class="info-label">Display name</span>
-          <span>${u.display_name}</span>
-        </div>
-        <div class="addon-detail-row">
-          <span class="info-label">Email</span>
-          <span>${u.email}</span>
-        </div>
-        <div class="addon-detail-row">
-          <span class="info-label">Permissions</span>
-          <div class="perm-badges">
-            ${u.permissions.length
-              ? u.permissions.map(
-                  p => html`<span class="badge badge-perm">${p}</span>`
-                )
-              : html`<span
-                  style="color:var(--text-color-deemphasized,gray)"
-                  >—</span
-                >`}
-          </div>
-        </div>
-      </moz-card>
-      <moz-button @click=${() => this.#logout()}>Log out</moz-button>
-    `;
-  }
-
-  // ── Users ────────────────────────────────────────────────
-
-  #usersPage() {
-    const totalPages = Math.ceil(this.usersTotal / PER_PAGE) || 1;
-    const canManage = this.#hasPermission("USERS_MANAGE");
-    const canEditPerms = this.#hasPermission("USERS_PERMISSIONS");
-    const canSeeOnline = this.#hasPermission("USERS_READ_ONLINE_STATUS");
-    const hasAnyAction = canManage || canEditPerms;
-    const colCount = hasAnyAction ? 5 : 4;
-
-    // Client-side filter
-    const q = this.userFilter.trim().toLowerCase();
-    const filtered = q
-      ? this.users.filter(
-          u =>
-            u.display_name.toLowerCase().includes(q) ||
-            u.email.toLowerCase().includes(q)
-        )
-      : this.users;
-
-    // Split into groups
-    let activeUsers = filtered.filter(u => u.is_active);
-    const inactiveUsers = filtered.filter(u => !u.is_active);
-
-    // Sort active: online first when we have that permission
-    if (canSeeOnline && activeUsers.length) {
-      activeUsers = [...activeUsers].sort((a, b) => {
-        if (a.online && !b.online) {
-          return -1;
-        }
-        if (!a.online && b.online) {
-          return 1;
-        }
-        return 0;
-      });
-    }
-
-    return html`
-      ${when(this.showCreateForm, () => this.#createUserForm())}
-
-      <div class="users-toolbar">
-        <span class="users-count">
-          ${this.usersTotal}
-          ${this.usersTotal === 1 ? "user" : "users"}
-        </span>
-        ${when(
-          canManage && !this.showCreateForm,
-          () => html`
-            <moz-button
-              type="primary"
-              @click=${() => this.#openCreateForm()}
-            >
-              New user
-            </moz-button>
-          `
-        )}
-      </div>
-
-      <div class="users-filter">
-
-      </div>
-
-      ${when(
-        this.isLoading,
-        () => html`
-          <div class="loading-state"><div class="spinner"></div></div>
-        `
-      )}
-      ${when(
-        !this.isLoading,
-        () => html`
-          <table class="vento-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Permissions</th>
-                ${when(hasAnyAction, () => html`<th class="col-actions"></th>`)}
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="group-header-row">
-                <td colspan=${colCount}>
-                  <div class="group-header-cell">
-                    <span class="group-header-label">Active</span>
-                    <span class="group-header-count"
-                      >${activeUsers.length}</span
-                    >
-                  </div>
-                </td>
-              </tr>
-              ${activeUsers.map(u =>
-                this.#userRow(
-                  u,
-                  canManage,
-                  canEditPerms,
-                  hasAnyAction,
-                  canSeeOnline
-                )
-              )}
-              ${when(
-                !!inactiveUsers.length,
-                () => html`
-                  <tr class="group-header-row">
-                    <td colspan=${colCount}>
-                      <div class="group-header-cell">
-                        <span class="group-header-label">Inactive</span>
-                        <span class="group-header-count"
-                          >${inactiveUsers.length}</span
-                        >
-                      </div>
-                    </td>
-                  </tr>
-                  ${inactiveUsers.map(u =>
-                    this.#userRow(
-                      u,
-                      canManage,
-                      canEditPerms,
-                      hasAnyAction,
-                      canSeeOnline
-                    )
-                  )}
-                `
-              )}
-            </tbody>
-          </table>
-
-          ${when(
-            totalPages > 1,
-            () => html`
-              <div class="pagination">
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  ?disabled=${this.usersPage <= 1}
-                  @click=${() => this.#loadUsers(this.usersPage - 1)}
-                  iconsrc="chrome://global/skin/icons/arrow-left.svg"
-                ></moz-button>
-                <span>${this.usersPage} / ${totalPages}</span>
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  ?disabled=${this.usersPage >= totalPages}
-                  @click=${() => this.#loadUsers(this.usersPage + 1)}
-                  iconsrc="chrome://global/skin/icons/arrow-right.svg"
-                ></moz-button>
-              </div>
-            `
-          )}
-        `
-      )}
-    `;
-  }
-
-  #userRow(u, canManage, canEditPerms, hasAnyAction, canSeeOnline) {
-    const isSelf = u.id === this.authUser?.user_id;
-    const isEditing = this.editingUserId === u.id;
-    const showEdit = canEditPerms && !isSelf;
-    const showToggle = canManage && !isSelf;
-
-    let statusCell;
-    if (canSeeOnline) {
-      if (u.is_active) {
-        const isOnline = u.online === true;
-        statusCell = html`<span
-          class=${classMap({
-            "online-dot": true,
-            "online-dot--on": isOnline,
-            "online-dot--off": !isOnline,
-          })}
-          title=${isOnline ? "Online" : "Offline"}
-        ></span>`;
-      } else {
-        statusCell = html`<span
-          class="online-dot online-dot--inactive"
-          title="Inactive"
-        ></span>`;
-      }
-    } else {
-      statusCell = html`<span
-        class="badge ${u.is_active ? "badge-active" : "badge-inactive"}"
-        >${u.is_active ? "Active" : "Inactive"}</span
-      >`;
-    }
-
-    return html`
-      <tr class=${classMap({ "editing-row": isEditing })}>
-        <td>
-          <div class="user-name-cell">
-            <span class="user-name">${u.display_name}</span>
-            ${when(
-              u.totp_enabled,
-              () => html`<span class="badge badge-totp">2FA</span>`
-            )}
-          </div>
-        </td>
-        <td>${u.email}</td>
-        <td>${statusCell}</td>
-        <td>
-          ${u.permissions.length
-            ? html`
-                <div class="perm-badges">
-                  ${u.permissions.map(
-                    p => html`<span class="badge badge-perm">${p}</span>`
-                  )}
-                </div>
-              `
-            : html`<span
-                style="color:var(--text-color-deemphasized,gray)"
-                >—</span
-              >`}
-        </td>
-        ${when(
-          hasAnyAction,
-          () => html`
-            <td class="col-actions">
-              <div class="row-actions">
-                ${when(
-                  showEdit,
-                  () => html`
-                    <moz-button
-                      type="ghost"
-                      size="small"
-                      @click=${() =>
-                        isEditing
-                          ? this.#cancelEditPerms()
-                          : this.#startEditPerms(u)}
-                    >
-                      ${isEditing ? "Cancel" : "Edit"}
-                    </moz-button>
-                  `
-                )}
-                ${when(
-                  showToggle,
-                  () => html`
-                    <moz-button
-                      type="ghost"
-                      size="small"
-                      @click=${() => this.#setUserActive(u.id, !u.is_active)}
-                    >
-                      ${u.is_active ? "Deactivate" : "Activate"}
-                    </moz-button>
-                  `
-                )}
-              </div>
-            </td>
-          `
-        )}
-      </tr>
-
-      ${when(
-        isEditing,
-        () => html`
-          <tr class="edit-expand-row">
-            <td colspan="5">
-              <div class="perms-expand">
-                <div class="perms-expand-label">Permissions</div>
-                <div class="perms-grid">
-                  ${ALL_PERMS.map(
-                    perm => html`
-                      <label class="perm-check-label">
-                        <input
-                          type="checkbox"
-                          .checked=${this.editingPerms.includes(perm)}
-                          @change=${() => this.#togglePerm(perm)}
-                        />
-                        ${perm}
-                      </label>
-                    `
-                  )}
-                </div>
-                <div class="perms-actions">
-                  <moz-button
-                    type="primary"
-                    size="small"
-                    @click=${() => this.#savePerms(u.id)}
-                  >
-                    Save
-                  </moz-button>
-                  <moz-button
-                    type="ghost"
-                    size="small"
-                    @click=${() => this.#cancelEditPerms()}
-                  >
-                    Cancel
-                  </moz-button>
-                </div>
-              </div>
-            </td>
-          </tr>
-        `
-      )}
-    `;
-  }
-
-  // ── Create user form ─────────────────────────────────────
-
-  #createUserForm() {
-    return html`
-      <moz-card heading="New user">
-        <div class="form-grid">
-          <div class="form-field">
-            <label>Display name</label>
-            <input
-              class="vento-input"
-              type="text"
-              .value=${this.createForm.display_name}
-              @input=${e =>
-                this.#updateCreateField("display_name", e.target.value)}
-            />
-          </div>
-          <div class="form-field">
-            <label>Email</label>
-            <input
-              class="vento-input"
-              type="email"
-              .value=${this.createForm.email}
-              @input=${e => this.#updateCreateField("email", e.target.value)}
-            />
-          </div>
-          <div class="form-field password-field">
-            <label>Password</label>
-            <div class="password-input-row">
-              <input
-                class="vento-input"
-                type=${this.createPasswordVisible ? "text" : "password"}
-                .value=${this.createForm.password}
-                @input=${e =>
-                  this.#updateCreateField("password", e.target.value)}
-              />
-              <moz-button
-                type="ghost"
-                size="small"
-                @click=${() => this.#generatePassword()}
-              >
-                Generate
-              </moz-button>
-              <moz-button
-                type="ghost"
-                size="small"
-                ?disabled=${!this.createForm.password}
-                @click=${() => this.#copyPassword()}
-              >
-                ${this.passwordCopied ? "Copied!" : "Copy"}
-              </moz-button>
-            </div>
-          </div>
-        </div>
-        ${when(
-          this.createError,
-          () => html`<div class="form-error">${this.createError}</div>`
-        )}
-        <div class="form-actions">
-          <moz-button
-            type="primary"
-            size="small"
-            ?disabled=${this.createLoading}
-            @click=${() => this.#submitCreateUser()}
-          >
-            Create user
-          </moz-button>
-          <moz-button
-            type="ghost"
-            size="small"
-            @click=${() => {
-              this.showCreateForm = false;
-            }}
-          >
-            Cancel
-          </moz-button>
-        </div>
-      </moz-card>
-    `;
-  }
-  // ── Passwords page ───────────────────────────────────────
-
-  #passwordsPage() {
-    const canManage = this.#hasPermission("PASSWORDS_MANAGE");
-    const totalPages = Math.ceil(this.passwordsTotal / PW_PER_PAGE) || 1;
-
-    return html`
-      ${when(this.showCreatePwForm, () => this.#createPwForm())}
-      ${when(this.accessDialogOpen, () => this.#accessDialog())}
-
-      <div class="users-toolbar">
-        <span class="users-count">
-          ${this.passwordsTotal}
-          ${this.passwordsTotal === 1 ? "entry" : "entries"}
-        </span>
-        ${when(
-          canManage && !this.showCreatePwForm,
-          () => html`
-            <moz-button type="primary" @click=${() => this.#openCreatePwForm()}>
-              New entry
-            </moz-button>
-          `
-        )}
-      </div>
-
-      ${when(
-        this.passwordsLoading,
-        () => html`<div class="loading-state"><div class="spinner"></div></div>`
-      )}
-      ${when(
-        !this.passwordsLoading,
-        () => html`
-          <table class="vento-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>URL</th>
-                <th>Username</th>
-                <th class="col-actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${this.passwords.length
-                ? this.passwords.map(pw => this.#pwRow(pw, canManage))
-                : html`
-                    <tr>
-                      <td
-                        colspan="4"
-                        style="text-align:center;padding:24px;color:var(--text-color-deemphasized,gray)"
-                      >
-                        No entries yet.
-                      </td>
-                    </tr>
-                  `}
-            </tbody>
-          </table>
-
-          ${when(
-            totalPages > 1,
-            () => html`
-              <div class="pagination">
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  ?disabled=${this.passwordsPage <= 1}
-                  @click=${() => this.#loadPasswords(this.passwordsPage - 1)}
-                  iconsrc="chrome://global/skin/icons/arrow-left.svg"
-                ></moz-button>
-                <span>${this.passwordsPage} / ${totalPages}</span>
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  ?disabled=${this.passwordsPage >= totalPages}
-                  @click=${() => this.#loadPasswords(this.passwordsPage + 1)}
-                  iconsrc="chrome://global/skin/icons/arrow-right.svg"
-                ></moz-button>
-              </div>
-            `
-          )}
-        `
-      )}
-    `;
-  }
-
-  #pwRow(pw, canManage) {
-    const isEditing = this.editingPwId === pw.id;
-
-    return html`
-      <tr class=${classMap({ "editing-row": isEditing })}>
-        <td>${pw.title}</td>
-        <td>
-          ${pw.url
-            ? html`<a
-                href=${pw.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="pw-url-link"
-                >${pw.url}</a
-              >`
-            : html`<span style="color:var(--text-color-deemphasized,gray)"
-                >—</span
-              >`}
-        </td>
-        <td>${pw.username || html`<span style="color:var(--text-color-deemphasized,gray)">—</span>`}</td>
-        <td class="col-actions">
-          <div class="row-actions">
-            ${when(
-              canManage,
-              () => html`
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  @click=${() =>
-                    isEditing ? this.#cancelEditPw() : this.#startEditPw(pw)}
-                >
-                  ${isEditing ? "Cancel" : "Edit"}
-                </moz-button>
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  @click=${() => this.#openAccessDialog(pw)}
-                >
-                  Access
-                </moz-button>
-                <moz-button
-                  type="ghost"
-                  size="small"
-                  @click=${() => this.#deletePw(pw.id)}
-                >
-                  Delete
-                </moz-button>
-              `
-            )}
-            <moz-button
-              type="ghost"
-              size="small"
-              iconsrc="chrome://browser/skin/login.svg"
-              @click=${() => this.#fillPassword(pw)}
-            >
-              Fill
-            </moz-button>
-          </div>
-        </td>
-      </tr>
-
-      ${when(
-        isEditing,
-        () => html`
-          <tr class="edit-expand-row">
-            <td colspan="4">
-              <div class="perms-expand">
-                <div class="pw-edit-grid">
-                  <div class="form-field">
-                    <label>Title</label>
-                    <input
-                      class="vento-input"
-                      type="text"
-                      .value=${this.editPwForm.title}
-                      @input=${e =>
-                        this.#updateEditPwField("title", e.target.value)}
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label>URL</label>
-                    <input
-                      class="vento-input"
-                      type="text"
-                      .value=${this.editPwForm.url}
-                      @input=${e =>
-                        this.#updateEditPwField("url", e.target.value)}
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label>Username</label>
-                    <input
-                      class="vento-input"
-                      type="text"
-                      .value=${this.editPwForm.username}
-                      @input=${e =>
-                        this.#updateEditPwField("username", e.target.value)}
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label>New password value (leave blank to keep current)</label>
-                    <input
-                      class="vento-input"
-                      type="password"
-                      .value=${this.editPwForm.value}
-                      @input=${e =>
-                        this.#updateEditPwField("value", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div class="perms-actions">
-                  <moz-button
-                    type="primary"
-                    size="small"
-                    @click=${() => this.#submitEditPw(pw.id)}
-                  >
-                    Save
-                  </moz-button>
-                  <moz-button
-                    type="ghost"
-                    size="small"
-                    @click=${() => this.#cancelEditPw()}
-                  >
-                    Cancel
-                  </moz-button>
-                </div>
-              </div>
-            </td>
-          </tr>
-        `
-      )}
-    `;
-  }
-
-  #createPwForm() {
-    return html`
-      <moz-card heading="New password entry">
-        <div class="form-grid">
-          <div class="form-field">
-            <label>Title</label>
-            <input
-              class="vento-input"
-              type="text"
-              .value=${this.createPwForm.title}
-              @input=${e => this.#updateCreatePwField("title", e.target.value)}
-            />
-          </div>
-          <div class="form-field">
-            <label>URL</label>
-            <input
-              class="vento-input"
-              type="text"
-              .value=${this.createPwForm.url}
-              @input=${e => this.#updateCreatePwField("url", e.target.value)}
-            />
-          </div>
-          <div class="form-field">
-            <label>Username</label>
-            <input
-              class="vento-input"
-              type="text"
-              .value=${this.createPwForm.username}
-              @input=${e =>
-                this.#updateCreatePwField("username", e.target.value)}
-            />
-          </div>
-          <div class="form-field">
-            <label>Password value</label>
-            <input
-              class="vento-input"
-              type="password"
-              .value=${this.createPwForm.value}
-              @input=${e => this.#updateCreatePwField("value", e.target.value)}
-            />
-          </div>
-        </div>
-        ${when(
-          this.createPwError,
-          () => html`<div class="form-error">${this.createPwError}</div>`
-        )}
-        <div class="form-actions">
-          <moz-button
-            type="primary"
-            size="small"
-            ?disabled=${this.createPwLoading}
-            @click=${() => this.#submitCreatePw()}
-          >
-            Create entry
-          </moz-button>
-          <moz-button
-            type="ghost"
-            size="small"
-            @click=${() => {
-              this.showCreatePwForm = false;
-            }}
-          >
-            Cancel
-          </moz-button>
-        </div>
-      </moz-card>
-    `;
-  }
-
-  #accessDialog() {
-    const q = this.accessFilter.trim().toLowerCase();
-    const filtered = q
-      ? this.accessAllUsers.filter(
-          u =>
-            u.display_name.toLowerCase().includes(q) ||
-            u.email.toLowerCase().includes(q)
-        )
-      : this.accessAllUsers;
-
-    return html`
-      <div
-        class="access-overlay"
-        @click=${e => {
-          if (e.target === e.currentTarget) {
-            this.#closeAccessDialog();
-          }
-        }}
-      >
-        <div class="access-dialog-card">
-          <h3 class="access-dialog-title">
-            Access — ${this.accessPasswordTitle}
-          </h3>
-
-          <input
-            class="vento-input access-filter-input"
-            type="text"
-            placeholder="Filter by name or email…"
-            .value=${this.accessFilter}
-            @input=${e => {
-              this.accessFilter = e.target.value;
-            }}
-          />
-
-          ${when(
-            this.accessLoading && !this.accessAllUsers.length,
-            () => html`
-              <div class="loading-state" style="padding:20px 0">
-                <div class="spinner"></div>
-              </div>
-            `,
-            () => html`
-              <div class="access-user-list">
-                ${filtered.length
-                  ? filtered.map(
-                      u => html`
-                        <label class="access-user-item">
-                          <input
-                            type="checkbox"
-                            .checked=${this.accessChecked.includes(u.id)}
-                            @change=${() => this.#toggleAccessUser(u.id)}
-                          />
-                          <span class="access-user-name"
-                            >${u.display_name}</span
-                          >
-                          <span class="access-user-email">${u.email}</span>
-                        </label>
-                      `
-                    )
-                  : html`
-                      <p
-                        style="color:var(--text-color-deemphasized,gray);font-size:13px;margin:8px 0"
-                      >
-                        No users found.
-                      </p>
-                    `}
-              </div>
-            `
-          )}
-
-          <div class="access-dialog-footer">
-            <moz-button
-              type="primary"
-              size="small"
-              ?disabled=${this.accessLoading}
-              @click=${() => this.#savePasswordAccess()}
-            >
-              Save
-            </moz-button>
-            <moz-button
-              type="ghost"
-              size="small"
-              @click=${() => this.#closeAccessDialog()}
-            >
-              Cancel
-            </moz-button>
-          </div>
-        </div>
-      </div>
-    `;
+const PAGE_TITLES = {
+  dashboard: "Dashboard",
+  users: "Users",
+  groups: "User Groups",
+  passwords: "Hidden Passwords",
+  profile: "Profile",
+};
+
+// ── State ─────────────────────────────────────────────────
+
+let activePage = "dashboard";
+let authUser = null;
+let users = [];
+let usersPage = 1;
+let usersTotal = 0;
+let editingUserId = null;
+let editingPerms = [];
+let showCreateForm = false;
+let createLoading = false;
+let dashboardStats = null;
+let dashboardOnlineUsers = null;
+let dashboardLoading = false;
+let metricsHistory = [];
+let currentMetrics = null;
+let passwords = [];
+let passwordsTotal = 0;
+let passwordsPage = 1;
+let passwordsLoading = false;
+let showCreatePwForm = false;
+let createPwLoading = false;
+let editingPwId = null;
+let accessPasswordId = null;
+let accessAllUsers = [];
+let accessChecked = [];
+let accessAllGroups = [];
+let accessCheckedGroups = [];
+let accessLoading = false;
+// Groups state
+let groups = [];
+let groupsLoading = false;
+let showCreateGroupForm = false;
+let editingGroupId = null;
+let editingGroupPerms = [];
+let renamingGroupId = null;
+let membersGroupId = null;
+let membersGroupName = "";
+let membersAllUsers = [];
+let membersChecked = [];
+let membersLoading = false;
+let isLoading = false;
+let _ws = null;
+let _wsReconnectTimer = null;
+let _statusTimer = null;
+
+// ── DOM helpers ───────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+
+function clearChildren(el) {
+  const node = typeof el === "string" ? $(el) : el;
+  while (node.lastChild) {
+    node.removeChild(node.lastChild);
   }
 }
 
-customElements.define("vento-page", VentoPage);
+function makeBadge(text, cls) {
+  const span = document.createElement("span");
+  span.className = `badge ${cls}`;
+  span.textContent = text;
+  return span;
+}
+
+function makeMozButton(text, type, size) {
+  const btn = document.createElement("moz-button");
+  btn.setAttribute("type", type);
+  if (size) {
+    btn.setAttribute("size", size);
+  }
+  if (text) {
+    btn.textContent = text;
+  }
+  return btn;
+}
+
+// ── API ───────────────────────────────────────────────────
+
+function apiBase() {
+  return Services.prefs.getStringPref(
+    VENTO_API_URL_PREF,
+    "http://localhost:3000"
+  );
+}
+
+function token() {
+  return Services.prefs.getStringPref(VENTO_TOKEN_PREF, "");
+}
+
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const tok = token();
+  if (tok) {
+    headers.Authorization = `Bearer ${tok}`;
+  }
+  const res = await fetch(`${apiBase()}${path}`, {
+    method: opts.method ?? "GET",
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error ?? `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+// ── Status banner ─────────────────────────────────────────
+
+function showStatus(text, type = "success") {
+  const el = $("status-banner");
+  el.textContent = text;
+  el.className = `status-banner status-banner-${type}`;
+  el.hidden = false;
+  clearTimeout(_statusTimer);
+  _statusTimer = setTimeout(() => {
+    el.hidden = true;
+  }, 3500);
+}
+
+// ── WebSocket ─────────────────────────────────────────────
+
+function connectWs() {
+  if (_ws) {
+    return;
+  }
+  const tok = token();
+  if (!tok) {
+    return;
+  }
+  const wsUrl = apiBase().replace(/^http(s?):\/\//, "ws$1://") + "/ws";
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch {
+    return;
+  }
+  _ws = ws;
+
+  ws.addEventListener("open", () => {
+    ws.send(JSON.stringify({ type: "auth", token: tok }));
+  });
+
+  ws.addEventListener("message", e => {
+    try {
+      handleWsMessage(JSON.parse(e.data));
+    } catch {
+      // ignore malformed frames
+    }
+  });
+
+  ws.addEventListener("close", () => {
+    if (_ws === ws) {
+      _ws = null;
+    }
+    _wsReconnectTimer = setTimeout(() => {
+      _wsReconnectTimer = null;
+      connectWs();
+    }, 5000);
+  });
+}
+
+function disconnectWs() {
+  if (_wsReconnectTimer) {
+    clearTimeout(_wsReconnectTimer);
+    _wsReconnectTimer = null;
+  }
+  if (_ws) {
+    _ws.close();
+    _ws = null;
+  }
+}
+
+function handleWsMessage(msg) {
+  switch (msg.type) {
+    case "metrics_history":
+      metricsHistory = msg.snapshots ?? [];
+      if (metricsHistory.length) {
+        currentMetrics = metricsHistory[metricsHistory.length - 1];
+      }
+      if (activePage === "dashboard") {
+        renderMetrics();
+      }
+      break;
+    case "metrics": {
+      const snap = {
+        cpu_usage: msg.cpu_usage,
+        memory_used_mb: msg.memory_used_mb,
+        memory_total_mb: msg.memory_total_mb,
+        timestamp: msg.timestamp,
+      };
+      currentMetrics = snap;
+      const next = [...metricsHistory, snap];
+      metricsHistory = next.length > 90 ? next.slice(-90) : next;
+      if (activePage === "dashboard") {
+        renderMetrics();
+      }
+      break;
+    }
+  }
+}
+
+// ── Navigation ────────────────────────────────────────────
+
+function navigate(page) {
+  activePage = page;
+  editingUserId = null;
+  showCreateForm = false;
+  showCreatePwForm = false;
+  editingPwId = null;
+  editingGroupId = null;
+  renamingGroupId = null;
+  showCreateGroupForm = false;
+
+  for (const btn of document.querySelectorAll("#categories .category")) {
+    btn.classList.toggle("selected", btn.getAttribute("name") === page);
+  }
+  $("page-title").textContent = PAGE_TITLES[page] ?? "Vento";
+
+  for (const sec of document.querySelectorAll("#main .page")) {
+    sec.hidden = true;
+  }
+  $(`page-${page}`).hidden = false;
+
+  if (page === "users") {
+    loadUsers(1);
+  } else if (page === "dashboard") {
+    loadDashboard();
+  } else if (page === "passwords") {
+    loadPasswords(1);
+  } else if (page === "groups") {
+    loadGroups();
+  } else if (page === "profile") {
+    renderProfile();
+  }
+}
+
+// ── Auth ──────────────────────────────────────────────────
+
+function hasPerm(perm) {
+  return authUser?.permissions?.includes(perm) ?? false;
+}
+
+async function loadCurrentUser() {
+  if (!token()) {
+    return;
+  }
+  $("loading-init").hidden = false;
+  try {
+    authUser = await api("/api/auth/validate");
+  } catch {
+    authUser = null;
+  } finally {
+    $("loading-init").hidden = true;
+  }
+}
+
+function renderApp() {
+  const tok = token();
+  if (!tok) {
+    $("not-auth").hidden = false;
+    $("full").hidden = true;
+    return;
+  }
+  if (!authUser) {
+    $("not-auth").hidden = false;
+    $("full").hidden = true;
+    return;
+  }
+  $("not-auth").hidden = true;
+  $("full").hidden = false;
+  $("nav-users").hidden = !hasPerm("USERS_READ");
+  $("nav-groups").hidden = !hasPerm("USERS_MANAGE");
+}
+
+function logout() {
+  disconnectWs();
+  Services.prefs.setStringPref(VENTO_TOKEN_PREF, "");
+  authUser = null;
+  metricsHistory = [];
+  currentMetrics = null;
+  renderApp();
+  activePage = "dashboard";
+}
+
+// ── Dashboard ─────────────────────────────────────────────
+
+async function loadDashboard() {
+  dashboardLoading = true;
+  renderDashboard();
+  try {
+    dashboardStats = await api("/api/auth/dashboard");
+    if (hasPerm("USERS_READ") && hasPerm("USERS_READ_ONLINE_STATUS")) {
+      const data = await api("/api/auth/users?page=1&per_page=200");
+      dashboardOnlineUsers = data.users.filter(u => u.online);
+    }
+  } catch {
+    // keep previous state on error
+  } finally {
+    dashboardLoading = false;
+    renderDashboard();
+  }
+}
+
+function renderDashboard() {
+  $("stat-online").textContent =
+    dashboardStats?.online_users_count ?? "\u2014";
+
+  const m = currentMetrics;
+  $("stat-cpu").textContent = m ? m.cpu_usage.toFixed(1) + "%" : "\u2014";
+  if (m && m.memory_total_mb) {
+    $("stat-mem").textContent =
+      ((m.memory_used_mb / m.memory_total_mb) * 100).toFixed(1) + "%";
+    $("stat-mem-label").textContent = `${(m.memory_used_mb / 1024).toFixed(1)} / ${(m.memory_total_mb / 1024).toFixed(1)} GB`;
+  } else {
+    $("stat-mem").textContent = "\u2014";
+    $("stat-mem-label").textContent = "Memory";
+  }
+
+  const canSeeWho = hasPerm("USERS_READ") && hasPerm("USERS_READ_ONLINE_STATUS");
+  const onlineCard = $("online-users-card");
+  onlineCard.hidden = !canSeeWho;
+
+  if (canSeeWho) {
+    $("online-users-loading").hidden = !dashboardLoading;
+    if (!dashboardLoading) {
+      const onlineUsers = dashboardOnlineUsers ?? [];
+      const listEl = $("online-users-list");
+      clearChildren(listEl);
+      if (onlineUsers.length) {
+        const tpl = $("tpl-online-user");
+        for (const u of onlineUsers) {
+          const item = tpl.content.cloneNode(true);
+          item.querySelector(".user-avatar").textContent =
+            u.display_name[0].toUpperCase();
+          item.querySelector(".online-user-name").textContent = u.display_name;
+          item.querySelector(".online-user-email").textContent = u.email;
+          listEl.appendChild(item);
+        }
+        listEl.hidden = false;
+        $("online-users-empty").hidden = true;
+      } else {
+        listEl.hidden = true;
+        $("online-users-empty").hidden = false;
+      }
+    }
+  }
+}
+
+function renderMetrics() {
+  const data = metricsHistory;
+  if (!data.length) {
+    $("metrics-waiting").hidden = false;
+    $("metrics-chart-wrap").hidden = true;
+    renderDashboard();
+    return;
+  }
+  $("metrics-waiting").hidden = true;
+  $("metrics-chart-wrap").hidden = false;
+
+  const W = 900;
+  const H = 120;
+  const n = data.length;
+  const xOf = i => (n === 1 ? W / 2 : (i / (n - 1)) * W);
+  const yOf = v => H - (Math.max(0, Math.min(100, v)) / 100) * H;
+
+  const cpuPts = data
+    .map((p, i) => `${xOf(i).toFixed(1)},${yOf(p.cpu_usage).toFixed(1)}`)
+    .join(" ");
+  const memPts = data
+    .map((p, i) => {
+      const pct =
+        p.memory_total_mb > 0
+          ? (p.memory_used_mb / p.memory_total_mb) * 100
+          : 0;
+      return `${xOf(i).toFixed(1)},${yOf(pct).toFixed(1)}`;
+    })
+    .join(" ");
+
+  $("chart-cpu").setAttribute("points", cpuPts);
+  $("chart-mem").setAttribute("points", memPts);
+  renderDashboard();
+}
+
+// ── Users ─────────────────────────────────────────────────
+
+async function loadUsers(page) {
+  isLoading = true;
+  usersPage = page;
+  renderUsers();
+  try {
+    const data = await api(
+      `/api/auth/users?page=${page}&per_page=${PER_PAGE}`
+    );
+    users = data.users;
+    usersTotal = data.total;
+  } catch (e) {
+    showStatus(e.message, "error");
+  } finally {
+    isLoading = false;
+    renderUsers();
+  }
+}
+
+function renderUsers() {
+  const canManage = hasPerm("USERS_MANAGE");
+  const canEditPerms = hasPerm("USERS_PERMISSIONS");
+  const canSeeOnline = hasPerm("USERS_READ_ONLINE_STATUS");
+  const hasAnyAction = canManage || canEditPerms;
+
+  $("users-count").textContent = `${usersTotal} ${usersTotal === 1 ? "user" : "users"}`;
+  $("btn-new-user").hidden = !canManage || showCreateForm;
+  $("create-user-section").hidden = !showCreateForm;
+  $("users-actions-col").hidden = !hasAnyAction;
+  $("users-loading").hidden = !isLoading;
+  $("users-table").hidden = isLoading;
+
+  if (isLoading) {
+    return;
+  }
+
+  let activeUsers = users.filter(u => u.is_active);
+  const inactiveUsers = users.filter(u => !u.is_active);
+
+  if (canSeeOnline && activeUsers.length) {
+    activeUsers = [...activeUsers].sort((a, b) => {
+      if (a.online && !b.online) {
+        return -1;
+      }
+      if (!a.online && b.online) {
+        return 1;
+      }
+      return 0;
+    });
+  }
+
+  const colCount = hasAnyAction ? 5 : 4;
+  const tbody = $("users-tbody");
+  clearChildren(tbody);
+
+  appendGroupHeader(tbody, "Active", activeUsers.length, colCount);
+  for (const u of activeUsers) {
+    appendUserRows(tbody, u, canManage, canEditPerms, hasAnyAction, canSeeOnline, colCount);
+  }
+
+  if (inactiveUsers.length) {
+    appendGroupHeader(tbody, "Inactive", inactiveUsers.length, colCount);
+    for (const u of inactiveUsers) {
+      appendUserRows(tbody, u, canManage, canEditPerms, hasAnyAction, canSeeOnline, colCount);
+    }
+  }
+
+  $("users-table").hidden = false;
+
+  const totalPages = Math.ceil(usersTotal / PER_PAGE) || 1;
+  $("users-pagination").hidden = totalPages <= 1;
+  if (totalPages > 1) {
+    $("users-page-info").textContent = `${usersPage} / ${totalPages}`;
+    $("users-prev").toggleAttribute("disabled", usersPage <= 1);
+    $("users-next").toggleAttribute("disabled", usersPage >= totalPages);
+  }
+}
+
+function appendGroupHeader(tbody, label, count, colCount) {
+  const tr = document.createElement("tr");
+  tr.className = "group-header-row";
+  const td = document.createElement("td");
+  td.colSpan = colCount;
+  td.innerHTML = `<div class="group-header-cell"><span class="group-header-label">${label}</span><span class="group-header-count">${count}</span></div>`;
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
+function appendUserRows(
+  tbody,
+  u,
+  canManage,
+  canEditPerms,
+  hasAnyAction,
+  canSeeOnline,
+  colCount
+) {
+  const isSelf = u.id === authUser?.user_id;
+  const isEditing = editingUserId === u.id;
+  const showEdit = canEditPerms && !isSelf;
+  const showToggle = canManage && !isSelf;
+
+  const tr = document.createElement("tr");
+  if (isEditing) {
+    tr.classList.add("editing-row");
+  }
+
+  // Name cell
+  const nameCell = document.createElement("td");
+  const nameDiv = document.createElement("div");
+  nameDiv.className = "user-name-cell";
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "user-name";
+  nameSpan.textContent = u.display_name;
+  nameDiv.appendChild(nameSpan);
+  if (u.totp_enabled) {
+    nameDiv.appendChild(makeBadge("2FA", "badge-totp"));
+  }
+  nameCell.appendChild(nameDiv);
+  tr.appendChild(nameCell);
+
+  // Email cell
+  const emailCell = document.createElement("td");
+  emailCell.textContent = u.email;
+  tr.appendChild(emailCell);
+
+  // Status cell
+  const statusCell = document.createElement("td");
+  if (canSeeOnline) {
+    const dot = document.createElement("span");
+    if (u.is_active) {
+      dot.className = u.online
+        ? "online-dot online-dot--on"
+        : "online-dot online-dot--off";
+      dot.title = u.online ? "Online" : "Offline";
+    } else {
+      dot.className = "online-dot online-dot--inactive";
+      dot.title = "Inactive";
+    }
+    statusCell.appendChild(dot);
+  } else {
+    statusCell.appendChild(
+      makeBadge(
+        u.is_active ? "Active" : "Inactive",
+        u.is_active ? "badge-active" : "badge-inactive"
+      )
+    );
+  }
+  tr.appendChild(statusCell);
+
+  // Permissions cell — individual first, then one block per group
+  const permsCell = document.createElement("td");
+  const hasIndividual = u.individual_permissions?.length > 0;
+  const hasGroups = u.groups?.length > 0;
+
+  if (!hasIndividual && !hasGroups) {
+    const dash = document.createElement("span");
+    dash.style.color = "var(--text-color-deemphasized,gray)";
+    dash.textContent = "\u2014";
+    permsCell.appendChild(dash);
+  } else {
+    const wrap = document.createElement("div");
+    wrap.className = "user-perms-wrap";
+
+    if (hasIndividual) {
+      const div = document.createElement("div");
+      div.className = "perm-badges";
+      for (const p of u.individual_permissions) {
+        div.appendChild(makeBadge(p, "badge-perm"));
+      }
+      wrap.appendChild(div);
+    }
+
+    for (const g of (u.groups ?? [])) {
+      if (!g.permissions.length) {
+        continue;
+      }
+      const groupRow = document.createElement("div");
+      groupRow.className = "perm-group-row";
+
+      const nameSpan2 = document.createElement("span");
+      nameSpan2.className = "perm-group-name";
+      nameSpan2.textContent = g.name;
+      groupRow.appendChild(nameSpan2);
+
+      const badgesDiv = document.createElement("div");
+      badgesDiv.className = "perm-badges";
+      for (const p of g.permissions) {
+        badgesDiv.appendChild(makeBadge(p, "badge-perm badge-perm-group"));
+      }
+      groupRow.appendChild(badgesDiv);
+
+      if (canManage) {
+        const removeBtn = makeMozButton("Remove", "ghost", "small");
+        removeBtn.classList.add("btn-remove-from-group");
+        removeBtn.addEventListener("click", () =>
+          removeUserFromGroup(u.id, g.id, g.name)
+        );
+        groupRow.appendChild(removeBtn);
+      }
+
+      wrap.appendChild(groupRow);
+    }
+
+    permsCell.appendChild(wrap);
+  }
+  tr.appendChild(permsCell);
+
+  // Actions cell
+  if (hasAnyAction) {
+    const actCell = document.createElement("td");
+    actCell.className = "col-actions";
+    const actDiv = document.createElement("div");
+    actDiv.className = "row-actions";
+
+    if (showEdit) {
+      const btn = makeMozButton(isEditing ? "Cancel" : "Edit", "ghost", "small");
+      btn.addEventListener("click", () => {
+        if (editingUserId === u.id) {
+          cancelEditPerms();
+        } else {
+          startEditPerms(u);
+        }
+      });
+      actDiv.appendChild(btn);
+    }
+
+    if (showToggle) {
+      const btn = makeMozButton(
+        u.is_active ? "Deactivate" : "Activate",
+        "ghost",
+        "small"
+      );
+      btn.addEventListener("click", () => setUserActive(u.id, !u.is_active));
+      actDiv.appendChild(btn);
+    }
+
+    actCell.appendChild(actDiv);
+    tr.appendChild(actCell);
+  }
+
+  tbody.appendChild(tr);
+
+  // Permissions expand row
+  if (isEditing) {
+    const expandTr = document.createElement("tr");
+    expandTr.className = "edit-expand-row";
+    const expandTd = document.createElement("td");
+    expandTd.colSpan = colCount;
+
+    const wrap = document.createElement("div");
+    wrap.className = "perms-expand";
+
+    const lbl = document.createElement("div");
+    lbl.className = "perms-expand-label";
+    lbl.textContent = "Individual permissions";
+    wrap.appendChild(lbl);
+
+    const grid = document.createElement("div");
+    grid.className = "perms-grid";
+    for (const perm of ALL_PERMS) {
+      const label = document.createElement("label");
+      label.className = "perm-check-label";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = editingPerms.includes(perm);
+      cb.addEventListener("change", () => {
+        if (editingPerms.includes(perm)) {
+          editingPerms = editingPerms.filter(p => p !== perm);
+        } else {
+          editingPerms = [...editingPerms, perm];
+        }
+      });
+      label.appendChild(cb);
+      label.append(` ${perm}`);
+      grid.appendChild(label);
+    }
+    wrap.appendChild(grid);
+
+    const actions = document.createElement("div");
+    actions.className = "perms-actions";
+    const saveBtn = makeMozButton("Save", "primary", "small");
+    saveBtn.addEventListener("click", () => savePerms(u.id));
+    const cancelBtn = makeMozButton("Cancel", "ghost", "small");
+    cancelBtn.addEventListener("click", () => cancelEditPerms());
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    wrap.appendChild(actions);
+
+    expandTd.appendChild(wrap);
+    expandTr.appendChild(expandTd);
+    tbody.appendChild(expandTr);
+  }
+}
+
+function startEditPerms(u) {
+  editingUserId = u.id;
+  editingPerms = [...(u.individual_permissions ?? u.permissions)];
+  showCreateForm = false;
+  renderUsers();
+}
+
+function cancelEditPerms() {
+  editingUserId = null;
+  renderUsers();
+}
+
+async function savePerms(userId) {
+  try {
+    await api(`/api/auth/users/${userId}/permissions`, {
+      method: "PUT",
+      body: { permissions: editingPerms },
+    });
+    editingUserId = null;
+    showStatus("Permissions updated.");
+    await loadUsers(usersPage);
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+async function setUserActive(userId, isActive) {
+  try {
+    await api(`/api/auth/users/${userId}/active`, {
+      method: "PUT",
+      body: { is_active: isActive },
+    });
+    showStatus(isActive ? "User activated." : "User deactivated.");
+    await loadUsers(usersPage);
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+async function removeUserFromGroup(userId, groupId, groupName) {
+  try {
+    const members = await api(`/api/groups/${groupId}/members`);
+    const newIds = (members.members ?? [])
+      .filter(m => m.id !== userId)
+      .map(m => m.id);
+    await api(`/api/groups/${groupId}/members`, {
+      method: "PUT",
+      body: { user_ids: newIds },
+    });
+    showStatus(`Removed from group "${groupName}".`);
+    await loadUsers(usersPage);
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+function openCreateForm() {
+  $("cu-name").value = "";
+  $("cu-email").value = "";
+  $("cu-password").value = "";
+  $("cu-password").type = "password";
+  $("create-user-error").hidden = true;
+  showCreateForm = true;
+  editingUserId = null;
+  renderUsers();
+}
+
+function generatePassword() {
+  const charset =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+";
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  const pw = Array.from(array, b => charset[b % charset.length]).join("");
+  $("cu-password").value = pw;
+  $("cu-password").type = "text";
+  $("btn-copy-password").textContent = "Copy";
+}
+
+async function copyPassword() {
+  const pw = $("cu-password").value;
+  if (!pw) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(pw);
+    $("btn-copy-password").textContent = "Copied!";
+    setTimeout(() => {
+      $("btn-copy-password").textContent = "Copy";
+    }, 2000);
+  } catch {
+    // clipboard not available
+  }
+}
+
+async function submitCreateUser() {
+  const email = $("cu-email").value.trim();
+  const display_name = $("cu-name").value.trim();
+  const password = $("cu-password").value;
+  const errorEl = $("create-user-error");
+
+  if (!email || !display_name || !password) {
+    errorEl.textContent = "All fields are required.";
+    errorEl.hidden = false;
+    return;
+  }
+  if (password.length < 8) {
+    errorEl.textContent = "Password must be at least 8 characters.";
+    errorEl.hidden = false;
+    return;
+  }
+
+  errorEl.hidden = true;
+  createLoading = true;
+  $("btn-create-user").toggleAttribute("disabled", true);
+  try {
+    await api("/api/auth/users", {
+      method: "POST",
+      body: { email, display_name, password },
+    });
+    showCreateForm = false;
+    showStatus("User created successfully.");
+    await loadUsers(1);
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.hidden = false;
+  } finally {
+    createLoading = false;
+    $("btn-create-user").toggleAttribute("disabled", false);
+    renderUsers();
+  }
+}
+
+// ── Groups ────────────────────────────────────────────────
+
+async function loadGroups() {
+  groupsLoading = true;
+  renderGroups();
+  try {
+    const data = await api("/api/groups");
+    groups = data.groups ?? [];
+  } catch (e) {
+    showStatus(e.message, "error");
+  } finally {
+    groupsLoading = false;
+    renderGroups();
+  }
+}
+
+function renderGroups() {
+  $("groups-count").textContent = `${groups.length} ${groups.length === 1 ? "group" : "groups"}`;
+  $("btn-new-group").hidden = showCreateGroupForm;
+  $("create-group-section").hidden = !showCreateGroupForm;
+  $("groups-loading").hidden = !groupsLoading;
+  $("groups-table").hidden = groupsLoading;
+
+  if (groupsLoading) {
+    return;
+  }
+
+  const tbody = $("groups-tbody");
+  clearChildren(tbody);
+
+  if (!groups.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.style.cssText =
+      "text-align:center;padding:24px;color:var(--text-color-deemphasized,gray)";
+    td.textContent = "No groups yet.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    for (const g of groups) {
+      appendGroupRow(tbody, g);
+    }
+  }
+
+  $("groups-table").hidden = false;
+}
+
+function appendGroupRow(tbody, g) {
+  const isEditing = editingGroupId === g.id;
+  const isRenaming = renamingGroupId === g.id;
+
+  const tr = document.createElement("tr");
+  if (isEditing || isRenaming) {
+    tr.classList.add("editing-row");
+  }
+
+  // Name
+  const nameTd = document.createElement("td");
+  if (isRenaming) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "vento-input inline-rename-input";
+    input.value = g.name;
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveRenameGroup(g.id, input.value);
+      if (e.key === "Escape") cancelRenameGroup();
+    });
+    nameTd.appendChild(input);
+    requestAnimationFrame(() => input.focus());
+  } else {
+    nameTd.textContent = g.name;
+  }
+  tr.appendChild(nameTd);
+
+  // Member count
+  const membersTd = document.createElement("td");
+  membersTd.textContent = g.member_count;
+  tr.appendChild(membersTd);
+
+  // Permissions
+  const permsTd = document.createElement("td");
+  if (g.permissions.length) {
+    const div = document.createElement("div");
+    div.className = "perm-badges";
+    for (const p of g.permissions) {
+      div.appendChild(makeBadge(p, "badge-perm"));
+    }
+    permsTd.appendChild(div);
+  } else {
+    const dash = document.createElement("span");
+    dash.style.color = "var(--text-color-deemphasized,gray)";
+    dash.textContent = "\u2014";
+    permsTd.appendChild(dash);
+  }
+  tr.appendChild(permsTd);
+
+  // Actions
+  const actTd = document.createElement("td");
+  actTd.className = "col-actions";
+  const actDiv = document.createElement("div");
+  actDiv.className = "row-actions";
+
+  const renameBtn = makeMozButton(isRenaming ? "Cancel" : "Rename", "ghost", "small");
+  renameBtn.addEventListener("click", () => {
+    if (isRenaming) {
+      cancelRenameGroup();
+    } else {
+      startRenameGroup(g.id);
+    }
+  });
+  actDiv.appendChild(renameBtn);
+
+  if (isRenaming) {
+    const saveRenameBtn = makeMozButton("Save", "primary", "small");
+    saveRenameBtn.addEventListener("click", () => {
+      const input = tr.querySelector(".inline-rename-input");
+      saveRenameGroup(g.id, input?.value ?? "");
+    });
+    actDiv.appendChild(saveRenameBtn);
+  }
+
+  const editPermsBtn = makeMozButton(
+    isEditing ? "Cancel" : "Edit permissions",
+    "ghost",
+    "small"
+  );
+  editPermsBtn.addEventListener("click", () => {
+    if (editingGroupId === g.id) {
+      cancelEditGroupPerms();
+    } else {
+      startEditGroupPerms(g);
+    }
+  });
+  actDiv.appendChild(editPermsBtn);
+
+  const membersBtn = makeMozButton("Members", "ghost", "small");
+  membersBtn.addEventListener("click", () => openMembersDialog(g));
+  actDiv.appendChild(membersBtn);
+
+  const deleteBtn = makeMozButton("Delete", "ghost", "small");
+  deleteBtn.addEventListener("click", () => deleteGroup(g.id, g.name));
+  actDiv.appendChild(deleteBtn);
+
+  actTd.appendChild(actDiv);
+  tr.appendChild(actTd);
+  tbody.appendChild(tr);
+
+  // Permissions expand row
+  if (isEditing) {
+    const expandTr = document.createElement("tr");
+    expandTr.className = "edit-expand-row";
+    const expandTd = document.createElement("td");
+    expandTd.colSpan = 4;
+
+    const wrap = document.createElement("div");
+    wrap.className = "perms-expand";
+
+    const lbl = document.createElement("div");
+    lbl.className = "perms-expand-label";
+    lbl.textContent = "Group permissions";
+    wrap.appendChild(lbl);
+
+    const grid = document.createElement("div");
+    grid.className = "perms-grid";
+    for (const perm of ALL_PERMS) {
+      const label = document.createElement("label");
+      label.className = "perm-check-label";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = editingGroupPerms.includes(perm);
+      cb.addEventListener("change", () => {
+        if (editingGroupPerms.includes(perm)) {
+          editingGroupPerms = editingGroupPerms.filter(p => p !== perm);
+        } else {
+          editingGroupPerms = [...editingGroupPerms, perm];
+        }
+      });
+      label.appendChild(cb);
+      label.append(` ${perm}`);
+      grid.appendChild(label);
+    }
+    wrap.appendChild(grid);
+
+    const actions = document.createElement("div");
+    actions.className = "perms-actions";
+    const saveBtn = makeMozButton("Save", "primary", "small");
+    saveBtn.addEventListener("click", () => saveGroupPerms(g.id));
+    const cancelBtn = makeMozButton("Cancel", "ghost", "small");
+    cancelBtn.addEventListener("click", () => cancelEditGroupPerms());
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    wrap.appendChild(actions);
+
+    expandTd.appendChild(wrap);
+    expandTr.appendChild(expandTd);
+    tbody.appendChild(expandTr);
+  }
+}
+
+function startEditGroupPerms(g) {
+  editingGroupId = g.id;
+  editingGroupPerms = [...g.permissions];
+  renderGroups();
+}
+
+function cancelEditGroupPerms() {
+  editingGroupId = null;
+  renderGroups();
+}
+
+function startRenameGroup(groupId) {
+  renamingGroupId = groupId;
+  editingGroupId = null;
+  renderGroups();
+}
+
+function cancelRenameGroup() {
+  renamingGroupId = null;
+  renderGroups();
+}
+
+async function saveRenameGroup(groupId, name) {
+  name = name.trim();
+  if (!name) return;
+  try {
+    await api(`/api/groups/${groupId}`, { method: "PUT", body: { name } });
+    renamingGroupId = null;
+    showStatus("Group renamed.");
+    await loadGroups();
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+async function saveGroupPerms(groupId) {
+  try {
+    await api(`/api/groups/${groupId}/permissions`, {
+      method: "PUT",
+      body: { permissions: editingGroupPerms },
+    });
+    editingGroupId = null;
+    showStatus("Group permissions updated.");
+    await loadGroups();
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+async function deleteGroup(groupId, groupName) {
+  try {
+    await api(`/api/groups/${groupId}`, { method: "DELETE" });
+    showStatus(`Group "${groupName}" deleted.`);
+    await loadGroups();
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+function openCreateGroupForm() {
+  $("cg-name").value = "";
+  $("create-group-error").hidden = true;
+  showCreateGroupForm = true;
+  editingGroupId = null;
+  renderGroups();
+}
+
+async function submitCreateGroup() {
+  const name = $("cg-name").value.trim();
+  const errorEl = $("create-group-error");
+
+  if (!name) {
+    errorEl.textContent = "Group name is required.";
+    errorEl.hidden = false;
+    return;
+  }
+
+  errorEl.hidden = true;
+  $("btn-create-group").toggleAttribute("disabled", true);
+  try {
+    await api("/api/groups", {
+      method: "POST",
+      body: { name },
+    });
+    showCreateGroupForm = false;
+    showStatus("Group created.");
+    await loadGroups();
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.hidden = false;
+  } finally {
+    $("btn-create-group").toggleAttribute("disabled", false);
+    renderGroups();
+  }
+}
+
+// ── Group members dialog ───────────────────────────────────
+
+async function openMembersDialog(g) {
+  membersGroupId = g.id;
+  membersGroupName = g.name;
+  membersAllUsers = [];
+  membersChecked = [];
+  $("members-overlay").hidden = false;
+  $("members-title").textContent = `Members \u2014 ${g.name}`;
+  $("members-filter").value = "";
+  $("members-loading").hidden = false;
+  clearChildren("members-user-list");
+  membersLoading = true;
+  try {
+    const [membersData, usersData] = await Promise.all([
+      api(`/api/groups/${g.id}/members`),
+      api(`/api/auth/users?page=1&per_page=500`),
+    ]);
+    membersChecked = (membersData.members ?? []).map(m => m.id);
+    membersAllUsers = usersData.users ?? [];
+  } catch (e) {
+    showStatus(e.message, "error");
+    $("members-overlay").hidden = true;
+    return;
+  } finally {
+    membersLoading = false;
+    $("members-loading").hidden = true;
+  }
+  renderMembersUserList();
+}
+
+function renderMembersUserList() {
+  const q = $("members-filter").value.trim().toLowerCase();
+  const filtered = q
+    ? membersAllUsers.filter(
+        u =>
+          u.display_name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q)
+      )
+    : membersAllUsers;
+
+  const listEl = $("members-user-list");
+  clearChildren(listEl);
+
+  if (!filtered.length) {
+    const p = document.createElement("p");
+    p.style.cssText =
+      "color:var(--text-color-deemphasized,gray);font-size:13px;margin:8px 0";
+    p.textContent = "No users found.";
+    listEl.appendChild(p);
+    return;
+  }
+
+  for (const u of filtered) {
+    const lbl = document.createElement("label");
+    lbl.className = "access-user-item";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = membersChecked.includes(u.id);
+    cb.addEventListener("change", () => {
+      if (membersChecked.includes(u.id)) {
+        membersChecked = membersChecked.filter(id => id !== u.id);
+      } else {
+        membersChecked = [...membersChecked, u.id];
+      }
+    });
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "access-user-name";
+    nameSpan.textContent = u.display_name;
+    const emailSpan = document.createElement("span");
+    emailSpan.className = "access-user-email";
+    emailSpan.textContent = u.email;
+    lbl.appendChild(cb);
+    lbl.appendChild(nameSpan);
+    lbl.appendChild(emailSpan);
+    listEl.appendChild(lbl);
+  }
+}
+
+function closeMembersDialog() {
+  $("members-overlay").hidden = true;
+  membersGroupId = null;
+}
+
+async function saveGroupMembers() {
+  $("btn-save-members").toggleAttribute("disabled", true);
+  try {
+    await api(`/api/groups/${membersGroupId}/members`, {
+      method: "PUT",
+      body: { user_ids: membersChecked },
+    });
+    $("members-overlay").hidden = true;
+    showStatus("Group members saved.");
+    await loadGroups();
+  } catch (e) {
+    showStatus(e.message, "error");
+  } finally {
+    $("btn-save-members").toggleAttribute("disabled", false);
+  }
+}
+
+// ── Passwords ─────────────────────────────────────────────
+
+async function loadPasswords(page) {
+  passwordsLoading = true;
+  passwordsPage = page;
+  $("pw-loading").hidden = false;
+  $("pw-table").hidden = true;
+  try {
+    const data = await api(
+      `/api/passwords?page=${page}&per_page=${PW_PER_PAGE}`
+    );
+    passwords = data.passwords;
+    passwordsTotal = data.total;
+  } catch (e) {
+    showStatus(e.message, "error");
+  } finally {
+    passwordsLoading = false;
+    renderPasswords();
+  }
+}
+
+function renderPasswords() {
+  const canManage = hasPerm("PASSWORDS_MANAGE");
+  const totalPages = Math.ceil(passwordsTotal / PW_PER_PAGE) || 1;
+
+  $("pw-count").textContent = `${passwordsTotal} ${passwordsTotal === 1 ? "entry" : "entries"}`;
+  $("btn-new-pw").hidden = !canManage || showCreatePwForm;
+  $("create-pw-section").hidden = !showCreatePwForm;
+  $("pw-loading").hidden = !passwordsLoading;
+  $("pw-table").hidden = passwordsLoading;
+
+  if (passwordsLoading) {
+    return;
+  }
+
+  const tbody = $("pw-tbody");
+  clearChildren(tbody);
+
+  if (!passwords.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.style.cssText =
+      "text-align:center;padding:24px;color:var(--text-color-deemphasized,gray)";
+    td.textContent = "No entries yet.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    for (const pw of passwords) {
+      appendPwRows(tbody, pw, canManage);
+    }
+  }
+
+  $("pw-table").hidden = false;
+
+  $("pw-pagination").hidden = totalPages <= 1;
+  if (totalPages > 1) {
+    $("pw-page-info").textContent = `${passwordsPage} / ${totalPages}`;
+    $("pw-prev").toggleAttribute("disabled", passwordsPage <= 1);
+    $("pw-next").toggleAttribute("disabled", passwordsPage >= totalPages);
+  }
+}
+
+function appendPwRows(tbody, pw, canManage) {
+  const isEditing = editingPwId === pw.id;
+
+  const tr = document.createElement("tr");
+  if (isEditing) {
+    tr.classList.add("editing-row");
+  }
+
+  const titleTd = document.createElement("td");
+  titleTd.textContent = pw.title;
+  tr.appendChild(titleTd);
+
+  const urlTd = document.createElement("td");
+  if (pw.url) {
+    const a = document.createElement("a");
+    a.href = pw.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.className = "pw-url-link";
+    a.textContent = pw.url;
+    urlTd.appendChild(a);
+  } else {
+    const dash = document.createElement("span");
+    dash.style.color = "var(--text-color-deemphasized,gray)";
+    dash.textContent = "\u2014";
+    urlTd.appendChild(dash);
+  }
+  tr.appendChild(urlTd);
+
+  const usernameTd = document.createElement("td");
+  if (pw.username) {
+    usernameTd.textContent = pw.username;
+  } else {
+    const dash = document.createElement("span");
+    dash.style.color = "var(--text-color-deemphasized,gray)";
+    dash.textContent = "\u2014";
+    usernameTd.appendChild(dash);
+  }
+  tr.appendChild(usernameTd);
+
+  const actTd = document.createElement("td");
+  actTd.className = "col-actions";
+  const actDiv = document.createElement("div");
+  actDiv.className = "row-actions";
+
+  if (canManage) {
+    const editBtn = makeMozButton(isEditing ? "Cancel" : "Edit", "ghost", "small");
+    editBtn.addEventListener("click", () => {
+      if (editingPwId === pw.id) {
+        cancelEditPw();
+      } else {
+        startEditPw(pw);
+      }
+    });
+    actDiv.appendChild(editBtn);
+
+    const accessBtn = makeMozButton("Access", "ghost", "small");
+    accessBtn.addEventListener("click", () => openAccessDialog(pw));
+    actDiv.appendChild(accessBtn);
+
+    const deleteBtn = makeMozButton("Delete", "ghost", "small");
+    deleteBtn.addEventListener("click", () => deletePw(pw.id));
+    actDiv.appendChild(deleteBtn);
+  }
+
+  const fillBtn = makeMozButton("Fill", "ghost", "small");
+  fillBtn.setAttribute("iconsrc", "chrome://browser/skin/login.svg");
+  fillBtn.addEventListener("click", () => fillPassword(pw));
+  actDiv.appendChild(fillBtn);
+
+  actTd.appendChild(actDiv);
+  tr.appendChild(actTd);
+  tbody.appendChild(tr);
+
+  if (isEditing) {
+    const expandTr = document.createElement("tr");
+    expandTr.className = "edit-expand-row";
+    const expandTd = document.createElement("td");
+    expandTd.colSpan = 4;
+
+    const wrap = document.createElement("div");
+    wrap.className = "perms-expand";
+
+    const grid = document.createElement("div");
+    grid.className = "pw-edit-grid";
+
+    const fields = [
+      { id: "epw-title", label: "Title", type: "text", value: pw.title },
+      { id: "epw-url", label: "URL", type: "text", value: pw.url || "" },
+      {
+        id: "epw-username",
+        label: "Username",
+        type: "text",
+        value: pw.username || "",
+      },
+      {
+        id: "epw-value",
+        label: "New password value (leave blank to keep current)",
+        type: "password",
+        value: "",
+      },
+    ];
+
+    for (const f of fields) {
+      const fieldDiv = document.createElement("div");
+      fieldDiv.className = "form-field";
+      const lbl = document.createElement("label");
+      lbl.setAttribute("for", f.id);
+      lbl.textContent = f.label;
+      const inp = document.createElement("input");
+      inp.id = f.id;
+      inp.className = "vento-input";
+      inp.type = f.type;
+      inp.value = f.value;
+      fieldDiv.appendChild(lbl);
+      fieldDiv.appendChild(inp);
+      grid.appendChild(fieldDiv);
+    }
+    wrap.appendChild(grid);
+
+    const actions = document.createElement("div");
+    actions.className = "perms-actions";
+    const saveBtn = makeMozButton("Save", "primary", "small");
+    saveBtn.addEventListener("click", () => submitEditPw(pw.id));
+    const cancelBtn = makeMozButton("Cancel", "ghost", "small");
+    cancelBtn.addEventListener("click", () => cancelEditPw());
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    wrap.appendChild(actions);
+
+    expandTd.appendChild(wrap);
+    expandTr.appendChild(expandTd);
+    tbody.appendChild(expandTr);
+  }
+}
+
+function openCreatePwForm() {
+  $("cp-title").value = "";
+  $("cp-url").value = "";
+  $("cp-username").value = "";
+  $("cp-value").value = "";
+  $("create-pw-error").hidden = true;
+  showCreatePwForm = true;
+  editingPwId = null;
+  renderPasswords();
+}
+
+async function submitCreatePw() {
+  const title = $("cp-title").value.trim();
+  const url = $("cp-url").value.trim();
+  const username = $("cp-username").value.trim();
+  const value = $("cp-value").value;
+  const errorEl = $("create-pw-error");
+
+  if (!title || !value) {
+    errorEl.textContent = "Title and password value are required.";
+    errorEl.hidden = false;
+    return;
+  }
+
+  errorEl.hidden = true;
+  createPwLoading = true;
+  $("btn-create-pw").toggleAttribute("disabled", true);
+  try {
+    await api("/api/passwords", {
+      method: "POST",
+      body: { title, url, username, value },
+    });
+    showCreatePwForm = false;
+    showStatus("Password entry created.");
+    await loadPasswords(1);
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.hidden = false;
+  } finally {
+    createPwLoading = false;
+    $("btn-create-pw").toggleAttribute("disabled", false);
+    renderPasswords();
+  }
+}
+
+function startEditPw(pw) {
+  editingPwId = pw.id;
+  showCreatePwForm = false;
+  renderPasswords();
+}
+
+function cancelEditPw() {
+  editingPwId = null;
+  renderPasswords();
+}
+
+async function submitEditPw(id) {
+  const body = {};
+  const title = document.getElementById("epw-title")?.value;
+  const url = document.getElementById("epw-url")?.value;
+  const username = document.getElementById("epw-username")?.value;
+  const value = document.getElementById("epw-value")?.value;
+  if (title) {
+    body.title = title;
+  }
+  if (url !== undefined) {
+    body.url = url;
+  }
+  if (username !== undefined) {
+    body.username = username;
+  }
+  if (value) {
+    body.value = value;
+  }
+  try {
+    await api(`/api/passwords/${id}`, { method: "PUT", body });
+    editingPwId = null;
+    showStatus("Password entry updated.");
+    await loadPasswords(passwordsPage);
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+async function deletePw(id) {
+  try {
+    await api(`/api/passwords/${id}`, { method: "DELETE" });
+    showStatus("Password entry deleted.");
+    await loadPasswords(passwordsPage);
+  } catch (e) {
+    showStatus(e.message, "error");
+  }
+}
+
+// ── Access dialog ─────────────────────────────────────────
+
+async function openAccessDialog(pw) {
+  accessPasswordId = pw.id;
+  accessAllUsers = [];
+  accessChecked = [];
+  accessAllGroups = [];
+  accessCheckedGroups = [];
+  $("access-overlay").hidden = false;
+  $("access-title").textContent = `Access \u2014 ${pw.title}`;
+  $("access-filter").value = "";
+  $("access-loading").hidden = false;
+  clearChildren("access-user-list");
+  accessLoading = true;
+  try {
+    const [accessData, usersData, groupsData] = await Promise.all([
+      api(`/api/passwords/${pw.id}/access`),
+      api(`/api/auth/users?page=1&per_page=500`),
+      api(`/api/groups`),
+    ]);
+    accessChecked = accessData.user_ids ?? [];
+    accessCheckedGroups = accessData.group_ids ?? [];
+    accessAllUsers = usersData.users ?? [];
+    accessAllGroups = groupsData.groups ?? [];
+  } catch (e) {
+    showStatus(e.message, "error");
+    $("access-overlay").hidden = true;
+    return;
+  } finally {
+    accessLoading = false;
+    $("access-loading").hidden = true;
+  }
+  renderAccessUserList();
+}
+
+function accessTotalCount() {
+  const ids = new Set(accessChecked);
+  if (authUser?.user_id != null) {
+    ids.add(authUser.user_id);
+  }
+  for (const gId of accessCheckedGroups) {
+    for (const u of accessAllUsers) {
+      if (u.groups?.some(g => g.id === gId)) {
+        ids.add(u.id);
+      }
+    }
+  }
+  return ids.size;
+}
+
+function renderAccessUserList() {
+  const total = accessTotalCount();
+  const summaryEl = $("access-summary");
+  if (total > 0) {
+    summaryEl.textContent = `${total} ${total === 1 ? "user" : "users"} have access`;
+    summaryEl.hidden = false;
+  } else {
+    summaryEl.hidden = true;
+  }
+
+  const q = $("access-filter").value.trim().toLowerCase();
+  const filteredUsers = q
+    ? accessAllUsers.filter(
+        u =>
+          u.display_name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q)
+      )
+    : accessAllUsers;
+  const filteredGroups = q
+    ? accessAllGroups.filter(g => g.name.toLowerCase().includes(q))
+    : accessAllGroups;
+
+  const listEl = $("access-user-list");
+  clearChildren(listEl);
+
+  if (!filteredUsers.length && !filteredGroups.length) {
+    const p = document.createElement("p");
+    p.style.cssText =
+      "color:var(--text-color-deemphasized,gray);font-size:13px;margin:8px 0";
+    p.textContent = "No results found.";
+    listEl.appendChild(p);
+    return;
+  }
+
+  if (filteredGroups.length) {
+    const heading = document.createElement("div");
+    heading.className = "access-section-heading";
+    heading.textContent = "Groups";
+    listEl.appendChild(heading);
+
+    for (const g of filteredGroups) {
+      const lbl = document.createElement("label");
+      lbl.className = "access-user-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = accessCheckedGroups.includes(g.id);
+      cb.addEventListener("change", () => {
+        if (accessCheckedGroups.includes(g.id)) {
+          accessCheckedGroups = accessCheckedGroups.filter(id => id !== g.id);
+          const groupUserIds = new Set(
+            accessAllUsers
+              .filter(u => u.groups?.some(ug => ug.id === g.id))
+              .map(u => u.id)
+          );
+          accessChecked = accessChecked.filter(id => !groupUserIds.has(id));
+        } else {
+          accessCheckedGroups = [...accessCheckedGroups, g.id];
+          for (const u of accessAllUsers) {
+            if (u.groups?.some(ug => ug.id === g.id) && !accessChecked.includes(u.id)) {
+              accessChecked = [...accessChecked, u.id];
+            }
+          }
+        }
+        renderAccessUserList();
+      });
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "access-user-name";
+      nameSpan.textContent = g.name;
+      const countSpan = document.createElement("span");
+      countSpan.className = "access-user-email";
+      countSpan.textContent = `${g.member_count} ${g.member_count === 1 ? "member" : "members"}`;
+      lbl.appendChild(cb);
+      lbl.appendChild(nameSpan);
+      lbl.appendChild(countSpan);
+      listEl.appendChild(lbl);
+    }
+  }
+
+  if (filteredUsers.length) {
+    const heading = document.createElement("div");
+    heading.className = "access-section-heading";
+    heading.textContent = "Users";
+    listEl.appendChild(heading);
+
+    for (const u of filteredUsers) {
+      const isSelf = u.id === authUser?.user_id;
+      const lbl = document.createElement("label");
+      lbl.className = "access-user-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = isSelf || accessChecked.includes(u.id);
+      if (isSelf) {
+        cb.disabled = true;
+      }
+      cb.addEventListener("change", () => {
+        if (accessChecked.includes(u.id)) {
+          accessChecked = accessChecked.filter(id => id !== u.id);
+          accessCheckedGroups = accessCheckedGroups.filter(
+            gId => !u.groups?.some(g => g.id === gId)
+          );
+        } else {
+          accessChecked = [...accessChecked, u.id];
+        }
+        renderAccessUserList();
+      });
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "access-user-name";
+      nameSpan.textContent = u.display_name;
+      const emailSpan = document.createElement("span");
+      emailSpan.className = "access-user-email";
+      emailSpan.textContent = u.email;
+      lbl.appendChild(cb);
+      lbl.appendChild(nameSpan);
+      lbl.appendChild(emailSpan);
+      listEl.appendChild(lbl);
+    }
+  }
+}
+
+function closeAccessDialog() {
+  $("access-overlay").hidden = true;
+  accessPasswordId = null;
+}
+
+async function savePasswordAccess() {
+  $("btn-save-access").toggleAttribute("disabled", true);
+  try {
+    await api(`/api/passwords/${accessPasswordId}/access`, {
+      method: "PUT",
+      body: { user_ids: accessChecked, group_ids: accessCheckedGroups },
+    });
+    $("access-overlay").hidden = true;
+    showStatus("Access list saved.");
+  } catch (e) {
+    showStatus(e.message, "error");
+  } finally {
+    $("btn-save-access").toggleAttribute("disabled", false);
+  }
+}
+
+// ── Profile ───────────────────────────────────────────────
+
+function renderProfile() {
+  const u = authUser;
+  if (!u) {
+    return;
+  }
+  $("profile-name").textContent = u.display_name;
+  $("profile-email").textContent = u.email;
+  const permsEl = $("profile-perms");
+  clearChildren(permsEl);
+  if (u.permissions.length) {
+    for (const p of u.permissions) {
+      permsEl.appendChild(makeBadge(p, "badge-perm"));
+    }
+  } else {
+    const dash = document.createElement("span");
+    dash.style.color = "var(--text-color-deemphasized,gray)";
+    dash.textContent = "\u2014";
+    permsEl.appendChild(dash);
+  }
+}
+
+// ── Fill password ─────────────────────────────────────────
+
+async function fillPassword(pw) {
+  const win = Services.wm.getMostRecentBrowserWindow();
+  if (!win?.gBrowser) {
+    showStatus("No browser window found.", "error");
+    return;
+  }
+  const { gBrowser } = win;
+
+  let pwHostname = "";
+  if (pw.url) {
+    try {
+      const href = /^https?:\/\//i.test(pw.url) ? pw.url : `https://${pw.url}`;
+      pwHostname = new URL(href).hostname.toLowerCase();
+    } catch {
+      // not a parseable URL
+    }
+  }
+
+  const candidates = Array.from(gBrowser.tabs).filter(
+    t => !t.closing && t.linkedBrowser?.currentURI?.spec !== "about:vento"
+  );
+
+  candidates.sort((a, b) => {
+    const hostnameOf = tab => {
+      try {
+        return new URL(
+          tab.linkedBrowser.currentURI.spec
+        ).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    };
+    const aMatch = pwHostname && hostnameOf(a) === pwHostname ? 1 : 0;
+    const bMatch = pwHostname && hostnameOf(b) === pwHostname ? 1 : 0;
+    if (bMatch !== aMatch) {
+      return bMatch - aMatch;
+    }
+    return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
+  });
+
+  if (!candidates.length) {
+    showStatus("No other tab found to fill into.", "error");
+    return;
+  }
+
+  const targetTab = candidates[0];
+  const bc = targetTab.linkedBrowser?.browsingContext;
+  if (!bc?.currentWindowGlobal) {
+    showStatus("Target tab is not ready.", "error");
+    return;
+  }
+
+  try {
+    const actor = bc.currentWindowGlobal.getActor("VentoPassword");
+    const result = await actor.directFill({
+      credentialId: pw.id,
+      username: pw.username,
+      credentialTitle: pw.title,
+      apiBase: apiBase(),
+      bearerToken: token(),
+    });
+    if (result?.filled) {
+      showStatus("Password filled.");
+      gBrowser.selectedTab = targetTab;
+    } else {
+      showStatus(
+        `Could not fill: ${result?.reason ?? "no password field found"}`,
+        "error"
+      );
+    }
+  } catch (e) {
+    showStatus(`Fill failed: ${e.message}`, "error");
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────
+
+async function init() {
+  for (const btn of document.querySelectorAll("#categories .category")) {
+    btn.addEventListener("click", () => navigate(btn.getAttribute("name")));
+  }
+
+  // Dashboard
+  $("btn-refresh").addEventListener("click", () => loadDashboard());
+
+  // Users
+  $("btn-new-user").addEventListener("click", () => openCreateForm());
+  $("btn-cancel-create-user").addEventListener("click", () => {
+    showCreateForm = false;
+    renderUsers();
+  });
+  $("btn-gen-password").addEventListener("click", () => generatePassword());
+  $("btn-copy-password").addEventListener("click", () => copyPassword());
+  $("btn-create-user").addEventListener("click", () => submitCreateUser());
+  $("users-prev").addEventListener("click", () => loadUsers(usersPage - 1));
+  $("users-next").addEventListener("click", () => loadUsers(usersPage + 1));
+
+  // Groups
+  $("btn-new-group").addEventListener("click", () => openCreateGroupForm());
+  $("btn-cancel-create-group").addEventListener("click", () => {
+    showCreateGroupForm = false;
+    renderGroups();
+  });
+  $("btn-create-group").addEventListener("click", () => submitCreateGroup());
+
+  // Group members dialog
+  $("members-filter").addEventListener("input", () => renderMembersUserList());
+  $("members-overlay").addEventListener("click", e => {
+    if (e.target === e.currentTarget) {
+      closeMembersDialog();
+    }
+  });
+  $("btn-save-members").addEventListener("click", () => saveGroupMembers());
+  $("btn-cancel-members").addEventListener("click", () => closeMembersDialog());
+
+  // Passwords
+  $("btn-new-pw").addEventListener("click", () => openCreatePwForm());
+  $("btn-cancel-create-pw").addEventListener("click", () => {
+    showCreatePwForm = false;
+    renderPasswords();
+  });
+  $("btn-create-pw").addEventListener("click", () => submitCreatePw());
+  $("pw-prev").addEventListener("click", () => loadPasswords(passwordsPage - 1));
+  $("pw-next").addEventListener("click", () => loadPasswords(passwordsPage + 1));
+
+  // Access dialog
+  $("access-filter").addEventListener("input", () => renderAccessUserList());
+  $("access-overlay").addEventListener("click", e => {
+    if (e.target === e.currentTarget) {
+      closeAccessDialog();
+    }
+  });
+  $("btn-save-access").addEventListener("click", () => savePasswordAccess());
+  $("btn-cancel-access").addEventListener("click", () => closeAccessDialog());
+
+  // Profile
+  $("btn-logout").addEventListener("click", () => logout());
+
+  window.addEventListener("unload", () => disconnectWs());
+
+  await loadCurrentUser();
+  renderApp();
+
+  if (authUser) {
+    navigate("dashboard");
+    connectWs();
+  }
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

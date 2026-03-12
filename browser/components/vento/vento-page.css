@@ -2,10 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-vento-page {
-  display: contents;
-}
-
 /* ── Category icons ───────────────────────────────────────── */
 
 .category[name="dashboard"] {
@@ -717,4 +713,79 @@ vento-page {
   justify-content: flex-end;
   padding-block-start: 8px;
   border-block-start: 1px solid var(--border-color-default, var(--border-color));
+}
+
+/* ── Groups category icon ──────────────────────────────────── */
+
+.category[name="groups"] {
+  background-image: url("chrome://global/skin/icons/folder.svg");
+}
+
+/* ── User permissions — group rows in Users table ─────────── */
+
+.user-perms-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.perm-group-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.perm-group-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color-deemphasized, gray);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.perm-group-name::after {
+  content: ":";
+}
+
+.badge-perm-group {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-primary, #0060df) 7%,
+    transparent
+  );
+  color: color-mix(in srgb, var(--color-accent-primary, #0060df) 80%, black);
+  border: 1px solid
+    color-mix(in srgb, var(--color-accent-primary, #0060df) 20%, transparent);
+}
+
+.btn-remove-from-group {
+  margin-inline-start: 2px;
+}
+
+.inline-rename-input {
+  width: 100%;
+  max-width: 260px;
+}
+
+.access-section-heading {
+  font-size: var(--font-size-small, 11px);
+  font-weight: var(--font-weight-bold, 600);
+  color: var(--text-color-deemphasized, gray);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 0 4px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color-default, #ccc);
+}
+
+.access-section-heading:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.access-summary {
+  font-size: var(--font-size-small, 12px);
+  color: var(--text-color-deemphasized, gray);
+  padding: 6px 0 2px;
 }

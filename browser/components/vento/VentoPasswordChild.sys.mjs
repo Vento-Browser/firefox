@@ -5,34 +5,19 @@
 /**
  * JSWindowActorChild — runs in the content process.
  *
- * Receives "VentoPassword:Fill" from VentoPasswordParent and fills the first
- * visible password field on the page with the opaque fill token.
- *
- * Security model:
- *   - The real password is never present in this process.
- *   - `fillToken` is an opaque string ("VENTO_CRED:<UUID>") that carries no
- *     password information.  Page JS that reads input.value gets the token.
- *   - The browser renders the field as ••••••• (type=password), so the token
- *     is not visible to the user.
- *   - If the user clicks the built-in "reveal password" button, they see the
- *     token string, not the real password.  We additionally cancel the
- *     MozWillToggleReveal event so the reveal UI is suppressed entirely.
- *   - VentoNetworkObserver (parent process) intercepts the outgoing HTTP
- *     request and replaces the token with the real password at the network
- *     layer before any bytes leave the process.
+ * Receives "VentoPassword:DirectFill" from VentoPasswordParent and fills the
+ * first visible password field on the page with the real password value,
+ * showing a credential chip in place of the password dots.
  */
 export class VentoPasswordChild extends JSWindowActorChild {
   receiveMessage(msg) {
-    if (msg.name === "VentoPassword:Fill") {
-      return this.#handleFill(msg.data, /* suppressReveal */ true);
-    }
     if (msg.name === "VentoPassword:DirectFill") {
-      return this.#handleFill(msg.data, /* suppressReveal */ false);
+      return this.#handleFill(msg.data);
     }
     return null;
   }
 
-  #handleFill({ username, fillToken, credentialTitle }, suppressReveal) {
+  #handleFill({ username, fillToken, credentialTitle }) {
     const doc = this.contentWindow?.document;
     if (!doc) {
       return { filled: false, reason: "no-document" };
@@ -71,21 +56,9 @@ export class VentoPasswordChild extends JSWindowActorChild {
     pwInput.setUserInput(fillToken);
     pwInput.focus();
 
-    // For the token-based fill, prevent the "reveal password" eye icon from
-    // exposing the opaque token string.  For direct fills the value is the
-    // real password and revealing it is intentional, so we skip this.
-    if (suppressReveal) {
-      pwInput.addEventListener(
-        "MozWillToggleReveal",
-        e => e.preventDefault(),
-        { capture: true }
-      );
-    }
-
-    // For direct fills, show a credential chip inside the password input's
-    // anonymous editing-host subtree so the user sees the credential name
+    // Show a credential chip so the user sees the credential name
     // rather than a row of bullet dots.
-    if (!suppressReveal && credentialTitle) {
+    if (credentialTitle) {
       this.#injectChip(pwInput, credentialTitle);
     }
 

@@ -125,8 +125,6 @@ document.getElementById("loginForm").addEventListener("submit", async e => {
         const qrData = lazy.QR.encodeToDataURI(otpauthUrl, "M");
         const qrImg = document.getElementById("totp-qr-code");
         qrImg.src = qrData.src;
-        qrImg.style.width = `${qrData.width}px`;
-        qrImg.style.height = `${qrData.height}px`;
       } catch {}
 
       try {

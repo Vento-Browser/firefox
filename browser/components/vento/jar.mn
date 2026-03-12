@@ -8,7 +8,7 @@ browser.jar:
     content/browser/vento/vento-page.css
     content/browser/vento/VentoPasswordParent.sys.mjs
     content/browser/vento/VentoPasswordChild.sys.mjs
-    content/browser/vento/VentoCredentialService.sys.mjs
     content/browser/vento/VentoLoginCache.sys.mjs
+    content/browser/vento/VentoLoginSyncService.sys.mjs
     content/browser/vento/VentoFormDetectorParent.sys.mjs
     content/browser/vento/VentoFormDetectorChild.sys.mjs
