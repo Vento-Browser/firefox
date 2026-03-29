@@ -72,6 +72,86 @@ const augmentVanillaLoginObject = login => {
   });
 };
 
+function getVentoCredentials() {
+  try {
+    const serverUrl = Services.prefs.getStringPref(
+      "browser.logingate.serverUrl",
+      ""
+    );
+    const accessToken = Services.prefs.getStringPref(
+      "browser.logingate.accessToken",
+      ""
+    );
+    if (!serverUrl || !accessToken) {
+      return null;
+    }
+    return { serverUrl, accessToken };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function ventoFetch(path, opts = {}) {
+  const creds = getVentoCredentials();
+  if (!creds) {
+    throw new Error("Vento not configured");
+  }
+  const { serverUrl, accessToken } = creds;
+  const base = serverUrl.replace(/\/$/, "");
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  if (opts.body) {
+    headers["Content-Type"] = "application/json";
+  }
+  const resp = await fetch(base + path, { ...opts, headers });
+  if (!resp.ok) {
+    throw new Error(`Vento API error ${resp.status}`);
+  }
+  if (resp.status === 204 || resp.headers.get("content-length") === "0") {
+    return null;
+  }
+  return resp.json();
+}
+
+function ventoLoginToVanilla(record) {
+  const displayOrigin =
+    record.origin + (record.http_realm ? ` (${record.http_realm})` : "");
+  const title = displayOrigin.replace(SUBDOMAIN_REGEX, "");
+  return {
+    guid: record.guid,
+    origin: record.origin,
+    displayOrigin,
+    title,
+    formActionOrigin: record.form_action_origin ?? "",
+    httpRealm: record.http_realm ?? null,
+    username: record.username ?? "",
+    password: record.is_hidden ? "" : (record.password ?? ""),
+    usernameField: record.username_field ?? "",
+    passwordField: record.password_field ?? "",
+    timeCreated: record.time_created ?? Date.now(),
+    timeLastUsed: record.time_last_used ?? Date.now(),
+    timePasswordChanged: record.time_password_changed ?? Date.now(),
+    timesUsed: record.times_used ?? 0,
+  };
+}
+
+function vanillaToVentoRecord(login) {
+  return {
+    guid: login.guid,
+    origin: login.origin,
+    form_action_origin: login.formActionOrigin ?? "",
+    http_realm: login.httpRealm ?? null,
+    username: login.username ?? "",
+    password: login.password ?? "",
+    username_field: login.usernameField ?? "",
+    password_field: login.passwordField ?? "",
+    time_created: login.timeCreated ?? Date.now(),
+    time_last_used: login.timeLastUsed ?? Date.now(),
+    time_password_changed: login.timePasswordChanged ?? Date.now(),
+    times_used: login.timesUsed ?? 0,
+    deleted: false,
+  };
+}
+
 const EXPORT_PASSWORD_OS_AUTH_DIALOG_MESSAGE_IDS = {
   win: "about-logins-export-password-os-auth-dialog-message2-win",
   macosx: "about-logins-export-password-os-auth-dialog-message2-macosx",
@@ -157,6 +237,22 @@ export class AboutLoginsParent extends JSWindowActorParent {
         await this.#removeAllLogins();
         break;
       }
+      case "AboutLogins:VentoGetAccess": {
+        await this.#ventoGetAccess(message.data);
+        break;
+      }
+      case "AboutLogins:VentoSetAccess": {
+        await this.#ventoSetAccess(message.data);
+        break;
+      }
+      case "AboutLogins:VentoGetHistory": {
+        await this.#ventoGetHistory(message.data);
+        break;
+      }
+      case "AboutLogins:VentoRollback": {
+        await this.#ventoRollback(message.data);
+        break;
+      }
     }
   }
 
@@ -165,19 +261,6 @@ export class AboutLoginsParent extends JSWindowActorParent {
   }
 
   async #createLogin(newLogin) {
-    if (!Services.policies.isAllowed("removeMasterPassword")) {
-      if (!lazy.LoginHelper.isPrimaryPasswordSet()) {
-        this.#ownerGlobal.openDialog(
-          "chrome://mozapps/content/preferences/changemp.xhtml",
-          "",
-          "centerscreen,chrome,modal,titlebar"
-        );
-        if (!lazy.LoginHelper.isPrimaryPasswordSet()) {
-          return;
-        }
-      }
-    }
-    // Remove the path from the origin, if it was provided.
     let origin = lazy.LoginHelper.getLoginOrigin(newLogin.origin);
     if (!origin) {
       console.error(
@@ -185,17 +268,38 @@ export class AboutLoginsParent extends JSWindowActorParent {
       );
       return;
     }
-    newLogin.origin = origin;
-    Object.assign(newLogin, {
-      formActionOrigin: "",
-      usernameField: "",
-      passwordField: "",
-    });
-    newLogin = lazy.LoginHelper.vanillaObjectToLogin(newLogin);
     try {
-      await Services.logins.addLoginAsync(newLogin);
-    } catch (error) {
-      this.#handleLoginStorageErrors(newLogin, error);
+      const guid = await ventoFetch("/api/browser-logins/manual", {
+        method: "POST",
+        body: JSON.stringify({
+          origin,
+          username: newLogin.username || "",
+          password: newLogin.password || "",
+          username_field: "",
+          password_field: "",
+        }),
+      });
+      const now = Date.now();
+      const vanilla = ventoLoginToVanilla({
+        guid,
+        origin,
+        form_action_origin: "",
+        http_realm: null,
+        username: newLogin.username || "",
+        password: newLogin.password || "",
+        username_field: "",
+        password_field: "",
+        time_created: now,
+        time_last_used: now,
+        time_password_changed: now,
+        times_used: 0,
+      });
+      AboutLogins.notifyLoginAdded(vanilla);
+      this.#ventoGetAllMeta().catch(e =>
+        lazy.log.debug("Vento metadata refresh after create failed:", e)
+      );
+    } catch (e) {
+      lazy.log.warn("AboutLogins: Create login failed:", e);
     }
   }
 
@@ -208,8 +312,15 @@ export class AboutLoginsParent extends JSWindowActorParent {
   }
 
   async #deleteLogin(loginObject) {
-    let login = lazy.LoginHelper.vanillaObjectToLogin(loginObject);
-    await Services.logins.removeLoginAsync(login);
+    try {
+      await ventoFetch(
+        `/api/browser-logins/${encodeURIComponent(loginObject.guid)}`,
+        { method: "DELETE" }
+      );
+      AboutLogins.notifyLoginRemoved(loginObject);
+    } catch (e) {
+      lazy.log.warn("AboutLogins: Delete login failed:", e);
+    }
   }
 
   #sortChanged(sort) {
@@ -324,6 +435,10 @@ export class AboutLoginsParent extends JSWindowActorParent {
         preselectedLogin: this.preselectedLogin,
       });
 
+      this.#ventoGetAllMeta().catch(e =>
+        lazy.log.debug("Vento metadata fetch failed:", e)
+      );
+
       await AboutLogins.sendAllLoginRelatedObjects(
         logins,
         this.browsingContext
@@ -342,27 +457,72 @@ export class AboutLoginsParent extends JSWindowActorParent {
   }
 
   async #updateLogin(loginUpdates) {
-    let logins = await Services.logins.searchLoginsAsync({
-      guid: loginUpdates.guid,
-    });
-    if (logins.length != 1) {
+    const ventoMeta = loginUpdates.ventoMeta;
+    if (
+      ventoMeta &&
+      ventoMeta.is_owner === false &&
+      ventoMeta.can_update === true &&
+      loginUpdates.hasOwnProperty("password")
+    ) {
+      try {
+        await ventoFetch(
+          `/api/browser-logins/${encodeURIComponent(loginUpdates.guid)}/password`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ password: loginUpdates.password }),
+          }
+        );
+        const current = AboutLogins.getCachedLogin(loginUpdates.guid);
+        if (current) {
+          AboutLogins.notifyLoginModified(
+            Object.assign({}, current, {
+              password: loginUpdates.password,
+              timePasswordChanged: Date.now(),
+            })
+          );
+        }
+      } catch (e) {
+        lazy.log.warn("AboutLogins: Shared login password update failed:", e);
+      }
+      return;
+    }
+
+    const current = AboutLogins.getCachedLogin(loginUpdates.guid);
+    if (!current) {
       lazy.log.warn(
-        `AboutLogins:UpdateLogin: expected to find a login for guid: ${loginUpdates.guid} but found ${logins.length}`
+        `AboutLogins:UpdateLogin: no cached login for guid: ${loginUpdates.guid}`
       );
       return;
     }
 
-    let modifiedLogin = logins[0].clone();
+    const updates = {};
     if (loginUpdates.hasOwnProperty("username")) {
-      modifiedLogin.username = loginUpdates.username;
+      updates.username = loginUpdates.username;
     }
     if (loginUpdates.hasOwnProperty("password")) {
-      modifiedLogin.password = loginUpdates.password;
+      updates.password = loginUpdates.password;
+      updates.timePasswordChanged = Date.now();
     }
+    if (loginUpdates.hasOwnProperty("origin")) {
+      updates.origin = loginUpdates.origin;
+    }
+
+    const record = vanillaToVentoRecord(Object.assign({}, current, updates));
     try {
-      await Services.logins.modifyLoginAsync(logins[0], modifiedLogin);
-    } catch (error) {
-      this.#handleLoginStorageErrors(modifiedLogin, error);
+      const resp = await ventoFetch("/api/browser-logins/sync", {
+        method: "POST",
+        body: JSON.stringify({ logins: [record] }),
+      });
+      const updated = (resp.logins || []).find(
+        l => l.guid === loginUpdates.guid
+      );
+      AboutLogins.notifyLoginModified(
+        updated
+          ? ventoLoginToVanilla(updated)
+          : Object.assign({}, current, updates)
+      );
+    } catch (e) {
+      lazy.log.warn("AboutLogins: Update login failed:", e);
     }
   }
 
@@ -503,7 +663,21 @@ export class AboutLoginsParent extends JSWindowActorParent {
   }
 
   async #removeAllLogins() {
-    await Services.logins.removeAllUserFacingLoginsAsync();
+    const logins = AboutLogins.getAllCachedLogins();
+    for (const login of logins) {
+      try {
+        await ventoFetch(
+          `/api/browser-logins/${encodeURIComponent(login.guid)}`,
+          { method: "DELETE" }
+        );
+      } catch (e) {
+        lazy.log.warn(
+          `AboutLogins: Delete all - failed for guid ${login.guid}:`,
+          e
+        );
+      }
+    }
+    AboutLogins.notifyRemoveAllLogins();
   }
 
   #handleLoginStorageErrors(login, error) {
@@ -537,12 +711,111 @@ export class AboutLoginsParent extends JSWindowActorParent {
       });
     });
   }
+
+  async #ventoGetAccess({ guid }) {
+    try {
+      const [access, usersResp, groupsResp] = await Promise.all([
+        ventoFetch(
+          `/api/browser-logins/${encodeURIComponent(guid)}/access`
+        ),
+        ventoFetch(`/api/auth/users?page=1&per_page=1000`),
+        ventoFetch(`/api/groups`),
+      ]);
+      this.sendAsyncMessage("AboutLogins:VentoAccess", {
+        guid,
+        access,
+        users: usersResp.users || usersResp,
+        groups: groupsResp.groups || groupsResp,
+      });
+    } catch (e) {
+      this.sendAsyncMessage("AboutLogins:VentoAccess", {
+        guid,
+        error: e.message,
+      });
+    }
+  }
+
+  async #ventoSetAccess({ guid, userShares, groupShares }) {
+    try {
+      await ventoFetch(
+        `/api/browser-logins/${encodeURIComponent(guid)}/access`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            user_shares: userShares,
+            group_shares: groupShares,
+          }),
+        }
+      );
+      this.sendAsyncMessage("AboutLogins:VentoAccessSaved", { guid });
+    } catch (e) {
+      this.sendAsyncMessage("AboutLogins:VentoAccessSaved", {
+        guid,
+        error: e.message,
+      });
+    }
+  }
+
+  async #ventoGetHistory({ guid }) {
+    try {
+      const history = await ventoFetch(
+        `/api/browser-logins/${encodeURIComponent(guid)}/history`
+      );
+      this.sendAsyncMessage("AboutLogins:VentoHistory", { guid, history });
+    } catch (e) {
+      this.sendAsyncMessage("AboutLogins:VentoHistory", {
+        guid,
+        error: e.message,
+      });
+    }
+  }
+
+  async #ventoRollback({ guid, historyId }) {
+    try {
+      await ventoFetch(
+        `/api/browser-logins/${encodeURIComponent(guid)}/rollback/${historyId}`,
+        { method: "POST" }
+      );
+      this.sendAsyncMessage("AboutLogins:VentoRollbackDone", { guid });
+    } catch (e) {
+      this.sendAsyncMessage("AboutLogins:VentoRollbackDone", {
+        guid,
+        error: e.message,
+      });
+    }
+  }
+
+  async #ventoGetAllMeta() {
+    let allLogins = [];
+    let page = 1;
+    const perPage = 200;
+    try {
+      while (true) {
+        const resp = await ventoFetch(
+          `/api/browser-logins?page=${page}&per_page=${perPage}`
+        );
+        allLogins = allLogins.concat(resp.logins || []);
+        if (allLogins.length >= (resp.total || 0)) {
+          break;
+        }
+        page++;
+      }
+    } catch (e) {
+      lazy.log.debug("VentoGetAllMeta failed:", e);
+    }
+    this.sendAsyncMessage("AboutLogins:VentoAllMeta", allLogins);
+  }
+
+  ventoRefreshMeta() {
+    return this.#ventoGetAllMeta();
+  }
 }
 
 class AboutLoginsInternal {
   subscribers = new WeakSet();
   #observersAdded = false;
   authExpirationTime = Number.NEGATIVE_INFINITY;
+  #loginCache = new Map();
 
   async observe(subject, topic, type) {
     if (!ChromeUtils.nondeterministicGetWeakSetKeys(this.subscribers).length) {
@@ -590,6 +863,22 @@ class AboutLoginsInternal {
             break;
           }
         }
+        break;
+      }
+      case "vento-login-sync-done": {
+        this.#ventoRefreshAllMeta();
+        break;
+      }
+    }
+  }
+
+  #ventoRefreshAllMeta() {
+    for (let subscriber of this.#subscriberIterator()) {
+      if (subscriber.currentWindowGlobal) {
+        let actor = subscriber.currentWindowGlobal.getActor("AboutLogins");
+        actor.ventoRefreshMeta().catch(e =>
+          lazy.log.debug("VentoRefreshMeta failed:", e)
+        );
       }
     }
   }
@@ -787,17 +1076,55 @@ class AboutLoginsInternal {
 
   async getAllLogins() {
     try {
-      let logins = await lazy.LoginHelper.getAllUserFacingLogins();
-      return logins
-        .map(lazy.LoginHelper.loginToVanillaObject)
-        .map(augmentVanillaLoginObject);
-    } catch (e) {
-      if (e.result == Cr.NS_ERROR_ABORT) {
-        // If the user cancels the MP prompt then return no logins.
-        return [];
+      const resp = await ventoFetch("/api/browser-logins/sync", {
+        method: "POST",
+        body: JSON.stringify({ logins: [] }),
+      });
+      const all = [
+        ...(resp.logins || [])
+          .filter(r => !r.deleted)
+          .map(ventoLoginToVanilla),
+        ...(resp.shared_logins || []).map(ventoLoginToVanilla),
+      ];
+      this.#loginCache.clear();
+      for (const l of all) {
+        this.#loginCache.set(l.guid, l);
       }
-      throw e;
+      return all;
+    } catch (e) {
+      lazy.log.debug("getAllLogins: Vento fetch failed:", e);
+      return [];
     }
+  }
+
+  getCachedLogin(guid) {
+    return this.#loginCache.get(guid) ?? null;
+  }
+
+  getAllCachedLogins() {
+    return Array.from(this.#loginCache.values());
+  }
+
+  notifyLoginAdded(login) {
+    this.#loginCache.set(login.guid, login);
+    this.#messageSubscribers("AboutLogins:LoginAdded", login);
+    this.#ventoRefreshAllMeta();
+  }
+
+  notifyLoginModified(login) {
+    this.#loginCache.set(login.guid, login);
+    this.#messageSubscribers("AboutLogins:LoginModified", login);
+    this.#ventoRefreshAllMeta();
+  }
+
+  notifyLoginRemoved(login) {
+    this.#loginCache.delete(login.guid);
+    this.#messageSubscribers("AboutLogins:LoginRemoved", login);
+  }
+
+  notifyRemoveAllLogins() {
+    this.#loginCache.clear();
+    this.#messageSubscribers("AboutLogins:RemoveAllLogins", []);
   }
 
   async sendAllLoginRelatedObjects(logins, browsingContext) {
@@ -858,6 +1185,7 @@ class AboutLoginsInternal {
     "passwordmgr-crypto-loginCanceled",
     "passwordmgr-storage-changed",
     "passwordmgr-reload-all",
+    "vento-login-sync-done",
     lazy.UIState.ON_UPDATE,
   ];
 

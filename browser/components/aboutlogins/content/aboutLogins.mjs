@@ -30,6 +30,7 @@ const gElements = {
 };
 
 let numberOfLogins = 0;
+let ventoMetaByGuid = new Map();
 
 function updateNoLogins() {
   document.documentElement.classList.toggle("no-logins", numberOfLogins == 0);
@@ -153,6 +154,18 @@ window.addEventListener("AboutLoginsChromeToContent", event => {
       gElements.loginItem.updateVulnerableLogins(event.detail.value);
       break;
     }
+    case "VentoAllMeta": {
+      ventoMetaByGuid = new Map(
+        (event.detail.value || []).map(m => [m.guid, m])
+      );
+      const currentGuid = gElements.loginItem._login?.guid;
+      if (currentGuid) {
+        gElements.loginItem.setVentoMeta(
+          ventoMetaByGuid.get(currentGuid) || null
+        );
+      }
+      break;
+    }
   }
 });
 
@@ -268,6 +281,24 @@ if (searchParams.has("filter")) {
     searchParamsChanged = true;
   }
 }
+
+document.addEventListener("AboutLoginsLoginSelected", e => {
+  const guid = e.detail?.guid;
+  if (guid) {
+    // Defer until after login-item's synchronous setLogin/render completes.
+    queueMicrotask(() => {
+      gElements.loginItem.setVentoMeta(ventoMetaByGuid.get(guid) || null);
+    });
+  }
+});
+
+document.addEventListener("AboutLoginsVentoShowAccess", e => {
+  document.querySelector("vento-access-dialog").show(e.detail.guid);
+});
+
+document.addEventListener("AboutLoginsVentoShowHistory", e => {
+  document.querySelector("vento-history-dialog").show(e.detail.guid);
+});
 
 if (searchParamsChanged) {
   const paramsPart = searchParams.toString() ? `?${searchParams}` : "";

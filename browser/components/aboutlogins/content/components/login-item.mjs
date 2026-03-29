@@ -23,6 +23,7 @@ export default class LoginItem extends HTMLElement {
     this._error = null;
     this._copyUsernameTimeoutId = 0;
     this._copyPasswordTimeoutId = 0;
+    this._ventoMeta = null;
   }
 
   connectedCallback() {
@@ -157,6 +158,18 @@ export default class LoginItem extends HTMLElement {
       this.handlePasswordDisplayBlur(e)
     );
 
+    let ventoAccessBtn = this.shadowRoot.querySelector(".vento-access-button");
+    if (ventoAccessBtn) {
+      ventoAccessBtn.addEventListener("click", () => this._handleVentoAccess());
+    }
+    let ventoHistoryBtn = this.shadowRoot.querySelector(
+      ".vento-history-button"
+    );
+    if (ventoHistoryBtn) {
+      ventoHistoryBtn.addEventListener("click", () =>
+        this._handleVentoHistory()
+      );
+    }
     window.addEventListener("AboutLoginsInitialLoginSelected", e =>
       this.handleAboutLoginsInitial(e)
     );
@@ -168,6 +181,92 @@ export default class LoginItem extends HTMLElement {
     );
     window.addEventListener("AboutLoginsRemaskPassword", e =>
       this.handleAboutLoginsRemaskPassword(e)
+    );
+  }
+
+  setVentoMeta(meta) {
+    this._ventoMeta = meta || null;
+    this._renderVentoSection();
+  }
+
+  _renderVentoSection() {
+    let section = this.shadowRoot.querySelector(".vento-section");
+    let accessBtn = this.shadowRoot.querySelector(".vento-access-button");
+    let historyBtn = this.shadowRoot.querySelector(".vento-history-button");
+    if (!section) {
+      return;
+    }
+    const meta = this._ventoMeta;
+    if (!meta) {
+      section.hidden = true;
+      if (accessBtn) accessBtn.hidden = true;
+      if (historyBtn) historyBtn.hidden = true;
+      if (this._editButton) {
+        this._editButton.hidden = false;
+      }
+      if (this._deleteButton) {
+        this._deleteButton.hidden = false;
+      }
+      if (this._copyPasswordButton) {
+        this._copyPasswordButton.hidden = false;
+      }
+      this._updatePasswordRevealState();
+      return;
+    }
+    section.hidden = false;
+
+    let ownerEl = section.querySelector(".vento-owner");
+    ownerEl.textContent = `Owner: ${meta.owner_display_name || "Unknown"}`;
+
+    let lastUpdatedEl = section.querySelector(".vento-last-updated");
+    if (meta.last_updated_by_name && meta.last_updated_at) {
+      let date;
+      try {
+        date = new Date(meta.last_updated_at).toLocaleDateString();
+      } catch {
+        date = meta.last_updated_at;
+      }
+      lastUpdatedEl.textContent = `Updated by ${meta.last_updated_by_name} on ${date}`;
+      lastUpdatedEl.hidden = false;
+    } else {
+      lastUpdatedEl.hidden = true;
+    }
+
+    section.querySelector(".vento-badge-hidden").hidden = !meta.is_hidden;
+    section.querySelector(".vento-badge-shared").hidden = !!meta.is_owner;
+
+    if (accessBtn) accessBtn.hidden = !meta.is_owner;
+    if (historyBtn) historyBtn.hidden = false;
+    if (this._editButton) {
+      this._editButton.hidden = !meta.is_owner && !meta.can_update;
+    }
+    if (this._deleteButton) {
+      this._deleteButton.hidden = !meta.is_owner;
+    }
+
+    if (this._copyPasswordButton) {
+      this._copyPasswordButton.hidden = !!meta.is_hidden;
+    }
+    this._updatePasswordRevealState();
+  }
+
+  _handleVentoAccess() {
+    const guid = this._login.guid || this._ventoMeta?.guid;
+    document.dispatchEvent(
+      new CustomEvent("AboutLoginsVentoShowAccess", {
+        bubbles: true,
+        detail: { guid },
+      })
+    );
+  }
+
+  _handleVentoHistory() {
+    const guid = this._login.guid || this._ventoMeta?.guid;
+    document.dispatchEvent(
+      new CustomEvent("AboutLoginsVentoShowHistory", {
+        bubbles: true,
+        detail: { guid },
+      })
     );
   }
 
@@ -272,6 +371,7 @@ export default class LoginItem extends HTMLElement {
     this._updateOriginDisplayState();
     this.#updateTimeline();
     this.#updatePasswordMessage();
+    this._renderVentoSection();
   }
 
   #updateTimeline() {
@@ -613,7 +713,7 @@ export default class LoginItem extends HTMLElement {
       document.dispatchEvent(
         new CustomEvent("AboutLoginsUpdateLogin", {
           bubbles: true,
-          detail: loginUpdates,
+          detail: { ...loginUpdates, ventoMeta: this._ventoMeta },
         })
       );
 
@@ -774,8 +874,12 @@ export default class LoginItem extends HTMLElement {
    *                                  stealing focus from the search filter upon page load.
    */
   setLogin(login, { skipFocusChange } = {}) {
+    const prevGuid = this._login?.guid;
     this._login = login;
     this._error = null;
+    if (login.guid !== prevGuid) {
+      this._ventoMeta = null;
+    }
 
     this.resetForm();
 
@@ -959,14 +1063,19 @@ export default class LoginItem extends HTMLElement {
     let inputTabIndex = shouldEdit ? 0 : -1;
     this._originInput.readOnly = !this.dataset.isNewLogin;
     this._originInput.tabIndex = inputTabIndex;
-    this._usernameInput.readOnly = !shouldEdit;
+    const isNonOwner = this._ventoMeta && !this._ventoMeta.is_owner;
+    this._usernameInput.readOnly = !shouldEdit || isNonOwner;
     this._usernameInput.tabIndex = inputTabIndex;
     this._passwordInput.readOnly = !shouldEdit;
     this._passwordInput.tabIndex = inputTabIndex;
     if (shouldEdit) {
       this.dataset.editing = true;
-      this._usernameInput.focus();
-      this._usernameInput.select();
+      if (isNonOwner) {
+        this._passwordInput.focus();
+      } else {
+        this._usernameInput.focus();
+        this._usernameInput.select();
+      }
     } else {
       delete this.dataset.editing;
       // Only reset the reveal checkbox when exiting 'edit' mode
@@ -998,14 +1107,27 @@ export default class LoginItem extends HTMLElement {
     // real .value (which means that the primary password was already entered,
     // if applicable)
     if (checked || this.dataset.isNewLogin) {
+      if (this._ventoMeta?.is_hidden && this.dataset.editing) {
+        this._passwordInput.type = "password";
+        if (this._passwordInput.value === (this._login?.password || "")) {
+          this._passwordInput.value = "";
+        }
+      }
       this._passwordDisplayInput.replaceWith(this._passwordInput);
 
       // Focus the input if it hasn't been already.
-      if (this.dataset.editing && inputType === "text") {
+      if (this.dataset.editing && (inputType === "text" || this._ventoMeta?.is_hidden)) {
         this._passwordInput.focus();
       }
     } else {
       this._passwordInput.replaceWith(this._passwordDisplayInput);
+    }
+
+    if (this._ventoMeta?.is_hidden && !this.dataset.editing) {
+      this._revealCheckbox.hidden = true;
+      if (this._passwordInput.isConnected) {
+        this._passwordInput.replaceWith(this._passwordDisplayInput);
+      }
     }
   }
 

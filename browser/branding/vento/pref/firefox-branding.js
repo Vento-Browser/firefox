@@ -41,12 +41,13 @@ pref("signon.management.page.breach-alerts.enabled", false);
 pref("devtools.selfxss.count", 5);
 
 // Proxy hardening — prevent traffic leaks regardless of proxy state.
-// These are defaults; proxy host/port are set as user prefs after auth_ok.
-pref("network.proxy.type", 1);
-pref("network.proxy.failover_direct", false);
-pref("network.proxy.socks_remote_dns", true);
-pref("network.proxy.allow_hijacking_localhost", true);
-pref("media.peerconnection.enabled", false);
-pref("media.peerconnection.ice.no_host", true);
-pref("media.peerconnection.ice.default_address_only", true);
-pref("network.http.http3.enable", false);
+// Locked so users cannot override via about:config or user.js.
+// VentoProxy/VentoWebSocket unlock these at runtime before updating, then re-lock.
+lockPref("network.proxy.type", 1);
+lockPref("network.proxy.failover_direct", false);
+lockPref("network.proxy.socks_remote_dns", true);
+lockPref("network.proxy.allow_hijacking_localhost", true);
+lockPref("media.peerconnection.enabled", false);
+lockPref("media.peerconnection.ice.no_host", true);
+lockPref("media.peerconnection.ice.default_address_only", true);
+lockPref("network.http.http3.enable", false);

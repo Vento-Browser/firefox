@@ -1,0 +1,147 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:host {
+  display: contents;
+}
+
+:host([hidden]) {
+  display: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--background-color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.container {
+  background: var(--background-color-canvas);
+  color: var(--text-color);
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  border-radius: var(--logins-dialog-border-radius);
+  padding: var(--space-xlarge);
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  min-width: 420px;
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-large);
+  box-shadow: var(--box-shadow-popup);
+  border: var(--border-width) solid var(--border-color-interactive);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialog-title {
+  font-size: var(--font-size-large);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}
+
+.dismiss-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  font-size: 1.2em;
+  min-width: auto;
+  padding: var(--space-xsmall) var(--space-small);
+  color: var(--text-color);
+}
+
+.history-list {
+  overflow-y: auto;
+  flex: 1;
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-small);
+}
+
+.history-row {
+  display: grid;
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  grid-template-columns: 70px 1fr auto auto;
+  align-items: center;
+  gap: var(--space-medium);
+  padding: var(--space-small);
+  border-radius: var(--border-radius-small);
+  border: var(--border-width) solid var(--border-color-interactive);
+}
+
+.history-action {
+  font-weight: var(--font-weight-semibold);
+  text-transform: capitalize;
+}
+
+.history-user {
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-date {
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+.rollback-button {
+  background: none;
+  border-width: var(--border-width);
+  border-style: solid;
+  border-color: var(--border-color-interactive);
+  border-radius: var(--border-radius-small);
+  padding: var(--space-xsmall) var(--space-small);
+  cursor: pointer;
+  font-size: var(--font-size-small);
+  min-width: auto;
+  color: var(--text-color);
+}
+
+.rollback-button:hover {
+  background: var(--button-background-color-ghost-hover);
+}
+
+.history-error {
+  color: var(--text-color-error);
+  font-size: var(--font-size-small);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.close-button {
+  background: none;
+  border-width: var(--border-width);
+  border-style: solid;
+  border-color: var(--border-color-interactive);
+  border-radius: var(--border-radius-small);
+  padding: var(--space-small) var(--space-large);
+  cursor: pointer;
+  /* stylelint-disable-next-line stylelint-plugin-mozilla/use-design-tokens */
+  font-size: 1em;
+  min-width: auto;
+  color: var(--text-color);
+}
+
+.close-button:hover {
+  background: var(--button-background-color-ghost-hover);
+}

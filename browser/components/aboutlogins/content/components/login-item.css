@@ -54,6 +54,8 @@ form {
 }
 
 :host([data-editing]) edit-button,
+:host([data-editing]) .vento-access-button,
+:host([data-editing]) .vento-history-button,
 :host([data-editing]) :is(.copy-button, .copied-button),
 :host([data-is-new-login]) delete-button,
 :host([data-is-new-login]) .origin-saved-value,
@@ -322,8 +324,66 @@ login-command-button {
 .action-buttons {
   display: flex;
   flex-direction: row;
+  align-items: center;
 }
 
 .action-buttons .form-actions-row {
   margin-inline: 0 5px;
+}
+
+.vento-section {
+  margin-top: var(--space-xlarge);
+  padding-top: var(--space-large);
+  border-top: 1px solid var(--border-color-default, #ccc);
+}
+
+.vento-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-large);
+  margin-bottom: var(--space-small);
+  font-size: var(--font-size-small);
+  color: var(--text-color-deemphasized);
+}
+
+.vento-badges {
+  display: flex;
+  gap: var(--space-small);
+  margin-bottom: var(--space-small);
+}
+
+.vento-badge {
+  display: inline-block;
+  padding: var(--space-xxsmall) var(--space-small);
+  border-radius: var(--border-radius-small);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+}
+
+.vento-badge-hidden {
+  background: var(--background-color-critical);
+  color: var(--text-color-error);
+}
+
+.vento-badge-shared {
+  background: var(--background-color-information);
+  color: var(--color-accent-primary);
+}
+
+.vento-access-button,
+.vento-history-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: auto;
+  margin-block-start: 4px;
+}
+
+.vento-btn-icon {
+  width: 16px;
+  height: 16px;
+  padding-inline-end: 0;
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: 0.9;
 }

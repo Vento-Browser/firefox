@@ -25,6 +25,8 @@
     <script type="module" src="chrome://browser/content/aboutlogins/components/login-list-item.mjs"></script>
     <script type="module" src="chrome://browser/content/aboutlogins/components/login-list-section.mjs"></script>
     <script type="module" src="chrome://browser/content/aboutlogins/components/menu-button.mjs"></script>
+    <script type="module" src="chrome://browser/content/aboutlogins/components/vento-access-dialog.mjs"></script>
+    <script type="module" src="chrome://browser/content/aboutlogins/components/vento-history-dialog.mjs"></script>
     <script type="module" src="chrome://global/content/elements/moz-button-group.mjs"></script>
     <script type="module" src="chrome://browser/content/aboutlogins/aboutLogins.mjs"></script>
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
@@ -45,6 +47,9 @@
     <import-summary-dialog hidden></import-summary-dialog>
     <import-error-dialog hidden></import-error-dialog>
     <div id="primary-password-required-overlay"></div>
+    <vento-access-dialog hidden></vento-access-dialog>
+    <vento-history-dialog hidden></vento-history-dialog>
+
 
     <template id="confirmation-dialog-template">
       <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
@@ -283,6 +288,14 @@
               </h2>
               <div class="action-buttons">
                 <edit-button></edit-button>
+                <button class="vento-access-button ghost-button" hidden>
+                  <img class="vento-btn-icon" src="chrome://browser/skin/share.svg" role="presentation" />
+                  Manage Access
+                </button>
+                <button class="vento-history-button ghost-button" hidden>
+                  <img class="vento-btn-icon" src="chrome://browser/skin/history.svg" role="presentation" />
+                  History
+                </button>
                 <moz-button-group class="form-actions-row">
                   <button class="save-changes-button" type="submit"></button>
                   <button class="cancel-button" data-l10n-id="login-item-cancel-button" type="button"></button>
@@ -345,6 +358,16 @@
                 </div>
               </div>
               <login-timeline hidden ></login-timeline>
+              <div class="vento-section" hidden>
+                <div class="vento-meta-row">
+                  <span class="vento-owner"></span>
+                  <span class="vento-last-updated" hidden></span>
+                </div>
+                <div class="vento-badges">
+                  <span class="vento-badge vento-badge-hidden" hidden>Hidden</span>
+                  <span class="vento-badge vento-badge-shared" hidden>Shared</span>
+                </div>
+              </div>
           </form>
         </div>
       </div>
@@ -355,6 +378,44 @@
       <link rel="stylesheet" href="chrome://browser/content/aboutlogins/common.css">
       <link rel="stylesheet" href="chrome://browser/content/aboutlogins/components/login-filter.css">
       <input data-l10n-id="about-logins-login-filter2" class="filter" type="text" dir="auto"/>
+    </template>
+
+    <template id="vento-access-dialog-template">
+      <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
+      <link rel="stylesheet" href="chrome://browser/content/aboutlogins/components/vento-access-dialog.css">
+      <div class="overlay">
+        <div class="container">
+          <div class="dialog-header">
+            <h2 class="dialog-title">Manage Access</h2>
+            <button class="dismiss-button">&#x2715;</button>
+          </div>
+          <input type="text" class="access-search" placeholder="Search users or groups...">
+          <div class="access-list"></div>
+          <div class="access-error" hidden></div>
+          <div class="dialog-footer">
+            <button class="save-button">Save</button>
+            <button class="cancel-button">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template id="vento-history-dialog-template">
+      <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
+      <link rel="stylesheet" href="chrome://browser/content/aboutlogins/components/vento-history-dialog.css">
+      <div class="overlay">
+        <div class="container">
+          <div class="dialog-header">
+            <h2 class="dialog-title">Password History</h2>
+            <button class="dismiss-button">&#x2715;</button>
+          </div>
+          <div class="history-list"></div>
+          <div class="history-error" hidden></div>
+          <div class="dialog-footer">
+            <button class="close-button">Close</button>
+          </div>
+        </div>
+      </div>
     </template>
 
     <template id="menu-button-template">

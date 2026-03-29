@@ -5,12 +5,10 @@
 try {
   ChromeUtils.registerWindowActor("VentoPassword", {
     parent: {
-      esModuleURI:
-        "chrome://browser/content/vento/VentoPasswordParent.sys.mjs",
+      esModuleURI: "chrome://browser/content/vento/VentoPasswordParent.sys.mjs",
     },
     child: {
-      esModuleURI:
-        "chrome://browser/content/vento/VentoPasswordChild.sys.mjs",
+      esModuleURI: "chrome://browser/content/vento/VentoPasswordChild.sys.mjs",
     },
     allFrames: false,
     includeChrome: false,
@@ -27,15 +25,12 @@ const ALL_PERMS = [
   "USERS_PERMISSIONS",
   "ADMIN",
   "USERS_READ_ONLINE_STATUS",
-  "PASSWORDS_MANAGE",
 ];
 const PER_PAGE = 50;
-const PW_PER_PAGE = 50;
 const PAGE_TITLES = {
   dashboard: "Dashboard",
   users: "Users",
   groups: "User Groups",
-  passwords: "Hidden Passwords",
   profile: "Profile",
 };
 
@@ -49,25 +44,12 @@ let usersTotal = 0;
 let editingUserId = null;
 let editingPerms = [];
 let showCreateForm = false;
-let createLoading = false;
+
 let dashboardStats = null;
 let dashboardOnlineUsers = null;
 let dashboardLoading = false;
 let metricsHistory = [];
 let currentMetrics = null;
-let passwords = [];
-let passwordsTotal = 0;
-let passwordsPage = 1;
-let passwordsLoading = false;
-let showCreatePwForm = false;
-let createPwLoading = false;
-let editingPwId = null;
-let accessPasswordId = null;
-let accessAllUsers = [];
-let accessChecked = [];
-let accessAllGroups = [];
-let accessCheckedGroups = [];
-let accessLoading = false;
 // Groups state
 let groups = [];
 let groupsLoading = false;
@@ -76,10 +58,8 @@ let editingGroupId = null;
 let editingGroupPerms = [];
 let renamingGroupId = null;
 let membersGroupId = null;
-let membersGroupName = "";
 let membersAllUsers = [];
 let membersChecked = [];
-let membersLoading = false;
 let isLoading = false;
 let _ws = null;
 let _wsReconnectTimer = null;
@@ -247,8 +227,6 @@ function navigate(page) {
   activePage = page;
   editingUserId = null;
   showCreateForm = false;
-  showCreatePwForm = false;
-  editingPwId = null;
   editingGroupId = null;
   renamingGroupId = null;
   showCreateGroupForm = false;
@@ -267,8 +245,6 @@ function navigate(page) {
     loadUsers(1);
   } else if (page === "dashboard") {
     loadDashboard();
-  } else if (page === "passwords") {
-    loadPasswords(1);
   } else if (page === "groups") {
     loadGroups();
   } else if (page === "profile") {
@@ -320,8 +296,16 @@ function logout() {
   authUser = null;
   metricsHistory = [];
   currentMetrics = null;
-  renderApp();
   activePage = "dashboard";
+  Services.prefs.setBoolPref("browser.logingate.reauth", true);
+  Services.ww.openWindow(
+    null,
+    "chrome://browser/content/loginGate.html",
+    "_blank",
+    "chrome,centerscreen,modal,resizable=no,width=460,height=560",
+    null
+  );
+  location.reload();
 }
 
 // ── Dashboard ─────────────────────────────────────────────
@@ -344,21 +328,22 @@ async function loadDashboard() {
 }
 
 function renderDashboard() {
-  $("stat-online").textContent =
-    dashboardStats?.online_users_count ?? "\u2014";
+  $("stat-online").textContent = dashboardStats?.online_users_count ?? "\u2014";
 
   const m = currentMetrics;
   $("stat-cpu").textContent = m ? m.cpu_usage.toFixed(1) + "%" : "\u2014";
   if (m && m.memory_total_mb) {
     $("stat-mem").textContent =
       ((m.memory_used_mb / m.memory_total_mb) * 100).toFixed(1) + "%";
-    $("stat-mem-label").textContent = `${(m.memory_used_mb / 1024).toFixed(1)} / ${(m.memory_total_mb / 1024).toFixed(1)} GB`;
+    $("stat-mem-label").textContent =
+      `${(m.memory_used_mb / 1024).toFixed(1)} / ${(m.memory_total_mb / 1024).toFixed(1)} GB`;
   } else {
     $("stat-mem").textContent = "\u2014";
     $("stat-mem-label").textContent = "Memory";
   }
 
-  const canSeeWho = hasPerm("USERS_READ") && hasPerm("USERS_READ_ONLINE_STATUS");
+  const canSeeWho =
+    hasPerm("USERS_READ") && hasPerm("USERS_READ_ONLINE_STATUS");
   const onlineCard = $("online-users-card");
   onlineCard.hidden = !canSeeWho;
 
@@ -430,9 +415,7 @@ async function loadUsers(page) {
   usersPage = page;
   renderUsers();
   try {
-    const data = await api(
-      `/api/auth/users?page=${page}&per_page=${PER_PAGE}`
-    );
+    const data = await api(`/api/auth/users?page=${page}&per_page=${PER_PAGE}`);
     users = data.users;
     usersTotal = data.total;
   } catch (e) {
@@ -449,7 +432,8 @@ function renderUsers() {
   const canSeeOnline = hasPerm("USERS_READ_ONLINE_STATUS");
   const hasAnyAction = canManage || canEditPerms;
 
-  $("users-count").textContent = `${usersTotal} ${usersTotal === 1 ? "user" : "users"}`;
+  $("users-count").textContent =
+    `${usersTotal} ${usersTotal === 1 ? "user" : "users"}`;
   $("btn-new-user").hidden = !canManage || showCreateForm;
   $("create-user-section").hidden = !showCreateForm;
   $("users-actions-col").hidden = !hasAnyAction;
@@ -481,13 +465,29 @@ function renderUsers() {
 
   appendGroupHeader(tbody, "Active", activeUsers.length, colCount);
   for (const u of activeUsers) {
-    appendUserRows(tbody, u, canManage, canEditPerms, hasAnyAction, canSeeOnline, colCount);
+    appendUserRows(
+      tbody,
+      u,
+      canManage,
+      canEditPerms,
+      hasAnyAction,
+      canSeeOnline,
+      colCount
+    );
   }
 
   if (inactiveUsers.length) {
     appendGroupHeader(tbody, "Inactive", inactiveUsers.length, colCount);
     for (const u of inactiveUsers) {
-      appendUserRows(tbody, u, canManage, canEditPerms, hasAnyAction, canSeeOnline, colCount);
+      appendUserRows(
+        tbody,
+        u,
+        canManage,
+        canEditPerms,
+        hasAnyAction,
+        canSeeOnline,
+        colCount
+      );
     }
   }
 
@@ -507,7 +507,17 @@ function appendGroupHeader(tbody, label, count, colCount) {
   tr.className = "group-header-row";
   const td = document.createElement("td");
   td.colSpan = colCount;
-  td.innerHTML = `<div class="group-header-cell"><span class="group-header-label">${label}</span><span class="group-header-count">${count}</span></div>`;
+  const cell = document.createElement("div");
+  cell.className = "group-header-cell";
+  const labelSpan = document.createElement("span");
+  labelSpan.className = "group-header-label";
+  labelSpan.textContent = label;
+  const countSpan = document.createElement("span");
+  countSpan.className = "group-header-count";
+  countSpan.textContent = count;
+  cell.appendChild(labelSpan);
+  cell.appendChild(countSpan);
+  td.appendChild(cell);
   tr.appendChild(td);
   tbody.appendChild(tr);
 }
@@ -597,7 +607,7 @@ function appendUserRows(
       wrap.appendChild(div);
     }
 
-    for (const g of (u.groups ?? [])) {
+    for (const g of u.groups ?? []) {
       if (!g.permissions.length) {
         continue;
       }
@@ -640,7 +650,11 @@ function appendUserRows(
     actDiv.className = "row-actions";
 
     if (showEdit) {
-      const btn = makeMozButton(isEditing ? "Cancel" : "Edit", "ghost", "small");
+      const btn = makeMozButton(
+        isEditing ? "Cancel" : "Edit",
+        "ghost",
+        "small"
+      );
       btn.addEventListener("click", () => {
         if (editingUserId === u.id) {
           cancelEditPerms();
@@ -831,7 +845,6 @@ async function submitCreateUser() {
   }
 
   errorEl.hidden = true;
-  createLoading = true;
   $("btn-create-user").toggleAttribute("disabled", true);
   try {
     await api("/api/auth/users", {
@@ -845,7 +858,6 @@ async function submitCreateUser() {
     errorEl.textContent = e.message;
     errorEl.hidden = false;
   } finally {
-    createLoading = false;
     $("btn-create-user").toggleAttribute("disabled", false);
     renderUsers();
   }
@@ -868,7 +880,8 @@ async function loadGroups() {
 }
 
 function renderGroups() {
-  $("groups-count").textContent = `${groups.length} ${groups.length === 1 ? "group" : "groups"}`;
+  $("groups-count").textContent =
+    `${groups.length} ${groups.length === 1 ? "group" : "groups"}`;
   $("btn-new-group").hidden = showCreateGroupForm;
   $("create-group-section").hidden = !showCreateGroupForm;
   $("groups-loading").hidden = !groupsLoading;
@@ -916,8 +929,12 @@ function appendGroupRow(tbody, g) {
     input.className = "vento-input inline-rename-input";
     input.value = g.name;
     input.addEventListener("keydown", e => {
-      if (e.key === "Enter") saveRenameGroup(g.id, input.value);
-      if (e.key === "Escape") cancelRenameGroup();
+      if (e.key === "Enter") {
+        saveRenameGroup(g.id, input.value);
+      }
+      if (e.key === "Escape") {
+        cancelRenameGroup();
+      }
     });
     nameTd.appendChild(input);
     requestAnimationFrame(() => input.focus());
@@ -954,7 +971,11 @@ function appendGroupRow(tbody, g) {
   const actDiv = document.createElement("div");
   actDiv.className = "row-actions";
 
-  const renameBtn = makeMozButton(isRenaming ? "Cancel" : "Rename", "ghost", "small");
+  const renameBtn = makeMozButton(
+    isRenaming ? "Cancel" : "Rename",
+    "ghost",
+    "small"
+  );
   renameBtn.addEventListener("click", () => {
     if (isRenaming) {
       cancelRenameGroup();
@@ -1073,11 +1094,16 @@ function cancelRenameGroup() {
   renderGroups();
 }
 
-async function saveRenameGroup(groupId, name) {
-  name = name.trim();
-  if (!name) return;
+async function saveRenameGroup(groupId, groupName) {
+  const trimmedName = groupName.trim();
+  if (!trimmedName) {
+    return;
+  }
   try {
-    await api(`/api/groups/${groupId}`, { method: "PUT", body: { name } });
+    await api(`/api/groups/${groupId}`, {
+      method: "PUT",
+      body: { name: trimmedName },
+    });
     renamingGroupId = null;
     showStatus("Group renamed.");
     await loadGroups();
@@ -1119,10 +1145,10 @@ function openCreateGroupForm() {
 }
 
 async function submitCreateGroup() {
-  const name = $("cg-name").value.trim();
+  const groupName = $("cg-name").value.trim();
   const errorEl = $("create-group-error");
 
-  if (!name) {
+  if (!groupName) {
     errorEl.textContent = "Group name is required.";
     errorEl.hidden = false;
     return;
@@ -1133,7 +1159,7 @@ async function submitCreateGroup() {
   try {
     await api("/api/groups", {
       method: "POST",
-      body: { name },
+      body: { name: groupName },
     });
     showCreateGroupForm = false;
     showStatus("Group created.");
@@ -1151,7 +1177,6 @@ async function submitCreateGroup() {
 
 async function openMembersDialog(g) {
   membersGroupId = g.id;
-  membersGroupName = g.name;
   membersAllUsers = [];
   membersChecked = [];
   $("members-overlay").hidden = false;
@@ -1159,7 +1184,6 @@ async function openMembersDialog(g) {
   $("members-filter").value = "";
   $("members-loading").hidden = false;
   clearChildren("members-user-list");
-  membersLoading = true;
   try {
     const [membersData, usersData] = await Promise.all([
       api(`/api/groups/${g.id}/members`),
@@ -1172,7 +1196,6 @@ async function openMembersDialog(g) {
     $("members-overlay").hidden = true;
     return;
   } finally {
-    membersLoading = false;
     $("members-loading").hidden = true;
   }
   renderMembersUserList();
@@ -1248,489 +1271,6 @@ async function saveGroupMembers() {
   }
 }
 
-// ── Passwords ─────────────────────────────────────────────
-
-async function loadPasswords(page) {
-  passwordsLoading = true;
-  passwordsPage = page;
-  $("pw-loading").hidden = false;
-  $("pw-table").hidden = true;
-  try {
-    const data = await api(
-      `/api/passwords?page=${page}&per_page=${PW_PER_PAGE}`
-    );
-    passwords = data.passwords;
-    passwordsTotal = data.total;
-  } catch (e) {
-    showStatus(e.message, "error");
-  } finally {
-    passwordsLoading = false;
-    renderPasswords();
-  }
-}
-
-function renderPasswords() {
-  const canManage = hasPerm("PASSWORDS_MANAGE");
-  const totalPages = Math.ceil(passwordsTotal / PW_PER_PAGE) || 1;
-
-  $("pw-count").textContent = `${passwordsTotal} ${passwordsTotal === 1 ? "entry" : "entries"}`;
-  $("btn-new-pw").hidden = !canManage || showCreatePwForm;
-  $("create-pw-section").hidden = !showCreatePwForm;
-  $("pw-loading").hidden = !passwordsLoading;
-  $("pw-table").hidden = passwordsLoading;
-
-  if (passwordsLoading) {
-    return;
-  }
-
-  const tbody = $("pw-tbody");
-  clearChildren(tbody);
-
-  if (!passwords.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 4;
-    td.style.cssText =
-      "text-align:center;padding:24px;color:var(--text-color-deemphasized,gray)";
-    td.textContent = "No entries yet.";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  } else {
-    for (const pw of passwords) {
-      appendPwRows(tbody, pw, canManage);
-    }
-  }
-
-  $("pw-table").hidden = false;
-
-  $("pw-pagination").hidden = totalPages <= 1;
-  if (totalPages > 1) {
-    $("pw-page-info").textContent = `${passwordsPage} / ${totalPages}`;
-    $("pw-prev").toggleAttribute("disabled", passwordsPage <= 1);
-    $("pw-next").toggleAttribute("disabled", passwordsPage >= totalPages);
-  }
-}
-
-function appendPwRows(tbody, pw, canManage) {
-  const isEditing = editingPwId === pw.id;
-
-  const tr = document.createElement("tr");
-  if (isEditing) {
-    tr.classList.add("editing-row");
-  }
-
-  const titleTd = document.createElement("td");
-  titleTd.textContent = pw.title;
-  tr.appendChild(titleTd);
-
-  const urlTd = document.createElement("td");
-  if (pw.url) {
-    const a = document.createElement("a");
-    a.href = pw.url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.className = "pw-url-link";
-    a.textContent = pw.url;
-    urlTd.appendChild(a);
-  } else {
-    const dash = document.createElement("span");
-    dash.style.color = "var(--text-color-deemphasized,gray)";
-    dash.textContent = "\u2014";
-    urlTd.appendChild(dash);
-  }
-  tr.appendChild(urlTd);
-
-  const usernameTd = document.createElement("td");
-  if (pw.username) {
-    usernameTd.textContent = pw.username;
-  } else {
-    const dash = document.createElement("span");
-    dash.style.color = "var(--text-color-deemphasized,gray)";
-    dash.textContent = "\u2014";
-    usernameTd.appendChild(dash);
-  }
-  tr.appendChild(usernameTd);
-
-  const actTd = document.createElement("td");
-  actTd.className = "col-actions";
-  const actDiv = document.createElement("div");
-  actDiv.className = "row-actions";
-
-  if (canManage) {
-    const editBtn = makeMozButton(isEditing ? "Cancel" : "Edit", "ghost", "small");
-    editBtn.addEventListener("click", () => {
-      if (editingPwId === pw.id) {
-        cancelEditPw();
-      } else {
-        startEditPw(pw);
-      }
-    });
-    actDiv.appendChild(editBtn);
-
-    const accessBtn = makeMozButton("Access", "ghost", "small");
-    accessBtn.addEventListener("click", () => openAccessDialog(pw));
-    actDiv.appendChild(accessBtn);
-
-    const deleteBtn = makeMozButton("Delete", "ghost", "small");
-    deleteBtn.addEventListener("click", () => deletePw(pw.id));
-    actDiv.appendChild(deleteBtn);
-  }
-
-  const fillBtn = makeMozButton("Fill", "ghost", "small");
-  fillBtn.setAttribute("iconsrc", "chrome://browser/skin/login.svg");
-  fillBtn.addEventListener("click", () => fillPassword(pw));
-  actDiv.appendChild(fillBtn);
-
-  actTd.appendChild(actDiv);
-  tr.appendChild(actTd);
-  tbody.appendChild(tr);
-
-  if (isEditing) {
-    const expandTr = document.createElement("tr");
-    expandTr.className = "edit-expand-row";
-    const expandTd = document.createElement("td");
-    expandTd.colSpan = 4;
-
-    const wrap = document.createElement("div");
-    wrap.className = "perms-expand";
-
-    const grid = document.createElement("div");
-    grid.className = "pw-edit-grid";
-
-    const fields = [
-      { id: "epw-title", label: "Title", type: "text", value: pw.title },
-      { id: "epw-url", label: "URL", type: "text", value: pw.url || "" },
-      {
-        id: "epw-username",
-        label: "Username",
-        type: "text",
-        value: pw.username || "",
-      },
-      {
-        id: "epw-value",
-        label: "New password value (leave blank to keep current)",
-        type: "password",
-        value: "",
-      },
-    ];
-
-    for (const f of fields) {
-      const fieldDiv = document.createElement("div");
-      fieldDiv.className = "form-field";
-      const lbl = document.createElement("label");
-      lbl.setAttribute("for", f.id);
-      lbl.textContent = f.label;
-      const inp = document.createElement("input");
-      inp.id = f.id;
-      inp.className = "vento-input";
-      inp.type = f.type;
-      inp.value = f.value;
-      fieldDiv.appendChild(lbl);
-      fieldDiv.appendChild(inp);
-      grid.appendChild(fieldDiv);
-    }
-    wrap.appendChild(grid);
-
-    const actions = document.createElement("div");
-    actions.className = "perms-actions";
-    const saveBtn = makeMozButton("Save", "primary", "small");
-    saveBtn.addEventListener("click", () => submitEditPw(pw.id));
-    const cancelBtn = makeMozButton("Cancel", "ghost", "small");
-    cancelBtn.addEventListener("click", () => cancelEditPw());
-    actions.appendChild(saveBtn);
-    actions.appendChild(cancelBtn);
-    wrap.appendChild(actions);
-
-    expandTd.appendChild(wrap);
-    expandTr.appendChild(expandTd);
-    tbody.appendChild(expandTr);
-  }
-}
-
-function openCreatePwForm() {
-  $("cp-title").value = "";
-  $("cp-url").value = "";
-  $("cp-username").value = "";
-  $("cp-value").value = "";
-  $("create-pw-error").hidden = true;
-  showCreatePwForm = true;
-  editingPwId = null;
-  renderPasswords();
-}
-
-async function submitCreatePw() {
-  const title = $("cp-title").value.trim();
-  const url = $("cp-url").value.trim();
-  const username = $("cp-username").value.trim();
-  const value = $("cp-value").value;
-  const errorEl = $("create-pw-error");
-
-  if (!title || !value) {
-    errorEl.textContent = "Title and password value are required.";
-    errorEl.hidden = false;
-    return;
-  }
-
-  errorEl.hidden = true;
-  createPwLoading = true;
-  $("btn-create-pw").toggleAttribute("disabled", true);
-  try {
-    await api("/api/passwords", {
-      method: "POST",
-      body: { title, url, username, value },
-    });
-    showCreatePwForm = false;
-    showStatus("Password entry created.");
-    await loadPasswords(1);
-  } catch (e) {
-    errorEl.textContent = e.message;
-    errorEl.hidden = false;
-  } finally {
-    createPwLoading = false;
-    $("btn-create-pw").toggleAttribute("disabled", false);
-    renderPasswords();
-  }
-}
-
-function startEditPw(pw) {
-  editingPwId = pw.id;
-  showCreatePwForm = false;
-  renderPasswords();
-}
-
-function cancelEditPw() {
-  editingPwId = null;
-  renderPasswords();
-}
-
-async function submitEditPw(id) {
-  const body = {};
-  const title = document.getElementById("epw-title")?.value;
-  const url = document.getElementById("epw-url")?.value;
-  const username = document.getElementById("epw-username")?.value;
-  const value = document.getElementById("epw-value")?.value;
-  if (title) {
-    body.title = title;
-  }
-  if (url !== undefined) {
-    body.url = url;
-  }
-  if (username !== undefined) {
-    body.username = username;
-  }
-  if (value) {
-    body.value = value;
-  }
-  try {
-    await api(`/api/passwords/${id}`, { method: "PUT", body });
-    editingPwId = null;
-    showStatus("Password entry updated.");
-    await loadPasswords(passwordsPage);
-  } catch (e) {
-    showStatus(e.message, "error");
-  }
-}
-
-async function deletePw(id) {
-  try {
-    await api(`/api/passwords/${id}`, { method: "DELETE" });
-    showStatus("Password entry deleted.");
-    await loadPasswords(passwordsPage);
-  } catch (e) {
-    showStatus(e.message, "error");
-  }
-}
-
-// ── Access dialog ─────────────────────────────────────────
-
-async function openAccessDialog(pw) {
-  accessPasswordId = pw.id;
-  accessAllUsers = [];
-  accessChecked = [];
-  accessAllGroups = [];
-  accessCheckedGroups = [];
-  $("access-overlay").hidden = false;
-  $("access-title").textContent = `Access \u2014 ${pw.title}`;
-  $("access-filter").value = "";
-  $("access-loading").hidden = false;
-  clearChildren("access-user-list");
-  accessLoading = true;
-  try {
-    const [accessData, usersData, groupsData] = await Promise.all([
-      api(`/api/passwords/${pw.id}/access`),
-      api(`/api/auth/users?page=1&per_page=500`),
-      api(`/api/groups`),
-    ]);
-    accessChecked = accessData.user_ids ?? [];
-    accessCheckedGroups = accessData.group_ids ?? [];
-    accessAllUsers = usersData.users ?? [];
-    accessAllGroups = groupsData.groups ?? [];
-  } catch (e) {
-    showStatus(e.message, "error");
-    $("access-overlay").hidden = true;
-    return;
-  } finally {
-    accessLoading = false;
-    $("access-loading").hidden = true;
-  }
-  renderAccessUserList();
-}
-
-function accessTotalCount() {
-  const ids = new Set(accessChecked);
-  if (authUser?.user_id != null) {
-    ids.add(authUser.user_id);
-  }
-  for (const gId of accessCheckedGroups) {
-    for (const u of accessAllUsers) {
-      if (u.groups?.some(g => g.id === gId)) {
-        ids.add(u.id);
-      }
-    }
-  }
-  return ids.size;
-}
-
-function renderAccessUserList() {
-  const total = accessTotalCount();
-  const summaryEl = $("access-summary");
-  if (total > 0) {
-    summaryEl.textContent = `${total} ${total === 1 ? "user" : "users"} have access`;
-    summaryEl.hidden = false;
-  } else {
-    summaryEl.hidden = true;
-  }
-
-  const q = $("access-filter").value.trim().toLowerCase();
-  const filteredUsers = q
-    ? accessAllUsers.filter(
-        u =>
-          u.display_name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q)
-      )
-    : accessAllUsers;
-  const filteredGroups = q
-    ? accessAllGroups.filter(g => g.name.toLowerCase().includes(q))
-    : accessAllGroups;
-
-  const listEl = $("access-user-list");
-  clearChildren(listEl);
-
-  if (!filteredUsers.length && !filteredGroups.length) {
-    const p = document.createElement("p");
-    p.style.cssText =
-      "color:var(--text-color-deemphasized,gray);font-size:13px;margin:8px 0";
-    p.textContent = "No results found.";
-    listEl.appendChild(p);
-    return;
-  }
-
-  if (filteredGroups.length) {
-    const heading = document.createElement("div");
-    heading.className = "access-section-heading";
-    heading.textContent = "Groups";
-    listEl.appendChild(heading);
-
-    for (const g of filteredGroups) {
-      const lbl = document.createElement("label");
-      lbl.className = "access-user-item";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = accessCheckedGroups.includes(g.id);
-      cb.addEventListener("change", () => {
-        if (accessCheckedGroups.includes(g.id)) {
-          accessCheckedGroups = accessCheckedGroups.filter(id => id !== g.id);
-          const groupUserIds = new Set(
-            accessAllUsers
-              .filter(u => u.groups?.some(ug => ug.id === g.id))
-              .map(u => u.id)
-          );
-          accessChecked = accessChecked.filter(id => !groupUserIds.has(id));
-        } else {
-          accessCheckedGroups = [...accessCheckedGroups, g.id];
-          for (const u of accessAllUsers) {
-            if (u.groups?.some(ug => ug.id === g.id) && !accessChecked.includes(u.id)) {
-              accessChecked = [...accessChecked, u.id];
-            }
-          }
-        }
-        renderAccessUserList();
-      });
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "access-user-name";
-      nameSpan.textContent = g.name;
-      const countSpan = document.createElement("span");
-      countSpan.className = "access-user-email";
-      countSpan.textContent = `${g.member_count} ${g.member_count === 1 ? "member" : "members"}`;
-      lbl.appendChild(cb);
-      lbl.appendChild(nameSpan);
-      lbl.appendChild(countSpan);
-      listEl.appendChild(lbl);
-    }
-  }
-
-  if (filteredUsers.length) {
-    const heading = document.createElement("div");
-    heading.className = "access-section-heading";
-    heading.textContent = "Users";
-    listEl.appendChild(heading);
-
-    for (const u of filteredUsers) {
-      const isSelf = u.id === authUser?.user_id;
-      const lbl = document.createElement("label");
-      lbl.className = "access-user-item";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = isSelf || accessChecked.includes(u.id);
-      if (isSelf) {
-        cb.disabled = true;
-      }
-      cb.addEventListener("change", () => {
-        if (accessChecked.includes(u.id)) {
-          accessChecked = accessChecked.filter(id => id !== u.id);
-          accessCheckedGroups = accessCheckedGroups.filter(
-            gId => !u.groups?.some(g => g.id === gId)
-          );
-        } else {
-          accessChecked = [...accessChecked, u.id];
-        }
-        renderAccessUserList();
-      });
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "access-user-name";
-      nameSpan.textContent = u.display_name;
-      const emailSpan = document.createElement("span");
-      emailSpan.className = "access-user-email";
-      emailSpan.textContent = u.email;
-      lbl.appendChild(cb);
-      lbl.appendChild(nameSpan);
-      lbl.appendChild(emailSpan);
-      listEl.appendChild(lbl);
-    }
-  }
-}
-
-function closeAccessDialog() {
-  $("access-overlay").hidden = true;
-  accessPasswordId = null;
-}
-
-async function savePasswordAccess() {
-  $("btn-save-access").toggleAttribute("disabled", true);
-  try {
-    await api(`/api/passwords/${accessPasswordId}/access`, {
-      method: "PUT",
-      body: { user_ids: accessChecked, group_ids: accessCheckedGroups },
-    });
-    $("access-overlay").hidden = true;
-    showStatus("Access list saved.");
-  } catch (e) {
-    showStatus(e.message, "error");
-  } finally {
-    $("btn-save-access").toggleAttribute("disabled", false);
-  }
-}
-
 // ── Profile ───────────────────────────────────────────────
 
 function renderProfile() {
@@ -1751,83 +1291,6 @@ function renderProfile() {
     dash.style.color = "var(--text-color-deemphasized,gray)";
     dash.textContent = "\u2014";
     permsEl.appendChild(dash);
-  }
-}
-
-// ── Fill password ─────────────────────────────────────────
-
-async function fillPassword(pw) {
-  const win = Services.wm.getMostRecentBrowserWindow();
-  if (!win?.gBrowser) {
-    showStatus("No browser window found.", "error");
-    return;
-  }
-  const { gBrowser } = win;
-
-  let pwHostname = "";
-  if (pw.url) {
-    try {
-      const href = /^https?:\/\//i.test(pw.url) ? pw.url : `https://${pw.url}`;
-      pwHostname = new URL(href).hostname.toLowerCase();
-    } catch {
-      // not a parseable URL
-    }
-  }
-
-  const candidates = Array.from(gBrowser.tabs).filter(
-    t => !t.closing && t.linkedBrowser?.currentURI?.spec !== "about:vento"
-  );
-
-  candidates.sort((a, b) => {
-    const hostnameOf = tab => {
-      try {
-        return new URL(
-          tab.linkedBrowser.currentURI.spec
-        ).hostname.toLowerCase();
-      } catch {
-        return "";
-      }
-    };
-    const aMatch = pwHostname && hostnameOf(a) === pwHostname ? 1 : 0;
-    const bMatch = pwHostname && hostnameOf(b) === pwHostname ? 1 : 0;
-    if (bMatch !== aMatch) {
-      return bMatch - aMatch;
-    }
-    return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
-  });
-
-  if (!candidates.length) {
-    showStatus("No other tab found to fill into.", "error");
-    return;
-  }
-
-  const targetTab = candidates[0];
-  const bc = targetTab.linkedBrowser?.browsingContext;
-  if (!bc?.currentWindowGlobal) {
-    showStatus("Target tab is not ready.", "error");
-    return;
-  }
-
-  try {
-    const actor = bc.currentWindowGlobal.getActor("VentoPassword");
-    const result = await actor.directFill({
-      credentialId: pw.id,
-      username: pw.username,
-      credentialTitle: pw.title,
-      apiBase: apiBase(),
-      bearerToken: token(),
-    });
-    if (result?.filled) {
-      showStatus("Password filled.");
-      gBrowser.selectedTab = targetTab;
-    } else {
-      showStatus(
-        `Could not fill: ${result?.reason ?? "no password field found"}`,
-        "error"
-      );
-    }
-  } catch (e) {
-    showStatus(`Fill failed: ${e.message}`, "error");
   }
 }
 
@@ -1870,26 +1333,6 @@ async function init() {
   });
   $("btn-save-members").addEventListener("click", () => saveGroupMembers());
   $("btn-cancel-members").addEventListener("click", () => closeMembersDialog());
-
-  // Passwords
-  $("btn-new-pw").addEventListener("click", () => openCreatePwForm());
-  $("btn-cancel-create-pw").addEventListener("click", () => {
-    showCreatePwForm = false;
-    renderPasswords();
-  });
-  $("btn-create-pw").addEventListener("click", () => submitCreatePw());
-  $("pw-prev").addEventListener("click", () => loadPasswords(passwordsPage - 1));
-  $("pw-next").addEventListener("click", () => loadPasswords(passwordsPage + 1));
-
-  // Access dialog
-  $("access-filter").addEventListener("input", () => renderAccessUserList());
-  $("access-overlay").addEventListener("click", e => {
-    if (e.target === e.currentTarget) {
-      closeAccessDialog();
-    }
-  });
-  $("btn-save-access").addEventListener("click", () => savePasswordAccess());
-  $("btn-cancel-access").addEventListener("click", () => closeAccessDialog());
 
   // Profile
   $("btn-logout").addEventListener("click", () => logout());

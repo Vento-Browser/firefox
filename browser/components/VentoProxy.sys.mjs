@@ -11,40 +11,41 @@ export const VentoProxy = {
    */
   apply(host, port, serverUrl, proxyToken) {
     const prefs = Services.prefs;
+    const lock = (name, setter, value) => {
+      prefs.unlockPref(name);
+      prefs[setter](name, value);
+      prefs.lockPref(name);
+    };
 
-    prefs.setIntPref("network.proxy.type", 1);
-    prefs.setStringPref("network.proxy.socks", host);
-    prefs.setIntPref("network.proxy.socks_port", port);
-    prefs.setIntPref("network.proxy.socks_version", 5);
-    prefs.setBoolPref("network.proxy.socks_remote_dns", true);
+    lock("network.proxy.type", "setIntPref", 1);
+    lock("network.proxy.socks", "setStringPref", host);
+    lock("network.proxy.socks_port", "setIntPref", port);
+    lock("network.proxy.socks_version", "setIntPref", 5);
+    lock("network.proxy.socks_remote_dns", "setBoolPref", true);
 
     if (proxyToken) {
-      prefs.setStringPref("network.proxy.socks_username", "vento");
-      prefs.setStringPref("network.proxy.socks_password", proxyToken);
+      lock("network.proxy.socks_username", "setStringPref", "vento");
+      lock("network.proxy.socks_password", "setStringPref", proxyToken);
     } else {
-      prefs.setStringPref("network.proxy.socks_username", "");
-      prefs.setStringPref("network.proxy.socks_password", "");
+      lock("network.proxy.socks_username", "setStringPref", "");
+      lock("network.proxy.socks_password", "setStringPref", "");
     }
 
-    const noProxiesParts = [];
+    const noProxiesParts = ["localhost", "127.0.0.1", "::1"];
     if (serverUrl) {
       try {
-        noProxiesParts.push(new URL(serverUrl).hostname);
+        const h = new URL(serverUrl).hostname;
+        if (!noProxiesParts.includes(h)) {
+          noProxiesParts.push(h);
+        }
       } catch {}
     }
-    // Allow direct access to the proxy host so health checks bypass SOCKS5.
-    if (host) {
-      noProxiesParts.push(host);
-    }
-    prefs.setStringPref(
-      "network.proxy.no_proxies_on",
-      noProxiesParts.join(",")
-    );
+    lock("network.proxy.no_proxies_on", "setStringPref", noProxiesParts.join(","));
 
-    prefs.setBoolPref("network.proxy.failover_direct", false);
-    prefs.setBoolPref("network.proxy.allow_hijacking_localhost", true);
-    prefs.setBoolPref("media.peerconnection.enabled", false);
-    prefs.setBoolPref("network.http.http3.enable", false);
+    lock("network.proxy.failover_direct", "setBoolPref", false);
+    lock("network.proxy.allow_hijacking_localhost", "setBoolPref", true);
+    lock("media.peerconnection.enabled", "setBoolPref", false);
+    lock("network.http.http3.enable", "setBoolPref", false);
   },
 
   /**
@@ -58,7 +59,14 @@ export const VentoProxy = {
       return;
     }
     if (hostname) {
-      Services.prefs.setStringPref("network.proxy.no_proxies_on", hostname);
+      const parts = ["localhost", "127.0.0.1", "::1"];
+      if (!parts.includes(hostname)) {
+        parts.push(hostname);
+      }
+      const prefs = Services.prefs;
+      prefs.unlockPref("network.proxy.no_proxies_on");
+      prefs.setStringPref("network.proxy.no_proxies_on", parts.join(","));
+      prefs.lockPref("network.proxy.no_proxies_on");
     }
   },
 };

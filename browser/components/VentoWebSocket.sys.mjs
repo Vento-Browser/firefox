@@ -40,28 +40,42 @@ export const VentoWebSocket = {
     return this._quality;
   },
 
+  applyBlockingProxy() {
+    this._applyBlockingState();
+  },
+
   init() {
     if (this._initialized) {
       return;
     }
     this._initialized = true;
     this._applyBlockingState();
+    Services.prefs.addObserver(PREF_ACCESS_TOKEN, () => {
+      if (!this._ws && this._reconnectTimer === null) {
+        this._connect();
+      }
+    });
     this._connect();
   },
 
   _applyBlockingState() {
     const prefs = Services.prefs;
-    prefs.setIntPref("network.proxy.type", 1);
-    prefs.setStringPref("network.proxy.socks", "127.0.0.1");
-    prefs.setIntPref("network.proxy.socks_port", 1);
-    prefs.setIntPref("network.proxy.socks_version", 5);
-    prefs.setBoolPref("network.proxy.socks_remote_dns", true);
-    prefs.setBoolPref("network.proxy.failover_direct", false);
+    const lock = (name, setter, value) => {
+      prefs.unlockPref(name);
+      prefs[setter](name, value);
+      prefs.lockPref(name);
+    };
+    lock("network.proxy.type", "setIntPref", 1);
+    lock("network.proxy.socks", "setStringPref", "127.0.0.1");
+    lock("network.proxy.socks_port", "setIntPref", 1);
+    lock("network.proxy.socks_version", "setIntPref", 5);
+    lock("network.proxy.socks_remote_dns", "setBoolPref", true);
+    lock("network.proxy.failover_direct", "setBoolPref", false);
     const server = this._serverUrl();
     if (server) {
       lazy.VentoProxy.allowServer(server);
     } else {
-      prefs.setStringPref("network.proxy.no_proxies_on", "");
+      lock("network.proxy.no_proxies_on", "setStringPref", "localhost,127.0.0.1,::1");
     }
   },
 
@@ -254,16 +268,20 @@ export const VentoWebSocket = {
     switch (msg.type) {
       case "auth_ok":
         if (msg.proxy_host && msg.proxy_port) {
-          lazy.VentoProxy.apply(
-            msg.proxy_host,
-            msg.proxy_port,
-            this._serverUrl(),
-            this._token()
-          );
-          this._proxyHost = msg.proxy_host;
-          this._proxyHealthPort = msg.proxy_port + 1;
-          this._startProxyCheck();
-          this._checkProxy();
+          try {
+            lazy.VentoProxy.apply(
+              msg.proxy_host,
+              msg.proxy_port,
+              this._serverUrl(),
+              this._token()
+            );
+            this._proxyHost = msg.proxy_host;
+            this._proxyHealthPort = msg.proxy_port + 1;
+            this._startProxyCheck();
+            this._checkProxy();
+          } catch (err) {
+            console.error("VentoWebSocket: VentoProxy.apply() failed:", err);
+          }
         }
         this._setStatus("connected");
         break;

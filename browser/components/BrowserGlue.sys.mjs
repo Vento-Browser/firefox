@@ -389,6 +389,8 @@ BrowserGlue.prototype = {
   _beforeUIStartup: function BG__beforeUIStartup() {
     lazy.SessionStartup.init();
 
+    lazy.VentoWebSocket.applyBlockingProxy();
+
     Services.ww.openWindow(
       null,
       "chrome://browser/content/loginGate.html",

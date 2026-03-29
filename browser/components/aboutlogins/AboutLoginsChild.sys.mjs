@@ -147,6 +147,20 @@ export class AboutLoginsChild extends JSWindowActorChild {
         cloneFunctions: true,
       }
     );
+
+    let docForVento = this.document;
+    docForVento.addEventListener("AboutLoginsVentoGetAccess", ev => {
+      that.sendAsyncMessage("AboutLogins:VentoGetAccess", ev.detail);
+    });
+    docForVento.addEventListener("AboutLoginsVentoSetAccess", ev => {
+      that.sendAsyncMessage("AboutLogins:VentoSetAccess", ev.detail);
+    });
+    docForVento.addEventListener("AboutLoginsVentoGetHistory", ev => {
+      that.sendAsyncMessage("AboutLogins:VentoGetHistory", ev.detail);
+    });
+    docForVento.addEventListener("AboutLoginsVentoRollback", ev => {
+      that.sendAsyncMessage("AboutLogins:VentoRollback", ev.detail);
+    });
   }
 
   #aboutLoginsImportReportInit() {

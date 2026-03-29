@@ -789,3 +789,154 @@
   color: var(--text-color-deemphasized, gray);
   padding: 6px 0 2px;
 }
+
+/* ── Wide access dialog ────────────────────────────────────── */
+
+.access-dialog-card--wide {
+  width: 580px;
+}
+
+/* ── Access share rows (hidden / can_update flags) ─────────── */
+
+.access-share-legend {
+  display: grid;
+  grid-template-columns: 1fr 72px 80px;
+  gap: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color-deemphasized, gray);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 8px 4px;
+}
+
+.access-col-label {
+  text-align: center;
+}
+
+.access-share-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 80px;
+  gap: 0 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--border-radius-small, 4px);
+  font-size: 13px;
+}
+
+.access-share-row:hover {
+  background: color-mix(in srgb, var(--color-accent-primary) 6%, transparent);
+}
+
+.access-share-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.access-share-select > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.access-share-select .access-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-flag-col {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.access-flag-cb {
+  cursor: pointer;
+}
+
+/* ── Password entry badges ─────────────────────────────────── */
+
+.badge-manual {
+  background: color-mix(in srgb, teal 14%, transparent);
+  color: color-mix(in srgb, teal 70%, black);
+}
+
+.badge-hidden {
+  background: color-mix(in srgb, purple 14%, transparent);
+  color: color-mix(in srgb, purple 65%, black);
+}
+
+/* ── Passwords page origin cell ────────────────────────────── */
+
+.pw-origin-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── History dialog ────────────────────────────────────────── */
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 360px;
+}
+
+.history-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 6px;
+  border-radius: var(--border-radius-small, 4px);
+  border-block-end: 1px solid var(--border-color-default, #e0e0e6);
+}
+
+.history-entry:last-child {
+  border-block-end: none;
+}
+
+.history-entry-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-entry-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.history-entry-time {
+  font-size: 12px;
+  color: var(--text-color-deemphasized, gray);
+}
+
+.badge-action-created {
+  background: color-mix(in srgb, green 14%, transparent);
+  color: color-mix(in srgb, green 65%, black);
+}
+
+.badge-action-updated {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-primary, #0060df) 12%,
+    transparent
+  );
+  color: var(--color-accent-primary, #0060df);
+}
+
+.badge-action-rollback {
+  background: color-mix(in srgb, orange 15%, transparent);
+  color: color-mix(in srgb, orange 70%, black);
+}

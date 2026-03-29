@@ -62,9 +62,6 @@
           <button class="category" name="groups" id="nav-groups">
             <span class="category-name">User Groups</span>
           </button>
-          <button class="category" name="passwords">
-            <span class="category-name">Hidden Passwords</span>
-          </button>
           <button class="category" name="profile">
             <span class="category-name">Profile</span>
           </button>
@@ -99,31 +96,80 @@
                 </div>
               </div>
               <moz-card heading="System load 15 min">
-                <p class="dashboard-empty-msg" id="metrics-waiting">Waiting for data</p>
+                <p class="dashboard-empty-msg" id="metrics-waiting">
+                  Waiting for data
+                </p>
                 <div class="metrics-chart-wrap" id="metrics-chart-wrap" hidden>
-                  <svg class="metrics-chart" viewBox="0 0 900 120" preserveAspectRatio="none">
-                    <line x1="0" y1="30" x2="900" y2="30" class="chart-grid-line"></line>
-                    <line x1="0" y1="60" x2="900" y2="60" class="chart-grid-line"></line>
-                    <line x1="0" y1="90" x2="900" y2="90" class="chart-grid-line"></line>
-                    <polyline id="chart-cpu" class="chart-line chart-line--cpu" points=""></polyline>
-                    <polyline id="chart-mem" class="chart-line chart-line--mem" points=""></polyline>
+                  <svg
+                    class="metrics-chart"
+                    viewBox="0 0 900 120"
+                    preserveAspectRatio="none"
+                  >
+                    <line
+                      x1="0"
+                      y1="30"
+                      x2="900"
+                      y2="30"
+                      class="chart-grid-line"
+                    ></line>
+                    <line
+                      x1="0"
+                      y1="60"
+                      x2="900"
+                      y2="60"
+                      class="chart-grid-line"
+                    ></line>
+                    <line
+                      x1="0"
+                      y1="90"
+                      x2="900"
+                      y2="90"
+                      class="chart-grid-line"
+                    ></line>
+                    <polyline
+                      id="chart-cpu"
+                      class="chart-line chart-line--cpu"
+                      points=""
+                    ></polyline>
+                    <polyline
+                      id="chart-mem"
+                      class="chart-line chart-line--mem"
+                      points=""
+                    ></polyline>
                   </svg>
                   <div class="chart-legend">
-                    <span class="chart-legend-item chart-legend-item--cpu">CPU</span>
-                    <span class="chart-legend-item chart-legend-item--mem">Memory</span>
+                    <span class="chart-legend-item chart-legend-item--cpu"
+                      >CPU</span
+                    >
+                    <span class="chart-legend-item chart-legend-item--mem"
+                      >Memory</span
+                    >
                     <span class="chart-legend-time">15 min ago / now</span>
                   </div>
                 </div>
               </moz-card>
               <moz-card heading="Online now" id="online-users-card" hidden>
-                <div class="loading-state" id="online-users-loading" style="padding:20px 0" hidden>
+                <div
+                  class="loading-state"
+                  id="online-users-loading"
+                  style="padding: 20px 0"
+                  hidden
+                >
                   <div class="spinner"></div>
                 </div>
-                <ul class="online-users-list" id="online-users-list" hidden></ul>
-                <p class="dashboard-empty-msg" id="online-users-empty" hidden>No users are currently online.</p>
+                <ul
+                  class="online-users-list"
+                  id="online-users-list"
+                  hidden
+                ></ul>
+                <p class="dashboard-empty-msg" id="online-users-empty" hidden>
+                  No users are currently online.
+                </p>
               </moz-card>
               <div class="dashboard-refresh">
-                <moz-button type="ghost" size="small" id="btn-refresh">Refresh</moz-button>
+                <moz-button type="ghost" size="small" id="btn-refresh"
+                  >Refresh</moz-button
+                >
               </div>
             </div>
           </section>
@@ -135,31 +181,65 @@
                 <div class="form-grid">
                   <div class="form-field">
                     <label for="cu-name">Display name</label>
-                    <input id="cu-name" class="vento-input" type="text" autocomplete="off" />
+                    <input
+                      id="cu-name"
+                      class="vento-input"
+                      type="text"
+                      autocomplete="off"
+                    />
                   </div>
                   <div class="form-field">
                     <label for="cu-email">Email</label>
-                    <input id="cu-email" class="vento-input" type="email" autocomplete="off" />
+                    <input
+                      id="cu-email"
+                      class="vento-input"
+                      type="email"
+                      autocomplete="off"
+                    />
                   </div>
                   <div class="form-field password-field">
                     <label for="cu-password">Password</label>
                     <div class="password-input-row">
-                      <input id="cu-password" class="vento-input" type="password" autocomplete="new-password" />
-                      <moz-button type="ghost" size="small" id="btn-gen-password">Generate</moz-button>
-                      <moz-button type="ghost" size="small" id="btn-copy-password">Copy</moz-button>
+                      <input
+                        id="cu-password"
+                        class="vento-input"
+                        type="password"
+                        autocomplete="new-password"
+                      />
+                      <moz-button
+                        type="ghost"
+                        size="small"
+                        id="btn-gen-password"
+                        >Generate</moz-button
+                      >
+                      <moz-button
+                        type="ghost"
+                        size="small"
+                        id="btn-copy-password"
+                        >Copy</moz-button
+                      >
                     </div>
                   </div>
                 </div>
                 <div class="form-error" id="create-user-error" hidden></div>
                 <div class="form-actions">
-                  <moz-button type="primary" size="small" id="btn-create-user">Create user</moz-button>
-                  <moz-button type="ghost" size="small" id="btn-cancel-create-user">Cancel</moz-button>
+                  <moz-button type="primary" size="small" id="btn-create-user"
+                    >Create user</moz-button
+                  >
+                  <moz-button
+                    type="ghost"
+                    size="small"
+                    id="btn-cancel-create-user"
+                    >Cancel</moz-button
+                  >
                 </div>
               </moz-card>
             </div>
             <div class="users-toolbar">
               <span class="users-count" id="users-count"></span>
-              <moz-button type="primary" id="btn-new-user" hidden>New user</moz-button>
+              <moz-button type="primary" id="btn-new-user" hidden
+                >New user</moz-button
+              >
             </div>
             <div class="loading-state" id="users-loading" hidden>
               <div class="spinner"></div>
@@ -177,9 +257,19 @@
               <tbody id="users-tbody"></tbody>
             </table>
             <div class="pagination" id="users-pagination" hidden>
-              <moz-button type="ghost" size="small" id="users-prev" iconsrc="chrome://global/skin/icons/arrow-left.svg"></moz-button>
+              <moz-button
+                type="ghost"
+                size="small"
+                id="users-prev"
+                iconsrc="chrome://global/skin/icons/arrow-left.svg"
+              ></moz-button>
               <span id="users-page-info"></span>
-              <moz-button type="ghost" size="small" id="users-next" iconsrc="chrome://global/skin/icons/arrow-right.svg"></moz-button>
+              <moz-button
+                type="ghost"
+                size="small"
+                id="users-next"
+                iconsrc="chrome://global/skin/icons/arrow-right.svg"
+              ></moz-button>
             </div>
           </section>
 
@@ -190,19 +280,33 @@
                 <div class="form-grid">
                   <div class="form-field">
                     <label for="cg-name">Group name</label>
-                    <input id="cg-name" class="vento-input" type="text" autocomplete="off" />
+                    <input
+                      id="cg-name"
+                      class="vento-input"
+                      type="text"
+                      autocomplete="off"
+                    />
                   </div>
                 </div>
                 <div class="form-error" id="create-group-error" hidden></div>
                 <div class="form-actions">
-                  <moz-button type="primary" size="small" id="btn-create-group">Create group</moz-button>
-                  <moz-button type="ghost" size="small" id="btn-cancel-create-group">Cancel</moz-button>
+                  <moz-button type="primary" size="small" id="btn-create-group"
+                    >Create group</moz-button
+                  >
+                  <moz-button
+                    type="ghost"
+                    size="small"
+                    id="btn-cancel-create-group"
+                    >Cancel</moz-button
+                  >
                 </div>
               </moz-card>
             </div>
             <div class="users-toolbar">
               <span class="users-count" id="groups-count"></span>
-              <moz-button type="primary" id="btn-new-group">New group</moz-button>
+              <moz-button type="primary" id="btn-new-group"
+                >New group</moz-button
+              >
             </div>
             <div class="loading-state" id="groups-loading" hidden>
               <div class="spinner"></div>
@@ -218,60 +322,6 @@
               </thead>
               <tbody id="groups-tbody"></tbody>
             </table>
-          </section>
-
-          <!-- Hidden Passwords -->
-          <section id="page-passwords" class="page" hidden>
-            <div id="create-pw-section" hidden>
-              <moz-card heading="New password entry">
-                <div class="form-grid">
-                  <div class="form-field">
-                    <label for="cp-title">Title</label>
-                    <input id="cp-title" class="vento-input" type="text" autocomplete="off" />
-                  </div>
-                  <div class="form-field">
-                    <label for="cp-url">URL</label>
-                    <input id="cp-url" class="vento-input" type="text" autocomplete="off" />
-                  </div>
-                  <div class="form-field">
-                    <label for="cp-username">Username</label>
-                    <input id="cp-username" class="vento-input" type="text" autocomplete="off" />
-                  </div>
-                  <div class="form-field">
-                    <label for="cp-value">Password value</label>
-                    <input id="cp-value" class="vento-input" type="password" autocomplete="new-password" />
-                  </div>
-                </div>
-                <div class="form-error" id="create-pw-error" hidden></div>
-                <div class="form-actions">
-                  <moz-button type="primary" size="small" id="btn-create-pw">Create entry</moz-button>
-                  <moz-button type="ghost" size="small" id="btn-cancel-create-pw">Cancel</moz-button>
-                </div>
-              </moz-card>
-            </div>
-            <div class="users-toolbar">
-              <span class="users-count" id="pw-count"></span>
-              <moz-button type="primary" id="btn-new-pw" hidden>New entry</moz-button>
-            </div>
-            <div class="loading-state" id="pw-loading" hidden>
-              <div class="spinner"></div>
-            </div>
-            <table class="vento-table" id="pw-table" hidden>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>URL</th>
-                  <th>Username</th>
-                  <th class="col-actions"></th>
-                </tr>
-              </thead>
-              <tbody id="pw-tbody"></tbody>
-            </table>
-            <div class="pagination" id="pw-pagination" hidden>
-              <moz-button type="ghost" size="small" id="pw-prev" iconsrc="chrome://global/skin/icons/arrow-left.svg"></moz-button>
-              <span id="pw-page-info"></span>
-              <moz-button type="ghost" size="small" id="pw-next" iconsrc="chrome://global/skin/icons/arrow-right.svg"></moz-button>
-            </div>
           </section>
 
           <!-- Profile -->
@@ -296,35 +346,32 @@
       </div>
     </div>
 
-    <!-- Access dialog (password sharing) -->
-    <div class="access-overlay" id="access-overlay" hidden>
-      <div class="access-dialog-card">
-        <h3 class="access-dialog-title" id="access-title"></h3>
-        <input class="vento-input access-filter-input" type="text" id="access-filter" placeholder="Filter by name or email" />
-        <div class="loading-state" id="access-loading" style="padding:20px 0" hidden>
-          <div class="spinner"></div>
-        </div>
-        <div class="access-summary" id="access-summary" hidden></div>
-        <div class="access-user-list" id="access-user-list"></div>
-        <div class="access-dialog-footer">
-          <moz-button type="primary" size="small" id="btn-save-access">Save</moz-button>
-          <moz-button type="ghost" size="small" id="btn-cancel-access">Cancel</moz-button>
-        </div>
-      </div>
-    </div>
-
     <!-- Group members dialog -->
     <div class="access-overlay" id="members-overlay" hidden>
       <div class="access-dialog-card">
         <h3 class="access-dialog-title" id="members-title"></h3>
-        <input class="vento-input access-filter-input" type="text" id="members-filter" placeholder="Filter by name or email" />
-        <div class="loading-state" id="members-loading" style="padding:20px 0" hidden>
+        <input
+          class="vento-input access-filter-input"
+          type="text"
+          id="members-filter"
+          placeholder="Filter by name or email"
+        />
+        <div
+          class="loading-state"
+          id="members-loading"
+          style="padding: 20px 0"
+          hidden
+        >
           <div class="spinner"></div>
         </div>
         <div class="access-user-list" id="members-user-list"></div>
         <div class="access-dialog-footer">
-          <moz-button type="primary" size="small" id="btn-save-members">Save</moz-button>
-          <moz-button type="ghost" size="small" id="btn-cancel-members">Cancel</moz-button>
+          <moz-button type="primary" size="small" id="btn-save-members"
+            >Save</moz-button
+          >
+          <moz-button type="ghost" size="small" id="btn-cancel-members"
+            >Cancel</moz-button
+          >
         </div>
       </div>
     </div>

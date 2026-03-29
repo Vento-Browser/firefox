@@ -21,18 +21,18 @@ export class VentoPasswordParent extends JSWindowActorParent {
    * Called directly from vento-page.mjs (same parent process).
    *
    * @param {object} opts
-   * @param {number} opts.credentialId     Password record id on the backend.
+   * @param {string} opts.guid             Login GUID on the backend.
    * @param {string} opts.username         Username to fill into the login field.
    * @param {string} opts.credentialTitle  Credential name shown in the chip UI.
    * @param {string} opts.apiBase          Backend base URL, e.g. "https://…".
    * @param {string} opts.bearerToken      JWT for authenticating the API call.
    * @returns {Promise<{filled: boolean, reason?: string}>}
    */
-  async directFill({ credentialId, username, credentialTitle, apiBase, bearerToken }) {
+  async directFill({ guid, username, credentialTitle, apiBase, bearerToken }) {
     let plaintext;
     try {
       const resp = await fetch(
-        `${apiBase}/api/passwords/${credentialId}/value`,
+        `${apiBase}/api/browser-logins/${encodeURIComponent(guid)}/value`,
         {
           headers: {
             Authorization: `Bearer ${bearerToken}`,
