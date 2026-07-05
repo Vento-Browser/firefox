@@ -1,0 +1,65 @@
+name: Build Vento Browser
+
+on:
+  push:
+    branches: [my_dev]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+# A full browser build takes 1.5–3 h per platform on GitHub-hosted runners.
+jobs:
+  build-macos:
+    name: macOS (aarch64)
+    runs-on: macos-14
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Bootstrap and build
+        run: ./.github/scripts/ci-build.sh
+        env:
+          MOZBUILD_STATE_PATH: ${{ runner.temp }}/.mozbuild
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: vento-macos-aarch64
+          path: obj-*/dist/*.dmg
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows (x86_64)
+    runs-on: windows-2022
+    timeout-minutes: 360
+    env:
+      MOZILLABUILD: C:\mozilla-build
+    steps:
+      # Firefox sources must keep LF endings; do this before checkout.
+      - name: Disable autocrlf
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - name: Install MozillaBuild
+        run: |
+          Invoke-WebRequest -Uri https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe -OutFile "$env:TEMP\MozillaBuildSetup.exe"
+          Start-Process -FilePath "$env:TEMP\MozillaBuildSetup.exe" -ArgumentList '/S' -Wait
+
+      - name: Bootstrap and build
+        run: |
+          $ws = $env:GITHUB_WORKSPACE -replace '\\','/'
+          C:\mozilla-build\msys2\usr\bin\bash.exe -l -c "cd '$ws' && ./.github/scripts/ci-build.sh"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: vento-windows-x86_64
+          path: |
+            obj-*/dist/*.zip
+            obj-*/dist/install/sea/*.exe
+          if-no-files-found: error
