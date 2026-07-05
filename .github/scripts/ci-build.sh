@@ -15,6 +15,16 @@ ac_add_options --disable-tests
 mk_add_options AUTOCLOBBER=1
 EOF
 
-./mach --no-interactive bootstrap --application-choice browser
+if [ "$(uname)" = "Darwin" ]; then
+  # Apple pulled the CLTools pkg that bootstrap downloads the SDK from
+  # (HTTP 403), so use the runner's Xcode SDK and tolerate the failing
+  # SDK step in bootstrap; everything else it installs succeeds.
+  echo "ac_add_options --with-macos-sdk=$(xcrun --sdk macosx --show-sdk-path)" >> "$MOZCONFIG"
+  ./mach --no-interactive bootstrap --application-choice browser \
+    || echo "WARNING: mach bootstrap exited non-zero; continuing"
+else
+  ./mach --no-interactive bootstrap --application-choice browser
+fi
+
 ./mach build
 ./mach package

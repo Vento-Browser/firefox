@@ -7,11 +7,16 @@ on:
       - '**.md'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # A full browser build takes 1.5–3 h per platform on GitHub-hosted runners.
 jobs:
   build-macos:
     name: macOS (aarch64)
-    runs-on: macos-14
+    # macos-26: Firefox requires macOS SDK >= 26.2 (Xcode 26.2+)
+    runs-on: macos-26
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
