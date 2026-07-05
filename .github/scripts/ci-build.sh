@@ -28,3 +28,19 @@ fi
 
 ./mach build
 ./mach package
+
+if [ "$(uname)" = "Darwin" ]; then
+  # Ad-hoc sign the packaged .app (unsigned bundles are reported as
+  # "damaged" by Gatekeeper on Apple Silicon), then rebuild the DMG
+  # from the signed app.
+  APP=$(find obj-*/dist -maxdepth 2 -name '*.app' | head -1)
+  ./mach macos-sign -a "$APP" -c nightly
+  DMG=$(/bin/ls obj-*/dist/*.dmg | head -1)
+  rm "$DMG"
+  ./mach python python/mozbuild/mozbuild/action/make_dmg.py -- \
+    --volume-name Vento \
+    --dsstore browser/branding/vento/dsstore \
+    --background browser/branding/vento/background.png \
+    --icon browser/branding/vento/disk.icns \
+    "$(dirname "$APP")" "$DMG"
+fi
