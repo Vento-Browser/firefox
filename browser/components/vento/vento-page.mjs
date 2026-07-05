@@ -298,6 +298,7 @@ function logout() {
   currentMetrics = null;
   activePage = "dashboard";
   Services.prefs.setBoolPref("browser.logingate.reauth", true);
+  const browserWin = window.browsingContext.topChromeWindow;
   Services.ww.openWindow(
     null,
     "chrome://browser/content/loginGate.html",
@@ -305,7 +306,7 @@ function logout() {
     "chrome,centerscreen,modal,resizable=no,width=460,height=560",
     null
   );
-  location.reload();
+  browserWin.close();
 }
 
 // ── Dashboard ─────────────────────────────────────────────
