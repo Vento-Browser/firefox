@@ -1,0 +1,150 @@
+name: Vento Leak Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * *"
+  push:
+    branches: [my_dev]
+    paths:
+      - "browser/components/Vento*.sys.mjs"
+      - "browser/components/BrowserGlue.sys.mjs"
+      - "browser/components/vento/**"
+      - "browser/base/content/loginGate.*"
+      - "netwerk/base/nsProtocolProxyService.*"
+      - "modules/libpref/**"
+      - "browser/components/tests/unit/test_vento_proxy_enforcement.js"
+      - "vento-leak-e2e/**"
+      - ".github/workflows/vento-leak-tests.yml"
+
+concurrency:
+  group: vento-leak-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-xpcshell:
+    name: Linux build + xpcshell enforcement tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost || true
+
+      - name: Cache ~/.mozbuild (toolchains)
+        uses: actions/cache@v4
+        with:
+          path: ~/.mozbuild
+          key: mozbuild-linux-leak-${{ hashFiles('build/moz.configure/toolchain.configure') }}
+          restore-keys: mozbuild-linux-leak-
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sccache
+          key: sccache-linux-leak-${{ github.run_id }}
+          restore-keys: sccache-linux-leak-
+
+      - name: Install sccache
+        run: |
+          curl -fsSL -o /tmp/sccache.tgz \
+            https://github.com/mozilla/sccache/releases/download/v0.10.0/sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf /tmp/sccache.tgz -C /tmp
+          sudo install /tmp/sccache-*/sccache /usr/local/bin/sccache
+
+      - name: Write mozconfig
+        run: |
+          cat > mozconfig-leak <<EOF
+          . "\$topsrcdir/browser/config/mozconfig"
+          ac_add_options --enable-bootstrap
+          ac_add_options --with-ccache=sccache
+          mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-leak
+          EOF
+
+      - name: Bootstrap
+        env:
+          MOZCONFIG: ${{ github.workspace }}/mozconfig-leak
+        run: ./mach --no-interactive bootstrap --application-choice browser
+
+      - name: Build
+        env:
+          MOZCONFIG: ${{ github.workspace }}/mozconfig-leak
+          SCCACHE_CACHE_SIZE: 5G
+        run: ./mach build
+
+      - name: sccache stats
+        run: sccache --show-stats || true
+
+      - name: Run xpcshell proxy-enforcement tests
+        env:
+          MOZCONFIG: ${{ github.workspace }}/mozconfig-leak
+        run: |
+          ./mach xpcshell-test \
+            browser/components/tests/unit/test_vento_proxy_enforcement.js \
+            --verbose
+
+      - name: Package
+        env:
+          MOZCONFIG: ${{ github.workspace }}/mozconfig-leak
+        run: ./mach package
+
+      - name: Upload build for E2E
+        uses: actions/upload-artifact@v4
+        with:
+          name: vento-linux-leaktest
+          path: obj-leak/dist/*.tar.*
+          retention-days: 3
+
+  e2e-leak:
+    name: E2E leak test (netns kill-switch)
+    needs: build-and-xpcshell
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: vento-leak-e2e
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: vento-linux-leaktest
+          path: ${{ runner.temp }}/pkg
+
+      - name: Extract build
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xf "$RUNNER_TEMP"/pkg/*.tar.* -C "$RUNNER_TEMP/app"
+          ls "$RUNNER_TEMP/app"
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables tcpdump python3-aiohttp \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1
+
+      - name: Run leak test in isolated netns
+        run: |
+          sudo bash vento-leak-e2e/linux_netns.sh \
+            --firefox "$RUNNER_TEMP/app/firefox/firefox" \
+            --workdir "$PWD/leak-out" \
+            --run-as runner \
+            --idle 60
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: leak-test-evidence
+          path: |
+            leak-out/results.json
+            leak-out/socks_connects.jsonl
+            leak-out/server_records.json
+            leak-out/dns_queries.jsonl
+            leak-out/firewall.json
+            leak-out/leak0.pcap
+            leak-out/browser.log
+          retention-days: 14

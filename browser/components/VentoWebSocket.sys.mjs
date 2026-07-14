@@ -59,24 +59,7 @@ export const VentoWebSocket = {
   },
 
   _applyBlockingState() {
-    const prefs = Services.prefs;
-    const lock = (name, setter, value) => {
-      prefs.unlockPref(name);
-      prefs[setter](name, value);
-      prefs.lockPref(name);
-    };
-    lock("network.proxy.type", "setIntPref", 1);
-    lock("network.proxy.socks", "setStringPref", "127.0.0.1");
-    lock("network.proxy.socks_port", "setIntPref", 1);
-    lock("network.proxy.socks_version", "setIntPref", 5);
-    lock("network.proxy.socks_remote_dns", "setBoolPref", true);
-    lock("network.proxy.failover_direct", "setBoolPref", false);
-    const server = this._serverUrl();
-    if (server) {
-      lazy.VentoProxy.allowServer(server);
-    } else {
-      lock("network.proxy.no_proxies_on", "setStringPref", "localhost,127.0.0.1,::1");
-    }
+    lazy.VentoProxy.block(this._serverUrl() || undefined);
   },
 
   _setStatus(status) {

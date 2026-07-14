@@ -37,3 +37,5 @@ skip-if = [
 run-if = [
   "os == 'win'",
 ]
+
+["test_vento_proxy_enforcement.js"]

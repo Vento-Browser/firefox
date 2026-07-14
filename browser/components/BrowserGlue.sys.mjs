@@ -70,8 +70,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
-  VentoLoginCache:
-    "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
+  VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
   VentoLoginSyncService:
     "chrome://browser/content/vento/VentoLoginSyncService.sys.mjs",
   VentoWebSocket: "resource:///modules/VentoWebSocket.sys.mjs",
@@ -391,13 +390,17 @@ BrowserGlue.prototype = {
 
     lazy.VentoWebSocket.applyBlockingProxy();
 
-    Services.ww.openWindow(
-      null,
-      "chrome://browser/content/loginGate.html",
-      "_blank",
-      "chrome,centerscreen,modal,resizable=no,width=460,height=560",
-      null
-    );
+    // Test-only escape hatch for the automated leak tests: skips the modal
+    // login window, never the proxy enforcement above.
+    if (!Services.env.get("VENTO_TEST_NO_LOGIN_GATE")) {
+      Services.ww.openWindow(
+        null,
+        "chrome://browser/content/loginGate.html",
+        "_blank",
+        "chrome,centerscreen,modal,resizable=no,width=460,height=560",
+        null
+      );
+    }
 
     lazy.VentoWebSocket.init();
     lazy.VentoLoginCache.init();
