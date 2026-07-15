@@ -199,8 +199,12 @@ export default class LoginItem extends HTMLElement {
     const meta = this._ventoMeta;
     if (!meta) {
       section.hidden = true;
-      if (accessBtn) accessBtn.hidden = true;
-      if (historyBtn) historyBtn.hidden = true;
+      if (accessBtn) {
+        accessBtn.hidden = true;
+      }
+      if (historyBtn) {
+        historyBtn.hidden = true;
+      }
       if (this._editButton) {
         this._editButton.hidden = false;
       }
@@ -235,8 +239,12 @@ export default class LoginItem extends HTMLElement {
     section.querySelector(".vento-badge-hidden").hidden = !meta.is_hidden;
     section.querySelector(".vento-badge-shared").hidden = !!meta.is_owner;
 
-    if (accessBtn) accessBtn.hidden = !meta.is_owner;
-    if (historyBtn) historyBtn.hidden = false;
+    if (accessBtn) {
+      accessBtn.hidden = !meta.is_owner;
+    }
+    if (historyBtn) {
+      historyBtn.hidden = false;
+    }
     if (this._editButton) {
       this._editButton.hidden = !meta.is_owner && !meta.can_update;
     }
@@ -297,6 +305,10 @@ export default class LoginItem extends HTMLElement {
         this._errorMessageText.hidden = true;
         this._errorMessageLink.hidden = false;
       } else {
+        if (this._error.ventoMessage) {
+          this._errorMessageText.removeAttribute("data-l10n-id");
+          this._errorMessageText.textContent = this._error.ventoMessage;
+        }
         this._errorMessageText.hidden = false;
         this._errorMessageLink.hidden = true;
       }
@@ -1116,7 +1128,10 @@ export default class LoginItem extends HTMLElement {
       this._passwordDisplayInput.replaceWith(this._passwordInput);
 
       // Focus the input if it hasn't been already.
-      if (this.dataset.editing && (inputType === "text" || this._ventoMeta?.is_hidden)) {
+      if (
+        this.dataset.editing &&
+        (inputType === "text" || this._ventoMeta?.is_hidden)
+      ) {
         this._passwordInput.focus();
       }
     } else {

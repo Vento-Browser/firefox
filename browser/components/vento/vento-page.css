@@ -605,6 +605,12 @@
   font-size: 13px;
 }
 
+.not-auth-actions {
+  display: flex;
+  gap: var(--space-small, 8px);
+  margin-top: var(--space-medium, 12px);
+}
+
 /* ── Passwords page ─────────────────────────────────────────── */
 
 .pw-url-link {

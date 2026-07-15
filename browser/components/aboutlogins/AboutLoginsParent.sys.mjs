@@ -19,6 +19,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   UIState: "resource://services-sync/UIState.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
+  VentoAuth: "chrome://browser/content/vento/VentoAuth.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "log", () => {
@@ -92,24 +93,30 @@ function getVentoCredentials() {
 }
 
 async function ventoFetch(path, opts = {}) {
-  const creds = getVentoCredentials();
-  if (!creds) {
-    throw new Error("Vento not configured");
+  for (let attempt = 0; ; attempt++) {
+    const creds = getVentoCredentials();
+    if (!creds) {
+      throw new Error("Vento not configured — please log in");
+    }
+    const { serverUrl, accessToken } = creds;
+    const base = serverUrl.replace(/\/$/, "");
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    if (opts.body) {
+      headers["Content-Type"] = "application/json";
+    }
+    const resp = await fetch(base + path, { ...opts, headers });
+    if (resp.status === 401 && attempt === 0 && lazy.VentoAuth.promptReauth()) {
+      // The user re-authenticated; retry once with the new token.
+      continue;
+    }
+    if (!resp.ok) {
+      throw new Error(`Vento API error ${resp.status}`);
+    }
+    if (resp.status === 204 || resp.headers.get("content-length") === "0") {
+      return null;
+    }
+    return resp.json();
   }
-  const { serverUrl, accessToken } = creds;
-  const base = serverUrl.replace(/\/$/, "");
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  if (opts.body) {
-    headers["Content-Type"] = "application/json";
-  }
-  const resp = await fetch(base + path, { ...opts, headers });
-  if (!resp.ok) {
-    throw new Error(`Vento API error ${resp.status}`);
-  }
-  if (resp.status === 204 || resp.headers.get("content-length") === "0") {
-    return null;
-  }
-  return resp.json();
 }
 
 function ventoLoginToVanilla(record) {
@@ -300,7 +307,16 @@ export class AboutLoginsParent extends JSWindowActorParent {
       );
     } catch (e) {
       lazy.log.warn("AboutLogins: Create login failed:", e);
+      this.#showVentoError(newLogin, e);
     }
+  }
+
+  #showVentoError(login, error) {
+    this.sendAsyncMessage("AboutLogins:ShowLoginItemError", {
+      login: Object.assign({ title: login.origin ?? "" }, login),
+      errorMessage: error.message,
+      ventoMessage: error.message,
+    });
   }
 
   get preselectedLogin() {
@@ -320,6 +336,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
       AboutLogins.notifyLoginRemoved(loginObject);
     } catch (e) {
       lazy.log.warn("AboutLogins: Delete login failed:", e);
+      this.#showVentoError(loginObject, e);
     }
   }
 
@@ -483,6 +500,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
         }
       } catch (e) {
         lazy.log.warn("AboutLogins: Shared login password update failed:", e);
+        this.#showVentoError(loginUpdates, e);
       }
       return;
     }
@@ -523,6 +541,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
       );
     } catch (e) {
       lazy.log.warn("AboutLogins: Update login failed:", e);
+      this.#showVentoError(loginUpdates, e);
     }
   }
 
@@ -680,23 +699,6 @@ export class AboutLoginsParent extends JSWindowActorParent {
     AboutLogins.notifyRemoveAllLogins();
   }
 
-  #handleLoginStorageErrors(login, error) {
-    let messageObject = {
-      login: augmentVanillaLoginObject(
-        lazy.LoginHelper.loginToVanillaObject(login)
-      ),
-      errorMessage: error.message,
-    };
-
-    if (error.message.includes("This login already exists")) {
-      // See comment in LoginHelper.createLoginAlreadyExistsError as to
-      // why we need to call .toString() on the nsISupportsString.
-      messageObject.existingLoginGuid = error.data.toString();
-    }
-
-    this.sendAsyncMessage("AboutLogins:ShowLoginItemError", messageObject);
-  }
-
   async openFilePickerDialog(title, okButtonLabel, appendFilters) {
     return new Promise(resolve => {
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
@@ -715,9 +717,7 @@ export class AboutLoginsParent extends JSWindowActorParent {
   async #ventoGetAccess({ guid }) {
     try {
       const [access, usersResp, groupsResp] = await Promise.all([
-        ventoFetch(
-          `/api/browser-logins/${encodeURIComponent(guid)}/access`
-        ),
+        ventoFetch(`/api/browser-logins/${encodeURIComponent(guid)}/access`),
         ventoFetch(`/api/auth/users?page=1&per_page=1000`),
         ventoFetch(`/api/groups`),
       ]);
@@ -876,9 +876,9 @@ class AboutLoginsInternal {
     for (let subscriber of this.#subscriberIterator()) {
       if (subscriber.currentWindowGlobal) {
         let actor = subscriber.currentWindowGlobal.getActor("AboutLogins");
-        actor.ventoRefreshMeta().catch(e =>
-          lazy.log.debug("VentoRefreshMeta failed:", e)
-        );
+        actor
+          .ventoRefreshMeta()
+          .catch(e => lazy.log.debug("VentoRefreshMeta failed:", e));
       }
     }
   }
@@ -1081,9 +1081,7 @@ class AboutLoginsInternal {
         body: JSON.stringify({ logins: [] }),
       });
       const all = [
-        ...(resp.logins || [])
-          .filter(r => !r.deleted)
-          .map(ventoLoginToVanilla),
+        ...(resp.logins || []).filter(r => !r.deleted).map(ventoLoginToVanilla),
         ...(resp.shared_logins || []).map(ventoLoginToVanilla),
       ];
       this.#loginCache.clear();

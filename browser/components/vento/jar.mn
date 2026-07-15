@@ -6,6 +6,7 @@ browser.jar:
     content/browser/vento/vento-page.html
     content/browser/vento/vento-page.mjs
     content/browser/vento/vento-page.css
+    content/browser/vento/VentoAuth.sys.mjs
     content/browser/vento/VentoPasswordParent.sys.mjs
     content/browser/vento/VentoPasswordChild.sys.mjs
     content/browser/vento/VentoLoginCache.sys.mjs

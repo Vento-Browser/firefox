@@ -37,11 +37,12 @@
 
     <!-- Not-authenticated state -->
     <div id="not-auth" class="not-auth" hidden>
-      <h2>Not authenticated</h2>
-      <p>
-        Set the <code>browser.logingate.accessToken</code> preference to your
-        JWT access token.
-      </p>
+      <h2 id="not-auth-title">Not logged in</h2>
+      <p id="not-auth-message">Log in to your Vento server to continue.</p>
+      <div class="not-auth-actions">
+        <moz-button type="primary" id="btn-reauth">Log in…</moz-button>
+        <moz-button id="btn-retry-auth" hidden>Retry</moz-button>
+      </div>
     </div>
 
     <!-- Initial loading state -->

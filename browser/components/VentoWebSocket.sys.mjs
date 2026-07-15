@@ -8,6 +8,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  VentoAuth: "chrome://browser/content/vento/VentoAuth.sys.mjs",
   VentoProxy: "resource:///modules/VentoProxy.sys.mjs",
 });
 
@@ -284,15 +285,7 @@ export const VentoWebSocket = {
     }
     this._stopProxyCheck();
     this._applyBlockingState();
-    Services.prefs.setBoolPref("browser.logingate.reauth", true);
-    Services.ww.openWindow(
-      null,
-      "chrome://browser/content/loginGate.html",
-      "_blank",
-      "chrome,centerscreen,modal,resizable=no,width=460,height=560",
-      null
-    );
-    Services.prefs.clearUserPref("browser.logingate.reauth");
+    lazy.VentoAuth.promptReauth();
     this._scheduleReconnect();
   },
 };

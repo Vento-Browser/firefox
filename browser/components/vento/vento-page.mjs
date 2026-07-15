@@ -17,6 +17,10 @@ try {
   // Already registered — second about:vento tab opened.
 }
 
+const { VentoAuth } = ChromeUtils.importESModule(
+  "chrome://browser/content/vento/VentoAuth.sys.mjs"
+);
+
 const VENTO_TOKEN_PREF = "browser.logingate.accessToken";
 const VENTO_API_URL_PREF = "browser.logingate.serverUrl";
 const ALL_PERMS = [
@@ -38,6 +42,9 @@ const PAGE_TITLES = {
 
 let activePage = "dashboard";
 let authUser = null;
+// Why the user is not authenticated: "none" (no token), "expired"
+// (backend rejected the token) or "unreachable" (network/server error).
+let authError = null;
 let users = [];
 let usersPage = 1;
 let usersTotal = 0;
@@ -121,7 +128,15 @@ async function api(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error ?? `HTTP ${res.status}`);
+    if (res.status === 401) {
+      // Session expired mid-use: drop to the re-login screen.
+      authUser = null;
+      authError = "expired";
+      renderApp();
+    }
+    const err = new Error(data.error ?? `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -260,26 +275,43 @@ function hasPerm(perm) {
 
 async function loadCurrentUser() {
   if (!token()) {
+    authUser = null;
+    authError = "none";
     return;
   }
   $("loading-init").hidden = false;
   try {
     authUser = await api("/api/auth/validate");
-  } catch {
+    authError = null;
+  } catch (e) {
     authUser = null;
+    authError = e.status === 401 ? "expired" : "unreachable";
   } finally {
     $("loading-init").hidden = true;
   }
 }
 
+const AUTH_ERROR_TEXTS = {
+  none: {
+    title: "Not logged in",
+    message: "Log in to your Vento server to continue.",
+  },
+  expired: {
+    title: "Session expired",
+    message: "Your session is no longer valid. Please log in again.",
+  },
+  unreachable: {
+    title: "Server unreachable",
+    message: "Could not reach the Vento server. Check your connection.",
+  },
+};
+
 function renderApp() {
-  const tok = token();
-  if (!tok) {
-    $("not-auth").hidden = false;
-    $("full").hidden = true;
-    return;
-  }
   if (!authUser) {
+    const texts = AUTH_ERROR_TEXTS[authError] ?? AUTH_ERROR_TEXTS.none;
+    $("not-auth-title").textContent = texts.title;
+    $("not-auth-message").textContent = texts.message;
+    $("btn-retry-auth").hidden = authError !== "unreachable";
     $("not-auth").hidden = false;
     $("full").hidden = true;
     return;
@@ -290,23 +322,42 @@ function renderApp() {
   $("nav-groups").hidden = !hasPerm("USERS_MANAGE");
 }
 
+async function refreshAuth() {
+  disconnectWs();
+  authUser = null;
+  await loadCurrentUser();
+  renderApp();
+  if (authUser) {
+    navigate("dashboard");
+    connectWs();
+  }
+}
+
+let _refreshQueued = false;
+function queueRefreshAuth() {
+  if (_refreshQueued) {
+    return;
+  }
+  _refreshQueued = true;
+  setTimeout(() => {
+    _refreshQueued = false;
+    refreshAuth();
+  }, 0);
+}
+
 function logout() {
   disconnectWs();
   Services.prefs.setStringPref(VENTO_TOKEN_PREF, "");
   authUser = null;
+  authError = "none";
   metricsHistory = [];
   currentMetrics = null;
   activePage = "dashboard";
-  Services.prefs.setBoolPref("browser.logingate.reauth", true);
   const browserWin = window.browsingContext.topChromeWindow;
-  Services.ww.openWindow(
-    null,
-    "chrome://browser/content/loginGate.html",
-    "_blank",
-    "chrome,centerscreen,modal,resizable=no,width=460,height=560",
-    null
-  );
-  browserWin.close();
+  const loggedIn = VentoAuth.promptReauth();
+  if (!loggedIn) {
+    browserWin.close();
+  }
 }
 
 // ── Dashboard ─────────────────────────────────────────────
@@ -1338,7 +1389,22 @@ async function init() {
   // Profile
   $("btn-logout").addEventListener("click", () => logout());
 
-  window.addEventListener("unload", () => disconnectWs());
+  // Not-authenticated screen
+  $("btn-reauth").addEventListener("click", () => {
+    VentoAuth.promptReauth();
+    queueRefreshAuth();
+  });
+  $("btn-retry-auth").addEventListener("click", () => queueRefreshAuth());
+
+  // Re-render when the token changes elsewhere (login gate, logout,
+  // WebSocket-triggered re-auth).
+  const tokenObserver = () => queueRefreshAuth();
+  Services.prefs.addObserver(VENTO_TOKEN_PREF, tokenObserver);
+
+  window.addEventListener("unload", () => {
+    Services.prefs.removeObserver(VENTO_TOKEN_PREF, tokenObserver);
+    disconnectWs();
+  });
 
   await loadCurrentUser();
   renderApp();
