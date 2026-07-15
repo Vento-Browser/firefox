@@ -358,6 +358,8 @@
               <menuitem id="menu_openAddons"
                         key="key_openAddons"
                         command="Tools:Addons" data-l10n-id="menu-tools-extensions-and-themes"/>
+              <menuitem id="menu_ventoLock"
+                        command="Tools:VentoLock" label="Lock Vento"/>
 
               <!-- only one of sync-setup, sync-enable, sync-unverifieditem, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"

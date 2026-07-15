@@ -96,6 +96,7 @@
     <command id="Browser:OpenAboutContainers" />
     <command id="Tools:Search" />
     <command id="Tools:Downloads" />
+    <command id="Tools:VentoLock" />
     <command id="Tools:Addons" />
     <command id="cmd_openUnifiedExtensionsPanel" />
     <command id="Tools:AIWindow" />

@@ -215,6 +215,11 @@ document.addEventListener(
           case "Tools:Downloads":
             BrowserCommands.downloadsUI();
             break;
+          case "Tools:VentoLock":
+            ChromeUtils.importESModule(
+              "chrome://browser/content/vento/VentoLockService.sys.mjs"
+            ).VentoLockService.lock();
+            break;
           case "Tools:Addons":
             BrowserAddonUI.openAddonsMgr();
             if (event.sourceEvent?.target.id == "key_openAddons") {

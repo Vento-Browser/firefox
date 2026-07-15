@@ -1388,6 +1388,11 @@ async function init() {
 
   // Profile
   $("btn-logout").addEventListener("click", () => logout());
+  $("btn-lock").addEventListener("click", () => {
+    ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoLockService.sys.mjs"
+    ).VentoLockService.lock();
+  });
 
   // Not-authenticated screen
   $("btn-reauth").addEventListener("click", () => {

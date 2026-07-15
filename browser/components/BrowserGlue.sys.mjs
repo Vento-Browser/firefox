@@ -70,6 +70,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
+  VentoLockService: "chrome://browser/content/vento/VentoLockService.sys.mjs",
   VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
   VentoLoginSyncService:
     "chrome://browser/content/vento/VentoLoginSyncService.sys.mjs",
@@ -405,6 +406,7 @@ BrowserGlue.prototype = {
     lazy.VentoWebSocket.init();
     lazy.VentoLoginCache.init();
     lazy.VentoLoginSyncService.init();
+    lazy.VentoLockService.init();
 
     // Register the form-detector actor pair that provides native-style
     // autofill for Vento credentials.  The child listens for
