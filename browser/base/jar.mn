@@ -81,6 +81,8 @@ browser.jar:
         content/browser/static-robot.png                    (content/static-robot.png)
         content/browser/loginGate.html                      (content/loginGate.html)
         content/browser/loginGate.js                        (content/loginGate.js)
+        content/browser/updateGate.html                     (content/updateGate.html)
+        content/browser/updateGate.js                       (content/updateGate.js)
         content/browser/safeMode.css                        (content/safeMode.css)
         content/browser/safeMode.js                         (content/safeMode.js)
         content/browser/safeMode.xhtml                      (content/safeMode.xhtml)

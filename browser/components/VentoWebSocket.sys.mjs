@@ -32,6 +32,7 @@ export const VentoWebSocket = {
   _proxyHealthPort: null,
   _status: "disconnected",
   _quality: null,
+  _updateGateShown: false,
 
   get status() {
     return this._status;
@@ -251,6 +252,9 @@ export const VentoWebSocket = {
     }
     switch (msg.type) {
       case "auth_ok":
+        if (this._handleUpdateRequired(msg)) {
+          break;
+        }
         if (msg.proxy_host && msg.proxy_port) {
           try {
             lazy.VentoProxy.apply(
@@ -275,6 +279,53 @@ export const VentoWebSocket = {
         this._openLoginGate();
         break;
     }
+  },
+
+  /**
+   * Force update: when the server requires a newer client, keep the proxy in
+   * blocking state (only the backend and the download host stay reachable)
+   * and show the modal update gate once per session.
+   *
+   * @param {object} msg - Parsed auth_ok message from the server.
+   * @returns {boolean} true when the client is outdated and auth_ok must not
+   *          be processed further.
+   */
+  _handleUpdateRequired(msg) {
+    if (!msg.min_client_version) {
+      return false;
+    }
+    let outdated;
+    try {
+      outdated =
+        Services.vc.compare(Services.appinfo.version, msg.min_client_version) <
+        0;
+    } catch {
+      return false;
+    }
+    if (!outdated) {
+      return false;
+    }
+    this._stopAuthTimer();
+    this._setStatus("update_required");
+    if (!this._updateGateShown) {
+      this._updateGateShown = true;
+      const downloadUrl =
+        msg.update_download_url || "https://vento-browser.com/download";
+      lazy.VentoProxy.allowServer(this._serverUrl(), downloadUrl);
+      const params = new URLSearchParams({
+        required: msg.min_client_version,
+        current: Services.appinfo.version,
+        download: downloadUrl,
+      });
+      Services.ww.openWindow(
+        null,
+        `chrome://browser/content/updateGate.html?${params}`,
+        "_blank",
+        "chrome,centerscreen,modal,resizable=no,width=460,height=420",
+        null
+      );
+    }
+    return true;
   },
 
   _openLoginGate() {

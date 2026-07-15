@@ -24,9 +24,12 @@ function setLockedPref(name, setter, value) {
   prefs.lockPref(name);
 }
 
-function noProxiesValue(serverUrl) {
+function noProxiesValue(...serverUrls) {
   const parts = ["localhost", "127.0.0.1", "::1"];
-  if (serverUrl) {
+  for (const serverUrl of serverUrls) {
+    if (!serverUrl) {
+      continue;
+    }
     try {
       const h = new URL(serverUrl).hostname;
       if (h && !parts.includes(h)) {
@@ -111,22 +114,16 @@ export const VentoProxy = {
   },
 
   /**
-   * @param {string} serverUrl - Full server URL, e.g. "https://vpn.example.com:3000"
+   * Hosts of the given URLs bypass the proxy (replaces the previous list).
+   *
+   * @param {...string} serverUrls - Full URLs, e.g. "https://vpn.example.com:3000"
    */
-  allowServer(serverUrl) {
-    let hostname;
-    try {
-      hostname = new URL(serverUrl).hostname;
-    } catch {
-      return;
-    }
-    if (hostname) {
-      setLockedPref(
-        "network.proxy.no_proxies_on",
-        "setStringPref",
-        noProxiesValue(serverUrl)
-      );
-    }
+  allowServer(...serverUrls) {
+    setLockedPref(
+      "network.proxy.no_proxies_on",
+      "setStringPref",
+      noProxiesValue(...serverUrls)
+    );
   },
 
   _applyHardening() {
