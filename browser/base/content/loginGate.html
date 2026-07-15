@@ -213,6 +213,25 @@
         cursor: pointer;
       }
 
+      .ghost-btn {
+        display: block;
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px 16px;
+        font: inherit;
+        font-size: 1em;
+        font-weight: 600;
+        background-color: transparent;
+        color: var(--text-color, CanvasText);
+        border: 1px solid var(--border-color-interactive, ButtonBorder);
+        border-radius: var(--border-radius-small, 4px);
+        cursor: pointer;
+      }
+
+      .ghost-btn:hover {
+        background-color: var(--button-background-color-hover, ButtonFace);
+      }
+
       .secondary-btn:hover {
         background-color: var(--background-color-critical);
       }
@@ -226,19 +245,26 @@
         margin-inline-end: 6px;
         vertical-align: middle;
       }
+
+      .status-dot.offline {
+        background-color: var(--text-color-deemphasized, GrayText);
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <!-- View: Profile (already logged in) -->
       <div id="view-profile" class="view" hidden>
-        <h1><span class="status-dot"></span>You are logged in</h1>
+        <h1>
+          <span class="status-dot" id="profile-status-dot"></span
+          ><span id="profile-title">You are logged in</span>
+        </h1>
         <p class="description" id="profile-server"></p>
-        <div class="info-block">
+        <div class="info-block" id="profile-name-block">
           <span class="info-label">Name</span>
           <span id="profile-display-name"></span>
         </div>
-        <div class="info-block">
+        <div class="info-block" id="profile-email-block">
           <span class="info-label">Email</span>
           <span id="profile-email"></span>
         </div>
@@ -267,7 +293,13 @@
           </div>
           <div class="field">
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" autocomplete="email" value="info@gleb.at" />
+            <input
+              type="email"
+              id="email"
+              name="email"
+              autocomplete="email"
+              value="info@gleb.at"
+            />
           </div>
           <div class="field">
             <label for="password">Password</label>
@@ -322,6 +354,7 @@
           </div>
           <p id="totp-setup-error" hidden></p>
           <button type="submit" class="primary-btn">Verify</button>
+          <button type="button" class="ghost-btn" data-back>Cancel</button>
         </form>
       </div>
 
@@ -344,6 +377,7 @@
           </div>
           <p id="totp-verify-error" hidden></p>
           <button type="submit" class="primary-btn">Connect</button>
+          <button type="button" class="ghost-btn" data-back>Cancel</button>
         </form>
       </div>
 
@@ -372,6 +406,7 @@
           </div>
           <p id="password-change-error" hidden></p>
           <button type="submit" class="primary-btn">Change Password</button>
+          <button type="button" class="ghost-btn" data-back>Cancel</button>
         </form>
       </div>
     </div>

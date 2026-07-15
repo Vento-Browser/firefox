@@ -276,10 +276,7 @@ async function checkExistingSession() {
   let token, serverUrl;
   try {
     token = Services.prefs.getStringPref("browser.logingate.accessToken", "");
-    serverUrl = Services.prefs.getStringPref(
-      "browser.logingate.serverUrl",
-      ""
-    );
+    serverUrl = Services.prefs.getStringPref("browser.logingate.serverUrl", "");
   } catch {
     return;
   }
@@ -291,13 +288,19 @@ async function checkExistingSession() {
   state.server = serverUrl;
 
   try {
-    const { ok, data } = await apiFetch(
+    const { ok, status, data } = await apiFetch(
       "GET",
       "/api/auth/validate",
       undefined,
       token
     );
+    if (status === 401 || status === 403) {
+      // Token invalid or expired — fall through to the login form.
+      return;
+    }
     if (!ok) {
+      // Server up but broken (5xx) — same as unreachable below.
+      showOfflineProfile(serverUrl);
       return;
     }
 
@@ -317,9 +320,50 @@ async function checkExistingSession() {
     state.connected = true;
     showView("view-profile");
   } catch {
-    // Token invalid or server unreachable — show login form as usual.
+    // Server unreachable (offline / DNS / refused). Logging in is impossible
+    // anyway, so continue with the saved session: the proxy stays in blocking
+    // state and VentoWebSocket keeps reconnecting until the network is back.
+    showOfflineProfile(serverUrl);
   }
 }
+
+function showOfflineProfile(serverUrl) {
+  document.getElementById("profile-status-dot").classList.add("offline");
+  document.getElementById("profile-title").textContent = "Server unreachable";
+  document.getElementById("profile-server").textContent =
+    `Could not reach ${serverUrl}. You can continue with your saved session — Vento will reconnect automatically once the connection is back.`;
+  document.getElementById("profile-name-block").hidden = true;
+  document.getElementById("profile-email-block").hidden = true;
+  state.connected = true;
+  showView("view-profile");
+}
+
+function backToLogin() {
+  state.setupToken = "";
+  state.passwordChangeToken = "";
+  for (const id of [
+    "totp-setup-code",
+    "totp-verify-code",
+    "new-password",
+    "confirm-password",
+  ]) {
+    document.getElementById(id).value = "";
+  }
+  for (const id of [
+    "totp-setup-error",
+    "totp-verify-error",
+    "password-change-error",
+    "login-error",
+  ]) {
+    clearMessage(id);
+  }
+  showView("view-login");
+  document.getElementById("password").focus();
+}
+
+document.querySelectorAll("[data-back]").forEach(btn => {
+  btn.addEventListener("click", backToLogin);
+});
 
 document.getElementById("continue-btn").addEventListener("click", () => {
   window.close();
@@ -331,6 +375,18 @@ document.getElementById("logout-btn").addEventListener("click", () => {
   state.server = "";
   showView("view-login");
 });
+
+// Prefill the server field from the stored pref so a re-login (e.g. after
+// token expiry) only asks for credentials.
+{
+  const savedServer = Services.prefs.getStringPref(
+    "browser.logingate.serverUrl",
+    ""
+  );
+  if (savedServer) {
+    document.getElementById("server").value = savedServer;
+  }
+}
 
 checkExistingSession();
 
