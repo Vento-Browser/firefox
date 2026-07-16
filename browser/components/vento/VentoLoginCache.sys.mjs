@@ -9,7 +9,7 @@
  * look up matching credentials for a given origin without making a network
  * request on every page load.
  *
- * Each cache entry: { id: number, origin: string, username: string }
+ * Each cache entry: { guid: string, origin: string, username: string }
  *
  * The cache is intentionally read-only: creates/updates/deletes go through
  * the Vento panel UI and the backend REST API.
@@ -39,9 +39,10 @@ export const VentoLoginCache = {
       console.error("VentoLoginCache: initial sync failed:", e)
     );
     this._timer = setInterval(
-      () => this._sync().catch(e =>
-        console.error("VentoLoginCache: periodic sync failed:", e)
-      ),
+      () =>
+        this._sync().catch(e =>
+          console.error("VentoLoginCache: periodic sync failed:", e)
+        ),
       SYNC_INTERVAL_MS
     );
   },
@@ -70,7 +71,7 @@ export const VentoLoginCache = {
    * Return all credentials whose stored URL hostname matches the given origin.
    *
    * @param {string} origin  e.g. "https://app.example.com"
-   * @returns {{ id: number, origin: string, username: string }[]}
+   * @returns {{ guid: string, origin: string, username: string }[]}
    */
   findForOrigin(origin) {
     let queryHost;
@@ -108,14 +109,16 @@ export const VentoLoginCache = {
       ""
     );
     if (!serverUrl || !token) {
-      console.log("[VentoLoginCache] _sync: skipped — serverUrl or token missing",
-        { serverUrl: !!serverUrl, token: !!token });
+      console.log(
+        "[VentoLoginCache] _sync: skipped — serverUrl or token missing",
+        { serverUrl: !!serverUrl, token: !!token }
+      );
       return;
     }
 
     let res;
     try {
-      res = await fetch(`${serverUrl}/api/passwords?page=1&per_page=500`, {
+      res = await fetch(`${serverUrl}/api/browser-logins?page=1&per_page=500`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
@@ -136,15 +139,23 @@ export const VentoLoginCache = {
       return;
     }
 
-    this._entries = (data.passwords ?? []).map(p => ({
-      id: p.id,
-      origin: p.url ?? "",
-      username: p.username ?? "",
-      title: p.title ?? "",
-    }));
+    // Keep only credentials the user can actually fill: skip tombstones and
+    // shares the backend marks hidden (its /value endpoint returns 403 for a
+    // hidden login unless the caller owns it).
+    this._entries = (data.logins ?? [])
+      .filter(l => !l.deleted && !(l.is_hidden && !l.is_owner))
+      .map(l => ({
+        guid: l.guid,
+        origin: l.origin ?? "",
+        username: l.username ?? "",
+      }));
     console.log(
       `[VentoLoginCache] _sync: loaded ${this._entries.length} entries`,
-      this._entries.map(e => ({ id: e.id, origin: e.origin, username: e.username, title: e.title }))
+      this._entries.map(e => ({
+        guid: e.guid,
+        origin: e.origin,
+        username: e.username,
+      }))
     );
   },
 };

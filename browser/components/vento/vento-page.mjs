@@ -42,9 +42,13 @@ const PAGE_TITLES = {
 
 let activePage = "dashboard";
 let authUser = null;
-// Why the user is not authenticated: "none" (no token), "expired"
-// (backend rejected the token) or "unreachable" (network/server error).
+// Why the user is not authenticated: "none" (no token), "expired" (backend
+// rejected the token), "unreachable" (the request never reached a server) or
+// "server_error" (the server was reached but replied with an error status).
 let authError = null;
+// Extra detail for "server_error" (e.g. "500: Database error"), shown to help
+// distinguish a backend fault from a connectivity problem.
+let authErrorInfo = "";
 let users = [];
 let usersPage = 1;
 let usersTotal = 0;
@@ -283,9 +287,24 @@ async function loadCurrentUser() {
   try {
     authUser = await api("/api/auth/validate");
     authError = null;
+    authErrorInfo = "";
   } catch (e) {
     authUser = null;
-    authError = e.status === 401 ? "expired" : "unreachable";
+    authErrorInfo = "";
+    if (e.status === 401) {
+      authError = "expired";
+    } else if (e.status === undefined) {
+      // fetch itself rejected: the server was never reached (offline,
+      // connection refused, DNS/TLS failure).
+      authError = "unreachable";
+    } else {
+      // The server answered, just with an error status. It IS reachable, so
+      // surface the status instead of blaming the connection.
+      authError = "server_error";
+      authErrorInfo = e.message
+        ? `${e.status}: ${e.message}`
+        : `HTTP ${e.status}`;
+    }
   } finally {
     $("loading-init").hidden = true;
   }
@@ -304,14 +323,23 @@ const AUTH_ERROR_TEXTS = {
     title: "Server unreachable",
     message: "Could not reach the Vento server. Check your connection.",
   },
+  server_error: {
+    title: "Server error",
+    message:
+      "The Vento server was reached but returned an error. This is a problem on the server, not your connection.",
+  },
 };
 
 function renderApp() {
   if (!authUser) {
     const texts = AUTH_ERROR_TEXTS[authError] ?? AUTH_ERROR_TEXTS.none;
     $("not-auth-title").textContent = texts.title;
-    $("not-auth-message").textContent = texts.message;
-    $("btn-retry-auth").hidden = authError !== "unreachable";
+    $("not-auth-message").textContent =
+      authError === "server_error" && authErrorInfo
+        ? `${texts.message} (${authErrorInfo})`
+        : texts.message;
+    $("btn-retry-auth").hidden =
+      authError !== "unreachable" && authError !== "server_error";
     $("not-auth").hidden = false;
     $("full").hidden = true;
     return;
@@ -347,17 +375,15 @@ function queueRefreshAuth() {
 
 function logout() {
   disconnectWs();
-  Services.prefs.setStringPref(VENTO_TOKEN_PREF, "");
   authUser = null;
   authError = "none";
   metricsHistory = [];
   currentMetrics = null;
   activePage = "dashboard";
-  const browserWin = window.browsingContext.topChromeWindow;
-  const loggedIn = VentoAuth.promptReauth();
-  if (!loggedIn) {
-    browserWin.close();
-  }
+  // Seals the encrypted vault, wipes browsing data (closing this tab), and
+  // shows the login gate; quits the browser if the user does not log back in.
+  // Fire-and-forget: this page is destroyed while it runs.
+  VentoAuth.logout();
 }
 
 // ── Dashboard ─────────────────────────────────────────────

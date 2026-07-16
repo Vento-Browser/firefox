@@ -39,3 +39,7 @@ run-if = [
 ]
 
 ["test_vento_proxy_enforcement.js"]
+
+["test_vento_secure_autofill.js"]
+
+["test_vento_session_vault.js"]

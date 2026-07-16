@@ -109,11 +109,20 @@ input[name="password"] {
   align-items: center;
   margin-bottom: 40px;
   margin-top: 5px;
+  gap: 12px;
 }
 
 .title {
   margin-block: 0;
   flex-grow: 1;
+  min-width: 0;
+}
+
+.login-item-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 origin-warning,
@@ -325,6 +334,7 @@ login-command-button {
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .action-buttons .form-actions-row {
@@ -377,6 +387,7 @@ login-command-button {
   gap: 6px;
   min-width: auto;
   margin-block-start: 4px;
+  white-space: nowrap;
 }
 
 .vento-btn-icon {

@@ -28,12 +28,20 @@ unlockBtn.addEventListener("click", async () => {
   }
 });
 
-signoutBtn.addEventListener("click", () => {
-  // VentoLockService.lock() opens the login gate when it sees the token
-  // is gone after this window closes.
-  Services.prefs.clearUserPref("browser.logingate.accessToken");
-  unlocked = true;
-  window.close();
+signoutBtn.addEventListener("click", async () => {
+  signoutBtn.disabled = true;
+  const { VentoAuth } = ChromeUtils.importESModule(
+    "chrome://browser/content/vento/VentoAuth.sys.mjs"
+  );
+  try {
+    // Seals the encrypted vault and wipes browsing data. VentoLockService
+    // .lock() opens the login gate when it sees the token is gone after this
+    // window closes.
+    await VentoAuth.logout({ promptLogin: false });
+  } finally {
+    unlocked = true;
+    window.close();
+  }
 });
 
 // Closing the window without authenticating must not bypass the lock:

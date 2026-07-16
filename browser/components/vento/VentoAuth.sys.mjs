@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  VentoSessionVault: "chrome://browser/content/vento/VentoSessionVault.sys.mjs",
+});
+
 const PREF_ACCESS_TOKEN = "browser.logingate.accessToken";
 const PREF_REAUTH = "browser.logingate.reauth";
 
@@ -46,5 +51,38 @@ export const VentoAuth = {
     }
     const tokenAfter = this.token;
     return !!tokenAfter && tokenAfter !== tokenBefore;
+  },
+
+  /**
+   * Full logout: seals the browsing state into the encrypted vault (while the
+   * token is still valid), clears the token, wipes all browsing data, and —
+   * unless promptLogin is false — shows the login gate. If the user does not
+   * log back in, the browser quits: a logged-out browser has nothing to show.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.promptLogin=true] false when the caller manages
+   *        the login UI itself (lock window, login gate).
+   * @returns {Promise<boolean>} true if the user logged back in.
+   */
+  async logout({ promptLogin = true } = {}) {
+    try {
+      await lazy.VentoSessionVault.seal();
+    } catch (e) {
+      console.error("VentoAuth: vault seal failed", e);
+    }
+    Services.prefs.clearUserPref(PREF_ACCESS_TOKEN);
+    try {
+      await lazy.VentoSessionVault.clearBrowsingData();
+    } catch (e) {
+      console.error("VentoAuth: browsing data wipe failed", e);
+    }
+    if (!promptLogin) {
+      return false;
+    }
+    const loggedIn = this.promptReauth();
+    if (!loggedIn) {
+      Services.startup.quit(Services.startup.eAttemptQuit);
+    }
+    return loggedIn;
   },
 };

@@ -17,8 +17,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   VentoCredentialService:
     "chrome://browser/content/vento/VentoCredentialService.sys.mjs",
-  VentoLoginCache:
-    "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
+  VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
 });
 
 export class VentoFormDetectorParent extends JSWindowActorParent {
@@ -35,7 +34,9 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
     // sync yet (startup race: _sync() is async and BrowserGlue doesn't await
     // it).  Force one sync attempt before giving up.
     let entries = lazy.VentoLoginCache.findForOrigin(origin);
-    console.log(`[VentoFormDetector] cache has ${lazy.VentoLoginCache._entries.length} total entries, ${entries.length} match origin`);
+    console.log(
+      `[VentoFormDetector] cache has ${lazy.VentoLoginCache._entries.length} total entries, ${entries.length} match origin`
+    );
 
     if (!entries.length && !lazy.VentoLoginCache._entries.length) {
       console.log("[VentoFormDetector] cache empty — forcing sync");
@@ -46,7 +47,9 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
         return undefined;
       }
       entries = lazy.VentoLoginCache.findForOrigin(origin);
-      console.log(`[VentoFormDetector] after sync: ${lazy.VentoLoginCache._entries.length} total, ${entries.length} match`);
+      console.log(
+        `[VentoFormDetector] after sync: ${lazy.VentoLoginCache._entries.length} total, ${entries.length} match`
+      );
     }
     if (!entries.length) {
       console.log("[VentoFormDetector] no matching credential for", origin);
@@ -58,7 +61,12 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
     // A future improvement could show a picker UI similar to the native
     // login dropdown.
     const entry = entries[0];
-    console.log("[VentoFormDetector] using entry id:", entry.id, "origin:", entry.origin);
+    console.log(
+      "[VentoFormDetector] using entry guid:",
+      entry.guid,
+      "origin:",
+      entry.origin
+    );
 
     const serverUrl = Services.prefs.getStringPref(
       "browser.logingate.serverUrl",
@@ -77,11 +85,14 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
     let plaintext;
     try {
       const res = await fetch(
-        `${serverUrl}/api/passwords/${entry.id}/value`,
+        `${serverUrl}/api/browser-logins/${entry.guid}/value`,
         { headers: { Authorization: `Bearer ${bearerToken}` } }
       );
       if (!res.ok) {
-        console.error("[VentoFormDetector] backend /value returned", res.status);
+        console.error(
+          "[VentoFormDetector] backend /value returned",
+          res.status
+        );
         return undefined;
       }
       const data = await res.json();
@@ -117,7 +128,9 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
       plaintext = null;
     }
 
-    console.log("[VentoFormDetector] token issued, sending FillCredentials to child");
+    console.log(
+      "[VentoFormDetector] token issued, sending FillCredentials to child"
+    );
 
     // ── Step 4: Forward only the token to the content process ────────────
     try {
@@ -128,7 +141,10 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
     } catch (e) {
       // The child is already gone (navigation, tab close) — revoke the token
       // so it does not linger in the credential store.
-      console.error("[VentoFormDetector] sendAsyncMessage failed (child gone?):", e);
+      console.error(
+        "[VentoFormDetector] sendAsyncMessage failed (child gone?):",
+        e
+      );
       lazy.VentoCredentialService.revokeContext(bcId);
     }
 

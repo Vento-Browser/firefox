@@ -74,6 +74,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
   VentoLoginSyncService:
     "chrome://browser/content/vento/VentoLoginSyncService.sys.mjs",
+  VentoNetworkObserver: "resource:///modules/VentoNetworkObserver.sys.mjs",
+  VentoSessionVault: "chrome://browser/content/vento/VentoSessionVault.sys.mjs",
   VentoWebSocket: "resource:///modules/VentoWebSocket.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
   WebProtocolHandlerRegistrar:
@@ -407,6 +409,10 @@ BrowserGlue.prototype = {
     lazy.VentoLoginCache.init();
     lazy.VentoLoginSyncService.init();
     lazy.VentoLockService.init();
+    lazy.VentoNetworkObserver.init();
+    // Runs after the modal login gate above has closed, so on a logged-in
+    // startup init() immediately sees the token and restores a pending vault.
+    lazy.VentoSessionVault.init();
 
     // Register the form-detector actor pair that provides native-style
     // autofill for Vento credentials.  The child listens for

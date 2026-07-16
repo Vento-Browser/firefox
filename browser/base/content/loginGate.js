@@ -369,8 +369,19 @@ document.getElementById("continue-btn").addEventListener("click", () => {
   window.close();
 });
 
-document.getElementById("logout-btn").addEventListener("click", () => {
-  Services.prefs.clearUserPref("browser.logingate.accessToken");
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("logout-btn");
+  btn.disabled = true;
+  try {
+    const { VentoAuth } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoAuth.sys.mjs"
+    );
+    // Seals the encrypted vault and wipes browsing data before the token and
+    // server URL are gone.
+    await VentoAuth.logout({ promptLogin: false });
+  } finally {
+    btn.disabled = false;
+  }
   Services.prefs.clearUserPref("browser.logingate.serverUrl");
   state.server = "";
   showView("view-login");
