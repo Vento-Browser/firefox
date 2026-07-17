@@ -1,0 +1,7 @@
+[DEFAULT]
+support-files = [
+  "form_page.html",
+  "submit.sjs",
+]
+
+["browser_vento_autofill.js"]
