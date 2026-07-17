@@ -52,6 +52,59 @@ pref("signon.management.page.breach-alerts.enabled", false);
 // DevTools console paste enabled
 pref("devtools.selfxss.count", 5);
 
+// ── Background Mozilla/Google connections ──────────────────────────────────
+// Rationale and the full connection inventory: docs/mozilla-connections-audit.md
+// Everything that stays enabled goes through vento_proxy anyway.
+
+// Telemetry and data reporting: fully disabled.
+pref("datareporting.healthreport.uploadEnabled", false);
+pref("datareporting.policy.dataSubmissionEnabled", false);
+pref("datareporting.usage.uploadEnabled", false);
+pref("toolkit.telemetry.unified", false);
+pref("toolkit.telemetry.enabled", false);
+pref("toolkit.telemetry.server", "data:,");
+pref("toolkit.telemetry.archive.enabled", false);
+pref("toolkit.telemetry.newProfilePing.enabled", false);
+pref("toolkit.telemetry.shutdownPingSender.enabled", false);
+pref("toolkit.telemetry.updatePing.enabled", false);
+pref("toolkit.telemetry.bhrPing.enabled", false);
+pref("toolkit.telemetry.firstShutdownPing.enabled", false);
+pref("toolkit.telemetry.coverage.opt-out", true);
+pref("toolkit.coverage.opt-out", true);
+pref("browser.ping-centre.telemetry", false);
+pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
+pref("browser.newtabpage.activity-stream.telemetry", false);
+
+// Normandy/Shield remote recipes and studies: disabled.
+pref("app.normandy.enabled", false);
+pref("app.normandy.api_url", "");
+pref("app.shield.optoutstudies.enabled", false);
+pref("messaging-system.rsexperimentloader.enabled", false);
+
+// Crash reports are never auto-submitted.
+pref("browser.crashReports.unsubmittedCheck.enabled", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+
+// Captive portal / connectivity probes (detectportal.firefox.com): disabled
+// here as well as at runtime by VentoProxy hardening.
+pref("network.captive-portal-service.enabled", false);
+pref("network.connectivity-service.enabled", false);
+pref("captivedetect.canonicalURL", "");
+
+// Sponsored/discovery content: no Contile, Pocket, sponsored tiles/stories,
+// Merino quick-suggest or UITour.
+pref("browser.topsites.contile.enabled", false);
+pref("browser.newtabpage.activity-stream.showSponsored", false);
+pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+pref("extensions.pocket.enabled", false);
+pref("browser.urlbar.merino.enabled", false);
+pref("browser.uitour.enabled", false);
+
+// Google Safe Browsing download metadata checks: never send download info
+// to Google. Local list-based protection stays enabled (see audit doc).
+pref("browser.safebrowsing.downloads.remote.enabled", false);
+
 // Proxy hardening — prevent traffic leaks regardless of proxy state.
 // Locked so users cannot override via about:config or user.js.
 // VentoProxy/VentoWebSocket unlock these at runtime before updating, then re-lock.

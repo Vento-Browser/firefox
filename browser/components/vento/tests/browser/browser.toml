@@ -7,6 +7,8 @@ support-files = [
 
 ["browser_vento_autofill.js"]
 
+["browser_vento_connections.js"]
+
 ["browser_vento_feedback.js"]
 
 ["browser_vento_lock_hides_content.js"]
