@@ -15,6 +15,11 @@ pref("app.update.url.details", "https://vento-browser.com/download");
 pref("app.releaseNotesURL", "https://vento-browser.com/releases");
 pref("app.releaseNotesURL.aboutDialog", "https://vento-browser.com/releases");
 pref("app.releaseNotesURL.prompt", "https://vento-browser.com/releases");
+// User-facing documentation and feedback links (default: support.mozilla.org
+// and ideas.mozilla.org). about:preferences learn-more links resolve against
+// app.support.baseURL.
+pref("app.support.baseURL", "https://vento-browser.com/support/");
+pref("app.feedback.baseURL", "https://vento-browser.com/feedback");
 
 // Disable Firefox Accounts and Sync
 pref("identity.fxaccounts.enabled", false);

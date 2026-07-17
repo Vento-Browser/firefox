@@ -97,3 +97,21 @@ add_task(async function test_preferences_has_no_sync_pane() {
     );
   });
 });
+
+add_task(async function test_support_links_point_at_vento() {
+  // The harness overrides the user branch; the shipped defaults are what
+  // users get.
+  const defaults = Services.prefs.getDefaultBranch("");
+  for (const pref of ["app.support.baseURL", "app.feedback.baseURL"]) {
+    const value = defaults.getStringPref(pref, "");
+    info(`${pref} (default) = ${value}`);
+    Assert.ok(
+      !/mozilla\.org|mozilla\.com/i.test(value),
+      `${pref} must not point at a Mozilla domain (got: ${value})`
+    );
+    Assert.ok(
+      value.includes("vento-browser.com"),
+      `${pref} must point at vento-browser.com (got: ${value})`
+    );
+  }
+});
