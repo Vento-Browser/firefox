@@ -74,7 +74,7 @@ export const VentoLoginSyncService = {
   async _wipeAllLocalLogins() {
     this._syncing = true;
     try {
-      const allLogins = Services.logins.getAllLogins();
+      const allLogins = await Services.logins.getAllLogins();
       for (const login of allLogins) {
         if (!this._shouldExclude(login.origin)) {
           try {
