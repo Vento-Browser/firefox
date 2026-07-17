@@ -674,10 +674,18 @@ menupopup::part(drop-indicator) {
     border-radius: 1px;
     background-color: var(--icon-color-deemphasized);
 
-    &:nth-child(1) { height: 25%; }
-    &:nth-child(2) { height: 50%; }
-    &:nth-child(3) { height: 75%; }
-    &:nth-child(4) { height: 100%; }
+    &:nth-child(1) {
+      height: 25%;
+    }
+    &:nth-child(2) {
+      height: 50%;
+    }
+    &:nth-child(3) {
+      height: 75%;
+    }
+    &:nth-child(4) {
+      height: 100%;
+    }
   }
 
   /* Connecting — all bars pulse */
@@ -1613,4 +1621,11 @@ popupnotificationcontent {
 #BMB_bookmarksToolbar,
 #bookmarksToolbarFolderMenu {
   --menuitem-icon: url("chrome://browser/skin/places/bookmarksToolbar.svg");
+}
+
+/* Vento: blank the whole window while a lock/login gate is shown, so tab
+   contents are never visible behind the modal (set by
+   VentoAuth.withBrowserWindowsHidden). */
+:root[vento-obscured] body {
+  visibility: hidden;
 }

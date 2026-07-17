@@ -77,12 +77,15 @@ export const VentoLockService = {
     }
     this._locked = true;
     try {
-      Services.ww.openWindow(
-        null,
-        "chrome://browser/content/lockGate.html",
-        "_blank",
-        "chrome,centerscreen,modal,resizable=no,width=460,height=320",
-        null
+      // Tab contents must not be visible behind the lock window.
+      lazy.VentoAuth.withBrowserWindowsHidden(() =>
+        Services.ww.openWindow(
+          null,
+          "chrome://browser/content/lockGate.html",
+          "_blank",
+          "chrome,centerscreen,modal,resizable=no,width=460,height=320",
+          null
+        )
       );
     } finally {
       this._locked = false;
