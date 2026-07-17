@@ -1458,10 +1458,17 @@ function renderProfile() {
 
 // ── Init ──────────────────────────────────────────────────
 
+function openFeedback() {
+  const base = Services.urlFormatter.formatURLPref("app.feedback.baseURL");
+  const url = `${base}${base.includes("?") ? "&" : "?"}source=vento-panel`;
+  window.browsingContext.topChromeWindow.openTrustedLinkIn(url, "tab");
+}
+
 async function init() {
   for (const btn of document.querySelectorAll("#categories .category")) {
     btn.addEventListener("click", () => navigate(btn.getAttribute("name")));
   }
+  $("btn-feedback").addEventListener("click", () => openFeedback());
 
   // Dashboard
   $("btn-refresh").addEventListener("click", () => loadDashboard());

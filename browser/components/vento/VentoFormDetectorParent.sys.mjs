@@ -113,7 +113,14 @@ export class VentoFormDetectorParent extends JSWindowActorParent {
     // ── Step 3: Issue a one-shot fill token ──────────────────────────────
     lazy.VentoCredentialService.init();
     const allowedUrl = entry.origin || origin;
-    const bcId = this.browsingContext?.id ?? 0;
+    let bcId;
+    try {
+      bcId = this.browsingContext?.id ?? 0;
+    } catch {
+      // The page went away while we were fetching the value; the dead
+      // actor throws on any property access. Nothing to fill.
+      return undefined;
+    }
 
     let fillToken;
     try {
