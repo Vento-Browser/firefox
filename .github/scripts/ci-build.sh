@@ -10,9 +10,13 @@ export MOZCONFIG="$PWD/mozconfig-ci"
 cat > "$MOZCONFIG" <<'EOF'
 . "$topsrcdir/browser/config/mozconfig"
 ac_add_options --with-branding=browser/branding/vento
+ac_add_options --enable-update-channel=release
 ac_add_options --enable-bootstrap
 ac_add_options --disable-tests
 mk_add_options AUTOCLOBBER=1
+export MOZ_APPUPDATE_HOST=updates.vento-browser.com
+export MAR_CHANNEL_ID=vento-release
+export ACCEPTED_MAR_CHANNEL_IDS=vento-release
 EOF
 
 if [ "$(uname)" = "Darwin" ]; then

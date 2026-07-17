@@ -104,6 +104,20 @@ def smprivilegedexec_requirements(enabled):
 
 set_config("MOZ_SMPRIVILEGEDEXECUTABLES_REQUIREMENTS", smprivilegedexec_requirements)
 
+# Application update server host
+# ==============================================================
+
+option(
+    env="MOZ_APPUPDATE_HOST",
+    nargs=1,
+    help="Hostname of the application update server baked into application.ini",
+)
+
+set_config(
+    "MOZ_APPUPDATE_HOST",
+    depends_if("MOZ_APPUPDATE_HOST")(lambda host: host[0]),
+)
+
 # MAR channel ID configuration
 # ==============================================================
 

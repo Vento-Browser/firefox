@@ -8,17 +8,13 @@ pref("startup.homepage_override_url", "");
 pref("startup.homepage_welcome_url", "");
 pref("startup.homepage_welcome_url.additional", "");
 
-// Disable automatic updates
-pref("app.update.enabled", false);
-pref("app.update.auto", false);
-pref("app.update.interval", 86400);
-pref("app.update.promptWaitTime", 86400);
-pref("app.update.badgeWaitTime", 86400);
-pref("app.update.url.manual", "");
-pref("app.update.url.details", "");
-pref("app.releaseNotesURL", "");
-pref("app.releaseNotesURL.aboutDialog", "");
-pref("app.releaseNotesURL.prompt", "");
+// Application update endpoints (the update-check URL itself is baked into
+// application.ini via MOZ_APPUPDATE_HOST; these are the user-facing pages).
+pref("app.update.url.manual", "https://vento-browser.com/download");
+pref("app.update.url.details", "https://vento-browser.com/download");
+pref("app.releaseNotesURL", "https://vento-browser.com/releases");
+pref("app.releaseNotesURL.aboutDialog", "https://vento-browser.com/releases");
+pref("app.releaseNotesURL.prompt", "https://vento-browser.com/releases");
 
 // Disable Firefox Accounts and Sync
 pref("identity.fxaccounts.enabled", false);
