@@ -921,3 +921,56 @@
   background: color-mix(in srgb, orange 15%, transparent);
   color: color-mix(in srgb, orange 70%, black);
 }
+
+/* ── Permission help ("?") icons and popover ─────────────── */
+
+.perm-badge-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxsmall);
+}
+
+.perm-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--border-color-default, ButtonBorder);
+  border-radius: var(--border-radius-circle);
+  background: transparent;
+  color: var(--text-color-deemphasized, gray);
+  font-size: 9px;
+  font-weight: var(--font-weight-bold, 600);
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.perm-help:hover {
+  background-color: var(--button-background-color-hover, ButtonFace);
+  color: var(--text-color, currentColor);
+}
+
+.perm-popover {
+  position: absolute;
+  z-index: 100;
+  max-width: var(--size-sidebar);
+  padding: var(--space-small, 8px) var(--space-medium, 12px);
+  border: 1px solid var(--border-color-default, ButtonBorder);
+  border-radius: var(--border-radius-medium, 8px);
+  background-color: var(--background-color-canvas, Field);
+  box-shadow: var(--box-shadow-popup, 0 2px 8px rgba(0, 0, 0, 0.2));
+}
+
+.perm-popover-title {
+  font-size: var(--font-size-small, 12px);
+  font-weight: var(--font-weight-bold, 600);
+  margin-block-end: var(--space-xxsmall);
+}
+
+.perm-popover-text {
+  font-size: var(--font-size-small, 12px);
+  color: var(--text-color-deemphasized, gray);
+}

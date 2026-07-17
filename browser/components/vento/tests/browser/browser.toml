@@ -9,3 +9,5 @@ support-files = [
 ["browser_vento_lock_hides_content.js"]
 
 ["browser_vento_no_mozilla_account.js"]
+
+["browser_vento_perm_help.js"]

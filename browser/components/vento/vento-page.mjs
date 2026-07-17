@@ -30,6 +30,15 @@ const ALL_PERMS = [
   "ADMIN",
   "USERS_READ_ONLINE_STATUS",
 ];
+const PERM_DESCRIPTIONS = {
+  USERS_READ: "View the list of users and their profiles.",
+  USERS_MANAGE:
+    "Create, deactivate and delete users, and manage groups and their members.",
+  USERS_PERMISSIONS: "Grant and revoke permissions of other users.",
+  ADMIN: "Full administrative access to server settings and metrics.",
+  USERS_READ_ONLINE_STATUS: "See which users are currently online.",
+  PASSWORDS_MANAGE: "Create, edit, delete and share saved passwords.",
+};
 const PER_PAGE = 50;
 const PAGE_TITLES = {
   dashboard: "Dashboard",
@@ -92,6 +101,79 @@ function makeBadge(text, cls) {
   span.className = `badge ${cls}`;
   span.textContent = text;
   return span;
+}
+
+let openPermPopover = null;
+
+function closePermPopover() {
+  if (openPermPopover) {
+    openPermPopover.remove();
+    openPermPopover = null;
+  }
+}
+
+document.addEventListener("click", event => {
+  if (openPermPopover && !event.target.closest(".perm-help")) {
+    closePermPopover();
+  }
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    closePermPopover();
+  }
+});
+
+/**
+ * Small "?" button that shows a popover describing the permission.
+ *
+ * @param {string} perm
+ */
+function makePermHelp(perm) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "perm-help";
+  btn.textContent = "?";
+  btn.setAttribute("aria-label", `What does ${perm} mean?`);
+  const description = PERM_DESCRIPTIONS[perm] ?? "No description available.";
+  btn.title = description;
+  btn.addEventListener("click", event => {
+    event.stopPropagation();
+    const reopen = !openPermPopover || openPermPopover._perm !== perm;
+    closePermPopover();
+    if (!reopen) {
+      return;
+    }
+    const pop = document.createElement("div");
+    pop.className = "perm-popover";
+    pop._perm = perm;
+    const title = document.createElement("div");
+    title.className = "perm-popover-title";
+    title.textContent = perm;
+    const text = document.createElement("div");
+    text.className = "perm-popover-text";
+    text.textContent = description;
+    pop.append(title, text);
+    document.body.appendChild(pop);
+    const rect = btn.getBoundingClientRect();
+    pop.style.left = `${Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - pop.offsetWidth - 12)}px`;
+    pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+    openPermPopover = pop;
+  });
+  return btn;
+}
+
+/**
+ * Permission badge with an attached help icon.
+ *
+ * @param {string} perm
+ * @param {string} cls
+ */
+function makePermBadge(perm, cls) {
+  const wrap = document.createElement("span");
+  wrap.className = "perm-badge-wrap";
+  wrap.appendChild(makeBadge(perm, cls));
+  wrap.appendChild(makePermHelp(perm));
+  return wrap;
 }
 
 function makeMozButton(text, type, size) {
@@ -680,7 +762,7 @@ function appendUserRows(
       const div = document.createElement("div");
       div.className = "perm-badges";
       for (const p of u.individual_permissions) {
-        div.appendChild(makeBadge(p, "badge-perm"));
+        div.appendChild(makePermBadge(p, "badge-perm"));
       }
       wrap.appendChild(div);
     }
@@ -700,7 +782,7 @@ function appendUserRows(
       const badgesDiv = document.createElement("div");
       badgesDiv.className = "perm-badges";
       for (const p of g.permissions) {
-        badgesDiv.appendChild(makeBadge(p, "badge-perm badge-perm-group"));
+        badgesDiv.appendChild(makePermBadge(p, "badge-perm badge-perm-group"));
       }
       groupRow.appendChild(badgesDiv);
 
@@ -791,6 +873,7 @@ function appendUserRows(
       });
       label.appendChild(cb);
       label.append(` ${perm}`);
+      label.appendChild(makePermHelp(perm));
       grid.appendChild(label);
     }
     wrap.appendChild(grid);
@@ -1032,7 +1115,7 @@ function appendGroupRow(tbody, g) {
     const div = document.createElement("div");
     div.className = "perm-badges";
     for (const p of g.permissions) {
-      div.appendChild(makeBadge(p, "badge-perm"));
+      div.appendChild(makePermBadge(p, "badge-perm"));
     }
     permsTd.appendChild(div);
   } else {
@@ -1130,6 +1213,7 @@ function appendGroupRow(tbody, g) {
       });
       label.appendChild(cb);
       label.append(` ${perm}`);
+      label.appendChild(makePermHelp(perm));
       grid.appendChild(label);
     }
     wrap.appendChild(grid);
@@ -1362,7 +1446,7 @@ function renderProfile() {
   clearChildren(permsEl);
   if (u.permissions.length) {
     for (const p of u.permissions) {
-      permsEl.appendChild(makeBadge(p, "badge-perm"));
+      permsEl.appendChild(makePermBadge(p, "badge-perm"));
     }
   } else {
     const dash = document.createElement("span");
