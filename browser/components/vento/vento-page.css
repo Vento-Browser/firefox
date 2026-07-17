@@ -593,6 +593,7 @@
 .profile-actions {
   display: flex;
   gap: var(--space-small, 8px);
+  margin-block-start: var(--space-large, 16px);
 }
 
 /* ── Passwords page ─────────────────────────────────────────── */
@@ -973,4 +974,10 @@
 .perm-popover-text {
   font-size: var(--font-size-small, 12px);
   color: var(--text-color-deemphasized, gray);
+}
+
+/* Space between the create-user/group panels and the list toolbar below. */
+#create-user-section,
+#create-group-section {
+  margin-block-end: var(--space-large, 16px);
 }
