@@ -76,6 +76,9 @@ export class VentoPasswordChild extends JSWindowActorChild {
    *
    * Layout: [🔒 credential title  ✕]  inside a div that matches the
    * input's bounding rect, styled to look like a filled input field.
+   *
+   * @param input
+   * @param title
    */
   #injectChip(input, title) {
     const doc = input.ownerDocument;
@@ -98,10 +101,10 @@ export class VentoPasswordChild extends JSWindowActorChild {
 
     // ── Save & hide the real input ─────────────────────────────────────────
     // Save entire attribute strings so we can restore them atom-for-atom.
-    const prevStyleAttr = input.getAttribute("style");   // null = no attr
-    const prevReadonly  = input.hasAttribute("readonly"); // false (we filter !readOnly)
-    const prevTabindex  = input.getAttribute("tabindex"); // null = no attr
-    const wasDisabled   = input.disabled;
+    const prevStyleAttr = input.getAttribute("style"); // null = no attr
+    const prevReadonly = input.hasAttribute("readonly"); // false (we filter !readOnly)
+    const prevTabindex = input.getAttribute("tabindex"); // null = no attr
+    const wasDisabled = input.disabled;
 
     input.setAttribute("readonly", "");
     input.setAttribute("tabindex", "-1");
@@ -247,7 +250,10 @@ export class VentoPasswordChild extends JSWindowActorChild {
           nr.left < win.innerWidth;
         container.style.visibility = inViewport ? "visible" : "hidden";
       };
-      doc.addEventListener("scroll", syncFixed, { capture: true, passive: true });
+      doc.addEventListener("scroll", syncFixed, {
+        capture: true,
+        passive: true,
+      });
       win.addEventListener("resize", syncFixed, { passive: true });
     }
 
@@ -339,7 +345,11 @@ export class VentoPasswordChild extends JSWindowActorChild {
     });
   }
 
-  /** Returns true when the element occupies layout space and is not hidden. */
+  /**
+   * Returns true when the element occupies layout space and is not hidden.
+   *
+   * @param el
+   */
   #isVisible(el) {
     if (!el.isConnected || el.closest("[hidden]")) {
       return false;

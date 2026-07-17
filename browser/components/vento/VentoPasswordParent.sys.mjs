@@ -14,6 +14,9 @@
  *   3. VentoPasswordChild fills the password field and shows a credential chip.
  */
 
+/**
+ *
+ */
 export class VentoPasswordParent extends JSWindowActorParent {
   /**
    * Fetch the credential secret and forward it directly to the content process.

@@ -20,6 +20,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
 });
 
+/**
+ *
+ */
 export class VentoFormDetectorParent extends JSWindowActorParent {
   async receiveMessage(message) {
     if (message.name !== "VentoFormDetector:LookupCredentials") {

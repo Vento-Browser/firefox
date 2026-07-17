@@ -15,9 +15,10 @@
  * the Vento panel UI and the backend REST API.
  */
 
-const { setInterval, clearInterval } = ChromeUtils.importESModule(
-  "resource://gre/modules/Timer.sys.mjs"
-);
+import {
+  setInterval,
+  clearInterval,
+} from "resource://gre/modules/Timer.sys.mjs";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 

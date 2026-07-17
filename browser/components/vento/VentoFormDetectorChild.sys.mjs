@@ -65,7 +65,10 @@ export class VentoFormDetectorChild extends JSWindowActorChild {
       return;
     }
 
-    console.log("[VentoFormDetector] pageshow: password field found, requesting credentials for", origin);
+    console.log(
+      "[VentoFormDetector] pageshow: password field found, requesting credentials for",
+      origin
+    );
     this.#pendingInput = new WeakRef(input);
     this.#requested = true;
 
@@ -77,7 +80,10 @@ export class VentoFormDetectorChild extends JSWindowActorChild {
       return;
     }
 
-    console.log("[VentoFormDetector] received FillCredentials, username:", message.data.username);
+    console.log(
+      "[VentoFormDetector] received FillCredentials, username:",
+      message.data.username
+    );
 
     const { username, fillToken } = message.data;
     if (!fillToken) {
@@ -95,7 +101,9 @@ export class VentoFormDetectorChild extends JSWindowActorChild {
     this.#pendingInput = null;
 
     if (!pwInput || !this.#isVisible(pwInput)) {
-      console.error("[VentoFormDetector] FillCredentials: password input not found or not visible");
+      console.error(
+        "[VentoFormDetector] FillCredentials: password input not found or not visible"
+      );
       return;
     }
 
@@ -124,14 +132,16 @@ export class VentoFormDetectorChild extends JSWindowActorChild {
     pwInput.focus();
 
     // Suppress the "reveal password" eye icon so it cannot expose the token.
-    pwInput.addEventListener(
-      "MozWillToggleReveal",
-      e => e.preventDefault(),
-      { capture: true }
-    );
+    pwInput.addEventListener("MozWillToggleReveal", e => e.preventDefault(), {
+      capture: true,
+    });
   }
 
-  /** Returns true when the element occupies layout space and is not hidden. */
+  /**
+   * Returns true when the element occupies layout space and is not hidden.
+   *
+   * @param el
+   */
   #isVisible(el) {
     return el.offsetParent !== null && !el.closest("[hidden]");
   }
