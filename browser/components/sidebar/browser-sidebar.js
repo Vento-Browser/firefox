@@ -159,22 +159,31 @@ var SidebarController = {
       ],
     ]);
 
-    this.registerPrefSidebar("identity.fxaccounts.enabled", "viewTabsSidebar", {
-      name: "syncedtabs",
-      elementId: "sidebar-switcher-tabs",
-      url: this.sidebarRevampEnabled
-        ? "chrome://browser/content/sidebar/sidebar-syncedtabs.html"
-        : "chrome://browser/content/syncedtabs/sidebar.xhtml",
-      menuId: "menu_tabsSidebar",
-      classAttribute: "sync-ui-item",
-      menuL10nId: "menu-view-synced-tabs-sidebar",
-      revampL10nId: "sidebar-menu-synced-tabs-label",
-      iconUrl: "chrome://browser/skin/synced-tabs.svg",
-      contextMenuId: this.sidebarRevampEnabled
-        ? "sidebar-synced-tabs-context-menu"
-        : undefined,
-      gleanClickEvent: Glean.sidebar.syncedTabsIconClick,
-    });
+    // Vento: with Mozilla accounts permanently disabled, do not register the
+    // synced-tabs sidebar at all so no launcher/customize/menu entry point
+    // can ever reach the FxA sign-in UI.
+    if (Services.prefs.getBoolPref("identity.fxaccounts.enabled", true)) {
+      this.registerPrefSidebar(
+        "identity.fxaccounts.enabled",
+        "viewTabsSidebar",
+        {
+          name: "syncedtabs",
+          elementId: "sidebar-switcher-tabs",
+          url: this.sidebarRevampEnabled
+            ? "chrome://browser/content/sidebar/sidebar-syncedtabs.html"
+            : "chrome://browser/content/syncedtabs/sidebar.xhtml",
+          menuId: "menu_tabsSidebar",
+          classAttribute: "sync-ui-item",
+          menuL10nId: "menu-view-synced-tabs-sidebar",
+          revampL10nId: "sidebar-menu-synced-tabs-label",
+          iconUrl: "chrome://browser/skin/synced-tabs.svg",
+          contextMenuId: this.sidebarRevampEnabled
+            ? "sidebar-synced-tabs-context-menu"
+            : undefined,
+          gleanClickEvent: Glean.sidebar.syncedTabsIconClick,
+        }
+      );
+    }
 
     this.registerPrefSidebar(
       "browser.ml.chat.enabled",

@@ -5,3 +5,5 @@ support-files = [
 ]
 
 ["browser_vento_autofill.js"]
+
+["browser_vento_no_mozilla_account.js"]

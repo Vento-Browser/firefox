@@ -27,6 +27,9 @@ pref("browser.promo.focus.enabled", false);
 pref("browser.promo.pin.enabled", false);
 pref("identity.fxaccounts.toolbar.enabled", false);
 pref("identity.fxaccounts.toolbar.pxiToolbarEnabled", false);
+// Default sidebar launcher tools: no Mozilla syncedtabs (needs an FxA
+// account) and no Mozilla AI chatbot.
+pref("sidebar.main.tools", "history,bookmarks");
 pref("services.sync.engine.addons", false);
 pref("services.sync.engine.bookmarks", false);
 pref("services.sync.engine.history", false);
