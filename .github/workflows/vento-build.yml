@@ -30,12 +30,40 @@ jobs:
         env:
           MOZBUILD_STATE_PATH: ${{ runner.temp }}/.mozbuild
 
+      # Generate + sign the full-update MAR for the auto-updater and print the
+      # publish JSON. Skips itself (no-op success) until the signing key secret
+      # is configured, so the build workflow keeps passing before then.
+      # The secret holds `tar czf - -C <nssdb-parent> nssdb | base64` of the NSS
+      # DB that contains the MAR signing private key.
+      - name: Generate signed update MAR
+        env:
+          MAR_SIGNING_NSSDB_B64: ${{ secrets.MAR_SIGNING_NSSDB_B64 }}
+        run: |
+          if [ -z "${MAR_SIGNING_NSSDB_B64:-}" ]; then
+            echo "MAR_SIGNING_NSSDB_B64 secret not set - skipping MAR generation"
+            exit 0
+          fi
+          nssdb="$(mktemp -d)"
+          echo "$MAR_SIGNING_NSSDB_B64" | base64 -d | tar -xzf - -C "$nssdb"
+          keyfile="$(find "$nssdb" \( -name key4.db -o -name key3.db \) | head -1)"
+          dbdir="$([ -n "$keyfile" ] && dirname "$keyfile" || echo "$nssdb")"
+          ./.github/scripts/make-update-mar.sh -d "sql:$dbdir"
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: vento-macos-aarch64
           path: obj-*/dist/*.dmg
           if-no-files-found: error
+
+      - name: Upload update MAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: vento-macos-aarch64-mar
+          path: |
+            obj-*/dist/update/*.mar
+            obj-*/dist/update/*.publish.json
+          if-no-files-found: ignore
 
   build-windows:
     name: Windows (x86_64)

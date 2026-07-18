@@ -5,6 +5,13 @@ set -ex
 
 export MOZCONFIG="$PWD/mozconfig-ci"
 
+# Pin the build ID to an explicit UTC timestamp. Without this the ID is
+# derived from the runner's local configure time, which can go backwards
+# between machines/timezones and break the "newer build_id => update"
+# ordering the AUS endpoint relies on. Overridable so a release job can
+# supply its own value.
+export MOZ_BUILD_DATE="${MOZ_BUILD_DATE:-$(date -u +%Y%m%d%H%M%S)}"
+
 # The local root mozconfig is gitignored upstream, so define the full
 # CI config here (keep in sync with the local mozconfig).
 cat > "$MOZCONFIG" <<'EOF'
