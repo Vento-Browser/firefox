@@ -324,7 +324,7 @@ discopane-intro3 =
     Extensions and themes let you customize { -brand-product-name }. They can boost privacy,
     enhance productivity, improve media, change the way { -brand-product-name } looks, and
     so much more. These small software programs are often developed by a third party. Here’s
-    a selection Firefox <a data-l10n-name="learn-more-trigger">recommends</a> for
+    a selection { -brand-short-name } <a data-l10n-name="learn-more-trigger">recommends</a> for
     exceptional security, performance, and functionality.
 
 # Notice to make user aware that the recommendations are personalized.
@@ -493,7 +493,7 @@ addon-detail-group-label-quarantined-domains =
 # recommendation. As such, we hard code "Firefox" and avoid personalising
 # language like the words "our" or "we".
 addon-badge-recommended4 =
-  .title = Firefox only recommends extensions that meet standards for security and performance
+  .title = { -brand-short-name } only recommends extensions that meet standards for security and performance
 # We hard code "Mozilla" in the string below because the extensions are built
 # by Mozilla and we don't want forks to display "by Fork".
 addon-badge-line4 =
