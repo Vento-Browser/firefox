@@ -1109,6 +1109,11 @@ Preferences.addSetting({
 
 Preferences.addSetting({
   id: "connectionSettings",
+  // Vento pins the proxy to its own SOCKS endpoint (network.proxy.* are locked
+  // at startup by VentoProxy); the user must not be able to select a different
+  // proxy, so the whole Network Settings group is hidden. Hiding its only
+  // control auto-hides the group (setting-group.handleVisibilityChange).
+  visible: () => false,
   onUserClick: () => gMainPane.showConnections(),
   controllingExtensionInfo: {
     storeId: PROXY_KEY,
