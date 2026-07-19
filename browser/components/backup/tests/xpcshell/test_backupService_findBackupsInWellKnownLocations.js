@@ -40,7 +40,7 @@ add_task(
     );
 
     // 1) Single valid file -> findBackupsInWellKnownLocations should find it
-    const ONE = "FirefoxBackup_one_20241201-1200.html";
+    const ONE = `${BackupService.BACKUP_FILE_NAME}_one_20241201-1200.html`;
     await touch(ONE);
 
     let result = await bs.findBackupsInWellKnownLocations();
@@ -57,7 +57,7 @@ add_task(
     );
 
     // 2) Add a second matching file -> well-known search should refuse to pick (validateFile=false)
-    const TWO = "FirefoxBackup_two_20241202-1300.html";
+    const TWO = `${BackupService.BACKUP_FILE_NAME}_two_20241202-1300.html`;
     await touch(TWO);
 
     let result2 = await bs.findBackupsInWellKnownLocations();

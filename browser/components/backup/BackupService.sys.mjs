@@ -638,6 +638,14 @@ export class BackupService extends EventTarget {
   static #backupFileName = null;
 
   /**
+   * A cached regular expression matching archive file names built from
+   * BACKUP_FILE_NAME.
+   *
+   * @see BACKUP_FILE_NAME_REGEX
+   */
+  static #backupFileNameRegex = null;
+
+  /**
    * Number of retries that have occured in this session on error
    */
   static #errorRetries = 0;
@@ -1044,6 +1052,23 @@ export class BackupService extends EventTarget {
       );
     }
     return BackupService.#backupFileName;
+  }
+
+  /**
+   * A regular expression matching archive file names built from
+   * BACKUP_FILE_NAME, cached for repeated filtering.
+   *
+   * @returns {RegExp} The backup archive file name matcher
+   */
+  static get BACKUP_FILE_NAME_REGEX() {
+    if (!BackupService.#backupFileNameRegex) {
+      let escaped = BackupService.BACKUP_FILE_NAME.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+      BackupService.#backupFileNameRegex = new RegExp(`^${escaped}_.*\\.html$`);
+    }
+    return BackupService.#backupFileNameRegex;
   }
 
   /**
@@ -4917,14 +4942,11 @@ export class BackupService extends EventTarget {
         };
       }
 
-      // The backup is always a html file and starts with "FirefoxBackup_"
-      // disregard any other files in the folder
+      // The backup is always a html file starting with the localized
+      // BACKUP_FILE_NAME prefix; disregard any other files in the folder.
       let maybeBackupFiles = files.filter(f => {
         let name = PathUtils.filename(f);
-
-        // Note: The Firefox backup filename is localized (see BackupService.BACKUP_FILE_NAME).
-        // For now, we use a hardcoded regex string directly for performance reasons.
-        return /^FirefoxBackup_.*\.html$/.test(name);
+        return BackupService.BACKUP_FILE_NAME_REGEX.test(name);
       });
 
       // if we aren't validating files, and there's more than 1 html file, we decide
