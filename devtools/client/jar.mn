@@ -374,6 +374,7 @@ devtools.jar:
     skin/images/aboutdebugging-information.svg (themes/images/aboutdebugging-information.svg)
     skin/images/aboutdebugging-process-icon.svg (themes/images/aboutdebugging-process-icon.svg)
     skin/images/aboutdebugging-usb-icon.svg (themes/images/aboutdebugging-usb-icon.svg)
+    skin/images/aboutdebugging-vento.svg (themes/images/aboutdebugging-vento.svg)
     content/aboutdebugging/index.html (aboutdebugging/index.html)
     content/aboutdebugging/aboutdebugging.css (aboutdebugging/aboutdebugging.css)
     content/aboutdebugging/src/base.css (aboutdebugging/src/base.css)

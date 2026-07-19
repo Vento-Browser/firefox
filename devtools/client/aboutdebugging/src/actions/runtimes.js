@@ -60,6 +60,10 @@ const CONNECTION_TIMING_OUT_DELAY = 3000;
 const CONNECTION_CANCEL_DELAY = 13000;
 
 async function getRuntimeIcon(runtime, channel) {
+  if (runtime.type === RUNTIMES.THIS_FIREFOX) {
+    return "chrome://devtools/skin/images/aboutdebugging-vento.svg";
+  }
+
   if (runtime.isFenix) {
     switch (channel) {
       case "release":
