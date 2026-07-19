@@ -4,6 +4,8 @@ run-if = [
 ]
 head = "head.js ../../../common/tests/unit/head_helpers.js ../../../common/tests/unit/head_http.js"
 firefox-appdir = "browser"
+# Vento disables FxA by default; these tests exercise the FxA code itself.
+prefs = ["identity.fxaccounts.enabled=true"]
 skip-if = [
   "!sync",
 ]

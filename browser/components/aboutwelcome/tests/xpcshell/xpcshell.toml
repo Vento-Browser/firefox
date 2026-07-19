@@ -7,5 +7,9 @@ firefox-appdir = "browser"
 ["test_AboutWelcomeAttribution.js"]
 
 ["test_AboutWelcomeTelemetry.js"]
+# Vento disables unified telemetry by default; this test exercises it.
+prefs = ["toolkit.telemetry.unified=true"]
 
 ["test_AboutWelcomeTelemetry_exposure.js"]
+# Vento disables about:welcome by default; this test simulates visiting it.
+prefs = ["browser.aboutwelcome.enabled=true"]

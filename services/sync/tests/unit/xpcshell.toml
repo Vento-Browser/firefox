@@ -2,7 +2,7 @@
 run-if = [
   "os != 'android'",
 ]
-head = "head_appinfo.js ../../../common/tests/unit/head_helpers.js head_helpers.js head_http_server.js head_errorhandler_common.js"
+head = "head_appinfo.js ../../../common/tests/unit/head_helpers.js head_helpers.js head_http_server.js head_errorhandler_common.js head_vento.js"
 firefox-appdir = "browser"
 prefs = ["identity.fxaccounts.enabled=true"]
 support-files = [

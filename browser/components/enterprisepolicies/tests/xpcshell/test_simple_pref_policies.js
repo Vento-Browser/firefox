@@ -1126,16 +1126,18 @@ const POLICIES_TESTS = [
   },
 
   // POLICY: Proxy - locking if no values are set
-  {
-    policies: {
-      Proxy: {
-        Locked: true,
-      },
-    },
-    lockedPrefs: {
-      "network.proxy.type": 5,
-    },
-  },
+  // Vento: disabled - network.proxy.type is locked to 1 by branding prefs,
+  // so the policy engine cannot apply the upstream default of 5 here.
+  // {
+  //   policies: {
+  //     Proxy: {
+  //       Locked: true,
+  //     },
+  //   },
+  //   lockedPrefs: {
+  //     "network.proxy.type": 5,
+  //   },
+  // },
 
   // POLICY: DisableEncryptedClientHello
   {

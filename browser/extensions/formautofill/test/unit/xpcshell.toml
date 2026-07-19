@@ -8,6 +8,8 @@ support-files = ["../fixtures/**"]
 prefs = [
   "extensions.formautofill.test.ignoreVisibilityCheck=true",
   "extensions.formautofill.heuristics.detectDynamicFormChanges=false",
+  # Vento disables FxA by default; the test_sync* tests need it.
+  "identity.fxaccounts.enabled=true",
 ]
 
 ["test_activeStatus.js"]

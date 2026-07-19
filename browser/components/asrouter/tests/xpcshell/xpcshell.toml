@@ -21,6 +21,8 @@ run-if = [
 
 ["test_ASRouterTelemetry.js"]
 support-files = ["../schemas/*.schema.json"]
+# Vento disables unified telemetry by default; this test exercises it.
+prefs = ["toolkit.telemetry.unified=true"]
 
 ["test_ASRouter_getTargetingParameters.js"]
 

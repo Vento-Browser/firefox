@@ -51,6 +51,12 @@ add_test(function test_attributes() {
  * request made in the file!
  */
 add_task(async function test_proxy_auth_redirect() {
+  if (Services.prefs.prefIsLocked("network.proxy.type")) {
+    // Vento: network.proxy.type is locked to manual, so the system PAC this
+    // test installs is never consulted.
+    _("Skipping test_proxy_auth_redirect: network.proxy.type is locked.");
+    return;
+  }
   let pacFetched = false;
   function pacHandler(metadata, response) {
     pacFetched = true;

@@ -36,8 +36,10 @@ support-files = ["test_remote_settings_startup_bundle/**"]
 ["test_remote_settings_utils.js"]
 
 ["test_remote_settings_utils_telemetry.js"]
+prefs = ["toolkit.telemetry.unified=true"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'x86_64'", # Bug 1739463
+  "true", # Vento: network.proxy.failover_direct is locked to false, so the proxy bypass event fires earlier than this upstream scenario expects
 ]
 
 ["test_remote_settings_worker.js"]

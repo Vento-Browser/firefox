@@ -182,6 +182,11 @@ requesttimeoutfactor = 2  # Slow on Linux and Windows
 skip-if = [
   "!sync",
 ]
+# Vento disables FxA and the sync engines by default; this test needs both.
+prefs = [
+  "identity.fxaccounts.enabled=true",
+  "services.sync.engine.tabs=true",
+]
 
 ["test_resultGroups.js"]
 
