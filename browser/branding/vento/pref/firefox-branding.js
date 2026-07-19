@@ -43,7 +43,10 @@ pref("services.sync.engine.prefs", false);
 pref("services.sync.engine.tabs", false);
 
 // Disable password manager
-pref("signon.firefoxRelay.feature", "disabled");
+// Empty value hides the Relay row entirely: OptInFeature.isAvailable treats
+// "available"/"offered"/"enabled"/"disabled" all as available, so "disabled"
+// would still show the checkbox in Settings.
+pref("signon.firefoxRelay.feature", "");
 pref("signon.rememberSignons", false);
 pref("signon.autofillForms", false);
 pref("signon.generation.enabled", false);
