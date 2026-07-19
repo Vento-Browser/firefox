@@ -925,28 +925,39 @@
 
 /* ── Permission help ("?") icons and popover ─────────────── */
 
-.perm-badge-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xxsmall);
+.perm-badge-clickable {
+  cursor: pointer;
+}
+
+.perm-badge-clickable:hover {
+  filter: brightness(0.96);
+}
+
+.perm-badge-clickable:focus-visible,
+.perm-help:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
 }
 
 .perm-help {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
   padding: 0;
   border: 1px solid var(--border-color-default, ButtonBorder);
   border-radius: var(--border-radius-circle);
   background: transparent;
   color: var(--text-color-deemphasized, gray);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--font-weight-bold, 600);
   line-height: 1;
   cursor: pointer;
+  user-select: none;
   flex: none;
+  vertical-align: middle;
 }
 
 .perm-help:hover {

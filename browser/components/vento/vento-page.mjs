@@ -113,7 +113,11 @@ function closePermPopover() {
 }
 
 document.addEventListener("click", event => {
-  if (openPermPopover && !event.target.closest(".perm-help")) {
+  if (
+    openPermPopover &&
+    !event.target.closest(".perm-trigger") &&
+    !event.target.closest(".perm-popover")
+  ) {
     closePermPopover();
   }
 });
@@ -124,56 +128,93 @@ document.addEventListener("keydown", event => {
 });
 
 /**
- * Small "?" button that shows a popover describing the permission.
+ * Opens (or toggles closed) the description popover for `perm`, anchored below
+ * `anchor`.
+ *
+ * @param {Element} anchor
+ * @param {string} perm
+ */
+function openPermPopoverFor(anchor, perm) {
+  const reopen = !openPermPopover || openPermPopover._perm !== perm;
+  closePermPopover();
+  if (!reopen) {
+    return;
+  }
+  const description = PERM_DESCRIPTIONS[perm] ?? "No description available.";
+  const pop = document.createElement("div");
+  pop.className = "perm-popover";
+  pop._perm = perm;
+  const title = document.createElement("div");
+  title.className = "perm-popover-title";
+  title.textContent = perm;
+  const text = document.createElement("div");
+  text.className = "perm-popover-text";
+  text.textContent = description;
+  pop.append(title, text);
+  document.body.appendChild(pop);
+  const rect = anchor.getBoundingClientRect();
+  pop.style.left = `${Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - pop.offsetWidth - 12)}px`;
+  pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+  openPermPopover = pop;
+}
+
+/**
+ * Wires a click / keyboard-activatable element to toggle the permission popover.
+ *
+ * @param {Element} trigger
+ * @param {string} perm
+ */
+function activatePermTrigger(trigger, perm) {
+  const activate = event => {
+    event.stopPropagation();
+    openPermPopoverFor(trigger, perm);
+  };
+  trigger.addEventListener("click", activate);
+  trigger.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate(event);
+    }
+  });
+}
+
+/**
+ * Small "?" affordance describing a permission. Rendered as a span rather than
+ * a <button> so it isn't picked up by the in-content button styling (which
+ * would inflate it into a large pill). Used next to permission checkboxes,
+ * where the surrounding row already toggles the box.
  *
  * @param {string} perm
  */
 function makePermHelp(perm) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "perm-help";
-  btn.textContent = "?";
-  btn.setAttribute("aria-label", `What does ${perm} mean?`);
-  const description = PERM_DESCRIPTIONS[perm] ?? "No description available.";
-  btn.title = description;
-  btn.addEventListener("click", event => {
-    event.stopPropagation();
-    const reopen = !openPermPopover || openPermPopover._perm !== perm;
-    closePermPopover();
-    if (!reopen) {
-      return;
-    }
-    const pop = document.createElement("div");
-    pop.className = "perm-popover";
-    pop._perm = perm;
-    const title = document.createElement("div");
-    title.className = "perm-popover-title";
-    title.textContent = perm;
-    const text = document.createElement("div");
-    text.className = "perm-popover-text";
-    text.textContent = description;
-    pop.append(title, text);
-    document.body.appendChild(pop);
-    const rect = btn.getBoundingClientRect();
-    pop.style.left = `${Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - pop.offsetWidth - 12)}px`;
-    pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
-    openPermPopover = pop;
-  });
-  return btn;
+  const el = document.createElement("span");
+  el.className = "perm-help perm-trigger";
+  el.textContent = "?";
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("aria-label", `What does ${perm} mean?`);
+  el.title = PERM_DESCRIPTIONS[perm] ?? "No description available.";
+  activatePermTrigger(el, perm);
+  return el;
 }
 
 /**
- * Permission badge with an attached help icon.
+ * Permission badge that is itself clickable to reveal a description popover
+ * (no separate help button).
  *
  * @param {string} perm
  * @param {string} cls
  */
 function makePermBadge(perm, cls) {
-  const wrap = document.createElement("span");
-  wrap.className = "perm-badge-wrap";
-  wrap.appendChild(makeBadge(perm, cls));
-  wrap.appendChild(makePermHelp(perm));
-  return wrap;
+  const badge = makeBadge(perm, cls);
+  badge.classList.add("perm-trigger", "perm-badge-clickable");
+  badge.setAttribute("role", "button");
+  badge.setAttribute("tabindex", "0");
+  const description = PERM_DESCRIPTIONS[perm] ?? "No description available.";
+  badge.title = description;
+  badge.setAttribute("aria-label", `${perm}: ${description}`);
+  activatePermTrigger(badge, perm);
+  return badge;
 }
 
 function makeMozButton(text, type, size) {

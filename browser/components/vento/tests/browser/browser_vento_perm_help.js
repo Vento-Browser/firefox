@@ -2,8 +2,8 @@
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Every rendered permission badge in about:vento carries a "?" help icon
- * that opens a popover with a human-readable description.
+ * Every rendered permission badge in about:vento is itself clickable and
+ * opens a popover with a human-readable description.
  * Requires the live vento-test-env stand (logged-in prefs set by the runner).
  */
 
@@ -34,16 +34,20 @@ add_task(async function test_permission_help_popover() {
     profileLink.click();
 
     await TestUtils.waitForCondition(
-      () => doc.querySelector("#profile-perms .perm-help"),
-      "waiting for permission help icons on the profile page"
+      () => doc.querySelector("#profile-perms .perm-badge-clickable"),
+      "waiting for permission badges on the profile page"
     );
 
-    const help = doc.querySelector("#profile-perms .perm-help");
-    Assert.ok(help.title, "help icon has a tooltip description");
+    const badge = doc.querySelector("#profile-perms .perm-badge-clickable");
+    Assert.ok(badge.title, "permission badge has a tooltip description");
+    Assert.ok(
+      !doc.querySelector("#profile-perms .perm-help"),
+      "no separate help button next to badges (chip itself is the trigger)"
+    );
 
-    help.click();
+    badge.click();
     const popover = doc.querySelector(".perm-popover");
-    Assert.ok(popover, "clicking the help icon opens the popover");
+    Assert.ok(popover, "clicking the permission badge opens the popover");
     Assert.greater(
       popover.querySelector(".perm-popover-text").textContent.length,
       10,
