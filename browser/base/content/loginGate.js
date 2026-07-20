@@ -313,9 +313,14 @@ async function checkExistingSession() {
     }
 
     document.getElementById("profile-server").textContent = serverUrl;
-    document.getElementById("profile-display-name").textContent =
-      data.display_name ?? data.email ?? "";
-    document.getElementById("profile-email").textContent = data.email ?? "";
+
+    const displayName = data.display_name ?? data.email ?? "";
+    document.getElementById("profile-display-name").textContent = displayName;
+    document.getElementById("profile-name-block").hidden = !displayName;
+
+    const email = data.email ?? "";
+    document.getElementById("profile-email").textContent = email;
+    document.getElementById("profile-email-block").hidden = !email;
 
     // const perms = data.permissions ?? [];
     // if (perms.length > 0) {
