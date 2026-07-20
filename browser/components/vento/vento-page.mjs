@@ -171,6 +171,10 @@ function openPermPopoverFor(anchor, perm) {
  */
 function activatePermTrigger(trigger, perm) {
   const activate = event => {
+    // preventDefault stops a wrapping <label> from forwarding the click to
+    // its checkbox, which would both toggle the box and dispatch a synthetic
+    // click that instantly closes the popover just opened here.
+    event.preventDefault();
     event.stopPropagation();
     openPermPopoverFor(trigger, perm);
   };

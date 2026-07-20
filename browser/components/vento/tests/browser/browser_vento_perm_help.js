@@ -62,3 +62,105 @@ add_task(async function test_permission_help_popover() {
     );
   });
 });
+
+/**
+ * The "?" affordance inside the permission-editing checkbox grid must open the
+ * popover without toggling the checkbox: the icon sits inside the checkbox
+ * <label>, so an unprevented click would be forwarded to the checkbox and the
+ * forwarded click would instantly close the popover again.
+ */
+add_task(async function test_permission_help_in_checkbox_grid() {
+  const serverUrl = Services.env.get("VENTO_BACKEND_URL");
+  const accessToken = Services.env.get("VENTO_ACCESS_TOKEN");
+  if (!serverUrl || !accessToken) {
+    Assert.ok(true, "skipped: vento-test-env stand is not running");
+    return;
+  }
+
+  // The grid only renders when editing someone else's permissions (the
+  // superuser's own row has no Edit button), so create a fixture user.
+  // Inactive so it doesn't consume a license seat.
+  const email = `perm-grid-${Date.now()}@vento.test`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const createRes = await fetch(`${serverUrl}/api/auth/users`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email,
+      display_name: "Perm Grid Fixture",
+      password: "PermGridFixture48!",
+      is_active: false,
+    }),
+  });
+  Assert.ok(createRes.ok, "fixture user created");
+  const fixture = await createRes.json();
+  registerCleanupFunction(async () => {
+    await fetch(`${serverUrl}/api/auth/users/${fixture.id}`, {
+      method: "DELETE",
+      headers,
+    }).catch(() => {});
+  });
+
+  await BrowserTestUtils.withNewTab("about:vento", async browser => {
+    const doc = browser.contentDocument;
+    const win = browser.contentWindow;
+
+    await TestUtils.waitForCondition(
+      () => !doc.getElementById("full").hidden,
+      "waiting for about:vento to authenticate"
+    );
+
+    doc.getElementById("nav-users").click();
+    await TestUtils.waitForCondition(
+      () =>
+        [...doc.querySelectorAll("tbody tr")].some(tr =>
+          tr.textContent.includes(email)
+        ),
+      "waiting for the fixture user row"
+    );
+
+    const row = [...doc.querySelectorAll("tbody tr")].find(tr =>
+      tr.textContent.includes(email)
+    );
+    const editBtn = [...row.querySelectorAll("moz-button")].find(
+      b => b.textContent.trim() === "Edit"
+    );
+    Assert.ok(editBtn, "fixture user row has an Edit button");
+    editBtn.click();
+
+    await TestUtils.waitForCondition(
+      () => doc.querySelector(".perm-check-label .perm-help"),
+      "waiting for the permission checkbox grid"
+    );
+
+    const label = doc.querySelector(".perm-check-label");
+    const checkbox = label.querySelector("input[type=checkbox]");
+    const help = label.querySelector(".perm-help");
+    const checkedBefore = checkbox.checked;
+
+    help.scrollIntoView();
+    EventUtils.synthesizeMouseAtCenter(help, {}, win);
+
+    const popover = doc.querySelector(".perm-popover");
+    Assert.ok(popover, "clicking the grid ? opens the popover (and it stays)");
+    Assert.greater(
+      popover.querySelector(".perm-popover-text").textContent.length,
+      10,
+      "popover contains a meaningful description"
+    );
+    Assert.equal(
+      checkbox.checked,
+      checkedBefore,
+      "clicking the ? does not toggle the neighbouring checkbox"
+    );
+
+    doc.body.click();
+    Assert.ok(
+      !doc.querySelector(".perm-popover"),
+      "popover closes on outside click"
+    );
+  });
+});
