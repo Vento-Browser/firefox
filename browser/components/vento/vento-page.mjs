@@ -29,6 +29,7 @@ const ALL_PERMS = [
   "USERS_PERMISSIONS",
   "ADMIN",
   "USERS_READ_ONLINE_STATUS",
+  "LICENSE_VIEW",
 ];
 const PERM_DESCRIPTIONS = {
   USERS_READ: "View the list of users and their profiles.",
@@ -38,6 +39,7 @@ const PERM_DESCRIPTIONS = {
   ADMIN: "Full administrative access to server settings and metrics.",
   USERS_READ_ONLINE_STATUS: "See which users are currently online.",
   PASSWORDS_MANAGE: "Create, edit, delete and share saved passwords.",
+  LICENSE_VIEW: "View the server license (plan, limits, expiry).",
 };
 const PER_PAGE = 50;
 const PAGE_TITLES = {
@@ -64,6 +66,9 @@ let usersTotal = 0;
 let editingUserId = null;
 let editingPerms = [];
 let showCreateForm = false;
+let licenseInfo = null;
+// "Create as inactive" choice, remembered until the page is reloaded.
+let createInactiveChoice = false;
 
 let dashboardStats = null;
 let dashboardOnlineUsers = null;
@@ -511,11 +516,64 @@ function logout() {
 
 // ── Dashboard ─────────────────────────────────────────────
 
+async function loadLicense() {
+  if (!hasPerm("ADMIN") && !hasPerm("LICENSE_VIEW")) {
+    licenseInfo = null;
+    return;
+  }
+  try {
+    licenseInfo = await api("/api/license");
+  } catch {
+    licenseInfo = null;
+  }
+}
+
+function licenseLimitReached() {
+  return (
+    licenseInfo &&
+    licenseInfo.max_users != null &&
+    licenseInfo.active_users >= licenseInfo.max_users
+  );
+}
+
+const LICENSE_STATUS_TEXTS = {
+  valid: "Valid",
+  expired: "Expired",
+  revoked: "Revoked",
+  grace_expired: "Could not verify with license server",
+  unlicensed: "No license installed",
+};
+
+function renderLicense() {
+  const card = $("license-card");
+  if (!licenseInfo) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  $("license-plan").textContent = licenseInfo.plan ?? "\u2014";
+  $("license-customer").textContent = licenseInfo.customer ?? "\u2014";
+  const statusEl = $("license-status");
+  statusEl.textContent =
+    LICENSE_STATUS_TEXTS[licenseInfo.status] ?? licenseInfo.status;
+  statusEl.className =
+    "badge " +
+    (licenseInfo.status === "valid" ? "badge-active" : "badge-inactive");
+  $("license-users").textContent =
+    licenseInfo.max_users != null
+      ? `${licenseInfo.active_users} of ${licenseInfo.max_users}`
+      : `${licenseInfo.active_users} (unlimited)`;
+  $("license-until").textContent = licenseInfo.valid_until
+    ? new Date(licenseInfo.valid_until).toLocaleDateString()
+    : "Perpetual";
+}
+
 async function loadDashboard() {
   dashboardLoading = true;
   renderDashboard();
   try {
     dashboardStats = await api("/api/auth/dashboard");
+    await loadLicense();
     if (hasPerm("USERS_READ") && hasPerm("USERS_READ_ONLINE_STATUS")) {
       const data = await api("/api/auth/users?page=1&per_page=200");
       dashboardOnlineUsers = data.users.filter(u => u.online);
@@ -529,6 +587,7 @@ async function loadDashboard() {
 }
 
 function renderDashboard() {
+  renderLicense();
   $("stat-online").textContent = dashboardStats?.online_users_count ?? "\u2014";
 
   const m = currentMetrics;
@@ -637,6 +696,9 @@ function renderUsers() {
     `${usersTotal} ${usersTotal === 1 ? "user" : "users"}`;
   $("btn-new-user").hidden = !canManage || showCreateForm;
   $("create-user-section").hidden = !showCreateForm;
+  if (showCreateForm) {
+    updateInactiveControls();
+  }
   $("users-actions-col").hidden = !hasAnyAction;
   $("users-loading").hidden = !isLoading;
   $("users-table").hidden = isLoading;
@@ -968,6 +1030,7 @@ async function setUserActive(userId, isActive) {
       body: { is_active: isActive },
     });
     showStatus(isActive ? "User activated." : "User deactivated.");
+    await loadLicense();
     await loadUsers(usersPage);
   } catch (e) {
     showStatus(e.message, "error");
@@ -1000,6 +1063,29 @@ function openCreateForm() {
   showCreateForm = true;
   editingUserId = null;
   renderUsers();
+  // Refresh seat availability so the "create as inactive" checkbox reflects
+  // the current limit.
+  loadLicense().then(() => renderUsers());
+}
+
+/**
+ * Syncs the "create as inactive" checkbox with the license state: at the
+ * active-user limit the checkbox is forced on and disabled, with a hint
+ * explaining why; otherwise it follows the remembered per-page choice.
+ */
+function updateInactiveControls() {
+  const box = $("cu-inactive");
+  const hint = $("cu-inactive-hint");
+  if (licenseLimitReached()) {
+    box.checked = true;
+    box.disabled = true;
+    $("cu-inactive-limit").textContent = licenseInfo.max_users;
+    hint.hidden = false;
+  } else {
+    box.disabled = false;
+    box.checked = createInactiveChoice;
+    hint.hidden = true;
+  }
 }
 
 function generatePassword() {
@@ -1051,10 +1137,16 @@ async function submitCreateUser() {
   try {
     await api("/api/auth/users", {
       method: "POST",
-      body: { email, display_name, password },
+      body: {
+        email,
+        display_name,
+        password,
+        is_active: !$("cu-inactive").checked,
+      },
     });
     showCreateForm = false;
     showStatus("User created successfully.");
+    await loadLicense();
     await loadUsers(1);
   } catch (e) {
     errorEl.textContent = e.message;
@@ -1522,6 +1614,11 @@ async function init() {
   });
   $("btn-gen-password").addEventListener("click", () => generatePassword());
   $("btn-copy-password").addEventListener("click", () => copyPassword());
+  $("cu-inactive").addEventListener("change", e => {
+    if (!e.target.disabled) {
+      createInactiveChoice = e.target.checked;
+    }
+  });
   $("btn-create-user").addEventListener("click", () => submitCreateUser());
   $("users-prev").addEventListener("click", () => loadUsers(usersPage - 1));
   $("users-next").addEventListener("click", () => loadUsers(usersPage + 1));

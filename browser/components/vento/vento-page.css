@@ -344,6 +344,44 @@
   margin-block-end: 10px;
 }
 
+.form-hint {
+  font-size: 12px;
+  color: var(--text-color-deemphasized, #5b5b66);
+  margin-block: -6px var(--space-medium);
+  max-width: 46em;
+}
+
+/* ── License card ─────────────────────────────────────────── */
+
+.license-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-large, 16px) var(--space-xlarge, 24px);
+}
+
+.license-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxsmall);
+  min-width: 110px;
+}
+
+.license-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-color-deemphasized, #5b5b66);
+}
+
+.license-value {
+  font-size: 14px;
+  font-weight: var(--font-weight-bold, 600);
+}
+
+.license-item .badge {
+  align-self: flex-start;
+}
+
 /* ── Pagination ───────────────────────────────────────────── */
 
 .pagination {
@@ -944,8 +982,8 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 16px;
-  height: 16px;
+  width: var(--size-item-small);
+  height: var(--size-item-small);
   padding: 0;
   border: 1px solid var(--border-color-default, ButtonBorder);
   border-radius: var(--border-radius-circle);

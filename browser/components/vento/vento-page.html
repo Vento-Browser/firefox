@@ -170,6 +170,30 @@
                   No users are currently online.
                 </p>
               </moz-card>
+              <moz-card heading="License" id="license-card" hidden>
+                <div class="license-grid">
+                  <div class="license-item">
+                    <span class="license-label">Plan</span>
+                    <span class="license-value" id="license-plan"></span>
+                  </div>
+                  <div class="license-item">
+                    <span class="license-label">Customer</span>
+                    <span class="license-value" id="license-customer"></span>
+                  </div>
+                  <div class="license-item">
+                    <span class="license-label">Status</span>
+                    <span class="badge" id="license-status"></span>
+                  </div>
+                  <div class="license-item">
+                    <span class="license-label">Active users</span>
+                    <span class="license-value" id="license-users"></span>
+                  </div>
+                  <div class="license-item">
+                    <span class="license-label">Valid until</span>
+                    <span class="license-value" id="license-until"></span>
+                  </div>
+                </div>
+              </moz-card>
               <div class="dashboard-refresh">
                 <moz-button type="ghost" size="small" id="btn-refresh"
                   >Refresh</moz-button
@@ -225,6 +249,16 @@
                     </div>
                   </div>
                 </div>
+                <label class="form-check-row" id="cu-inactive-row">
+                  <input type="checkbox" id="cu-inactive" />
+                  <span>Create as inactive (does not use a license seat)</span>
+                </label>
+                <p class="form-hint" id="cu-inactive-hint" hidden>
+                  The license allows at most
+                  <span id="cu-inactive-limit"></span> active users and the
+                  limit is reached. New users can only be created inactive.
+                  Deactivate an existing user to free a seat.
+                </p>
                 <div class="form-error" id="create-user-error" hidden></div>
                 <div class="form-actions">
                   <moz-button type="primary" size="small" id="btn-create-user"
