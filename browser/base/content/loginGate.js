@@ -254,11 +254,19 @@ document
         state.passwordChangeToken
       );
       if (ok) {
+        // Drop the old (temporary) password so the login form comes up empty
+        // and the user is prompted to enter the new one.
+        state.password = "";
+        state.passwordChangeToken = "";
+        for (const id of ["password", "new-password", "confirm-password"]) {
+          document.getElementById(id).value = "";
+        }
         showView("view-login");
         showSuccess(
           "login-error",
           "Password changed. Please log in with your new password."
         );
+        document.getElementById("password").focus();
         return;
       }
       showError(
