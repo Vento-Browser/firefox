@@ -5,18 +5,23 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
-  VentoAuth: "chrome://browser/content/vento/VentoAuth.sys.mjs",
 });
 
-const PREF_ACCESS_TOKEN = "browser.logingate.accessToken";
 // Seconds of user inactivity before the browser locks; 0 disables idle lock.
 const PREF_IDLE_SECONDS = "browser.vento.lock.idleSeconds";
 const DEFAULT_IDLE_SECONDS = 600;
 
+// Notified (data = "locked" | "unlocked") whenever the lock state changes.
+// Each browser window observes this to show/hide its in-window lock overlay.
+const TOPIC_LOCK_CHANGED = "vento-lock-changed";
+
 /**
- * Locks the browser UI after a period of inactivity (or on demand) behind an
- * app-modal lock window. Unlocking requires OS-level authentication
- * (Touch ID / Windows Hello / account password) via OSKeyStore.
+ * Locks the browser UI after a period of inactivity (or on demand). Rather
+ * than an app-modal window that could be closed to reveal the tabs behind it,
+ * every browser window paints a full-window lock overlay (gVentoLockOverlay in
+ * browser-init.js) that captures input until the user unlocks. Unlocking
+ * requires OS-level authentication (Touch ID / Windows Hello / account
+ * password) via OSKeyStore.
  */
 export const VentoLockService = {
   _initialized: false,
@@ -67,40 +72,27 @@ export const VentoLockService = {
   },
 
   /**
-   * Opens the app-modal lock window and blocks until it is closed. If the
-   * user chose "Sign out" inside the lock window (the access token is gone
-   * afterwards), the login gate is shown next.
+   * Locks the browser. Shows the lock overlay in every open browser window;
+   * windows opened while locked paint it on startup. Returns immediately.
    */
   lock() {
     if (this._locked) {
       return;
     }
     this._locked = true;
-    try {
-      // Tab contents must not be visible behind the lock window.
-      lazy.VentoAuth.withBrowserWindowsHidden(() =>
-        Services.ww.openWindow(
-          null,
-          "chrome://browser/content/lockGate.html",
-          "_blank",
-          "chrome,centerscreen,modal,resizable=no,width=460,height=320",
-          null
-        )
-      );
-    } finally {
-      this._locked = false;
-    }
-    if (!Services.prefs.getStringPref(PREF_ACCESS_TOKEN, "")) {
-      lazy.VentoAuth.promptReauth();
-    }
+    Services.obs.notifyObservers(null, TOPIC_LOCK_CHANGED, "locked");
   },
 
   /**
-   * Re-opens the lock window from a place where a synchronous modal call is
-   * not allowed (e.g. the lock window's own unload handler).
+   * Unlocks the browser, hiding the overlay in every window. Callers must have
+   * authenticated the user first (see requestUnlock).
    */
-  lockSoon() {
-    Services.tm.dispatchToMainThread(() => this.lock());
+  unlock() {
+    if (!this._locked) {
+      return;
+    }
+    this._locked = false;
+    Services.obs.notifyObservers(null, TOPIC_LOCK_CHANGED, "unlocked");
   },
 
   /**

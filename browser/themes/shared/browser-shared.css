@@ -969,6 +969,99 @@ menupopup::part(drop-indicator) {
   -moz-window-dragging: drag;
 }
 
+/* Vento lock overlay — painted in-window while the browser is locked, so tab
+   contents are never reachable behind it (there is no separate modal window
+   that could be closed). Set by gVentoLockOverlay. */
+#vento-lock-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  color-scheme: light dark;
+  background-color: var(--background-color-canvas, Canvas);
+  color: var(--text-color, CanvasText);
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  -moz-window-dragging: drag;
+
+  & .vento-lock-view {
+    width: 360px;
+    max-width: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+    text-align: center;
+    -moz-window-dragging: no-drag;
+  }
+
+  & h1 {
+    margin: 0 0 8px;
+    font-size: 1.3em;
+    font-weight: 600;
+  }
+
+  & .vento-lock-description {
+    margin: 0 0 20px;
+    font-size: 0.9em;
+    color: var(--text-color-deemphasized, GrayText);
+  }
+
+  & .vento-lock-error {
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    font-size: 0.875em;
+    color: var(--text-color-error);
+    background-color: var(--background-color-critical);
+    border-radius: var(--border-radius-small, 4px);
+  }
+
+  & .vento-lock-primary-btn {
+    display: block;
+    width: 100%;
+    margin-top: 20px;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 600;
+    background-color: var(--color-accent-primary, Highlight);
+    color: var(--color-accent-primary-content, HighlightText);
+    border: none;
+    border-radius: var(--border-radius-small, 4px);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: var(--color-accent-primary-hover, SelectedItem);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+
+  & .vento-lock-secondary-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 600;
+    background-color: transparent;
+    color: var(--text-color-error);
+    border: 1px solid var(--text-color-error);
+    border-radius: var(--border-radius-small, 4px);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: var(--background-color-critical);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+}
+
 /* Content analysis indicator */
 .content-analysis-indicator {
   :root:not([contentanalysisactive]) &,

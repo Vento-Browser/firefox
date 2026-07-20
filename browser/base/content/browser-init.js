@@ -768,6 +768,7 @@ var gBrowserInit = {
     }
 
     gVentoWsIndicator.init();
+    gVentoLockOverlay.init();
 
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
@@ -1255,6 +1256,7 @@ var gBrowserInit = {
         "serial-device-state-changed"
       );
       gVentoWsIndicator.uninit();
+      gVentoLockOverlay.uninit();
     }
 
     BrowserUtils.callModulesFromCategory(
@@ -1418,6 +1420,159 @@ var gVentoWsIndicator = {
         capture: true,
       });
       this._keyBlocker = null;
+    }
+  },
+};
+
+// Full-window lock overlay. Shown in every browser window while
+// VentoLockService reports the browser as locked, so there is no separate
+// modal window that could be closed to reveal the tabs behind it.
+var gVentoLockOverlay = {
+  _observer: null,
+  _overlay: null,
+  _errorEl: null,
+  _unlockBtn: null,
+  _signoutBtn: null,
+  _keyBlocker: null,
+
+  init() {
+    const { VentoLockService } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoLockService.sys.mjs"
+    );
+    this._observer = {
+      observe: (_subject, _topic, data) => this._setLocked(data === "locked"),
+    };
+    Services.obs.addObserver(this._observer, "vento-lock-changed");
+    if (VentoLockService.locked) {
+      this._setLocked(true);
+    }
+  },
+
+  _ensureOverlay() {
+    if (this._overlay) {
+      return;
+    }
+    const NS = "http://www.w3.org/1999/xhtml";
+    const overlay = document.createElementNS(NS, "div");
+    overlay.id = "vento-lock-overlay";
+
+    const view = document.createElementNS(NS, "div");
+    view.className = "vento-lock-view";
+
+    const title = document.createElementNS(NS, "h1");
+    title.textContent = "Vento is locked";
+    view.appendChild(title);
+
+    const desc = document.createElementNS(NS, "p");
+    desc.className = "vento-lock-description";
+    desc.textContent =
+      "Authenticate to continue, or sign out to switch accounts.";
+    view.appendChild(desc);
+
+    const error = document.createElementNS(NS, "p");
+    error.className = "vento-lock-error";
+    error.hidden = true;
+    view.appendChild(error);
+    this._errorEl = error;
+
+    const unlockBtn = document.createElementNS(NS, "button");
+    unlockBtn.className = "vento-lock-primary-btn";
+    unlockBtn.textContent = "Unlock";
+    unlockBtn.addEventListener("click", () => this._onUnlock());
+    view.appendChild(unlockBtn);
+    this._unlockBtn = unlockBtn;
+
+    const signoutBtn = document.createElementNS(NS, "button");
+    signoutBtn.className = "vento-lock-secondary-btn";
+    signoutBtn.textContent = "Sign out";
+    signoutBtn.addEventListener("click", () => this._onSignout());
+    view.appendChild(signoutBtn);
+    this._signoutBtn = signoutBtn;
+
+    overlay.appendChild(view);
+    document.body.appendChild(overlay);
+    this._overlay = overlay;
+
+    // Block every keyboard shortcut while locked unless the key targets the
+    // overlay itself (so Tab/Enter still drive the unlock buttons).
+    this._keyBlocker = e => {
+      if (this._overlay?.contains(e.target)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+  },
+
+  async _onUnlock() {
+    const { VentoLockService } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoLockService.sys.mjs"
+    );
+    this._errorEl.hidden = true;
+    this._unlockBtn.disabled = true;
+    try {
+      if (await VentoLockService.requestUnlock()) {
+        VentoLockService.unlock();
+        return;
+      }
+      this._errorEl.textContent = "Authentication failed. Please try again.";
+      this._errorEl.hidden = false;
+    } finally {
+      this._unlockBtn.disabled = false;
+    }
+  },
+
+  async _onSignout() {
+    const { VentoLockService } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoLockService.sys.mjs"
+    );
+    const { VentoAuth } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoAuth.sys.mjs"
+    );
+    this._signoutBtn.disabled = true;
+    try {
+      // Seals the vault, wipes browsing data and prompts login (quitting if
+      // the user does not log back in). Only lift the lock once a new session
+      // is established.
+      if (await VentoAuth.logout()) {
+        VentoLockService.unlock();
+      }
+    } finally {
+      this._signoutBtn.disabled = false;
+    }
+  },
+
+  _setLocked(locked) {
+    if (locked) {
+      this._ensureOverlay();
+      this._errorEl.hidden = true;
+      this._overlay.style.display = "flex";
+      document.documentElement.setAttribute("vento-locked", "true");
+      window.addEventListener("keydown", this._keyBlocker, { capture: true });
+      this._unlockBtn.focus();
+    } else if (this._overlay) {
+      this._overlay.style.display = "none";
+      document.documentElement.removeAttribute("vento-locked");
+      window.removeEventListener("keydown", this._keyBlocker, {
+        capture: true,
+      });
+    }
+  },
+
+  uninit() {
+    if (this._observer) {
+      Services.obs.removeObserver(this._observer, "vento-lock-changed");
+      this._observer = null;
+    }
+    if (this._keyBlocker) {
+      window.removeEventListener("keydown", this._keyBlocker, {
+        capture: true,
+      });
+      this._keyBlocker = null;
+    }
+    if (this._overlay) {
+      this._overlay.remove();
+      this._overlay = null;
     }
   },
 };
