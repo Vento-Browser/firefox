@@ -162,5 +162,29 @@ add_task(async function test_permission_help_in_checkbox_grid() {
       !doc.querySelector(".perm-popover"),
       "popover closes on outside click"
     );
+
+    // Regression check: long permission names (USERS_READ_ONLINE_STATUS) must
+    // not push the "?" affordance out of its grid cell onto the neighbouring
+    // checkbox. Reproduced originally at ~660px wide permission editors.
+    const permsWrap = doc.querySelector(".perms-expand");
+    const labels = [...permsWrap.querySelectorAll(".perm-check-label")];
+    Assert.greater(labels.length, 0, "permission grid renders labels");
+    permsWrap.style.width = "660px";
+    for (const l of labels) {
+      const name = l.textContent.replace("?", "").trim();
+      const cellRect = l.getBoundingClientRect();
+      const helpRect = l.querySelector(".perm-help").getBoundingClientRect();
+      Assert.lessOrEqual(
+        Math.round(helpRect.right),
+        Math.round(cellRect.right) + 1,
+        `"?" for ${name} stays inside its grid cell`
+      );
+      Assert.lessOrEqual(
+        l.scrollWidth,
+        l.clientWidth + 1,
+        `no horizontal overflow in the ${name} cell`
+      );
+    }
+    permsWrap.style.width = "";
   });
 });

@@ -253,7 +253,7 @@
 
 .perms-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: var(--space-small);
   margin-block-end: 14px;
 }
@@ -265,6 +265,10 @@
   font-size: 13px;
   cursor: pointer;
   user-select: none;
+  min-width: 0;
+  /* Permission names have no spaces; without this the longest ones push the
+     "?" affordance into the neighboring grid cell instead of wrapping. */
+  overflow-wrap: anywhere;
 }
 
 .perms-actions {
