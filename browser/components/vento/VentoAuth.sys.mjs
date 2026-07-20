@@ -83,7 +83,7 @@ export const VentoAuth = {
           null,
           "chrome://browser/content/loginGate.html",
           "_blank",
-          "chrome,centerscreen,modal,resizable=no,width=460,height=560",
+          "chrome,centerscreen,modal,resizable=no,width=460,height=640",
           null
         )
       );
