@@ -50,6 +50,7 @@ ChromeUtils.defineLazyGetter(lazy, "AboutLoginsL10n", () => {
 const ABOUT_LOGINS_ORIGIN = "about:logins";
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const PRIMARY_PASSWORD_NOTIFICATION_ID = "primary-password-login-required";
+const VENTO_LOAD_ERROR_NOTIFICATION_ID = "vento-logins-load-error";
 
 // about:logins will always use the privileged content process,
 // even if it is disabled for other consumers such as about:newtab.
@@ -974,6 +975,21 @@ class AboutLoginsInternal {
     this.#messageSubscribers("AboutLogins:PrimaryPasswordAuthRequired");
   }
 
+  #showLoadErrorNotification() {
+    this.#showNotifications({
+      id: VENTO_LOAD_ERROR_NOTIFICATION_ID,
+      priority: "PRIORITY_WARNING_MEDIUM",
+      iconURL: "chrome://browser/skin/login.svg",
+      messageId: "about-logins-vento-load-error-notification-message",
+      buttonIds: ["vento-logins-load-error-reload-button"],
+      onClicks: [
+        function onReloadClick(browser) {
+          browser.reload();
+        },
+      ],
+    });
+  }
+
   #showNotifications({
     id,
     priority,
@@ -1088,9 +1104,11 @@ class AboutLoginsInternal {
       for (const l of all) {
         this.#loginCache.set(l.guid, l);
       }
+      this.#removeNotifications(VENTO_LOAD_ERROR_NOTIFICATION_ID);
       return all;
     } catch (e) {
       lazy.log.debug("getAllLogins: Vento fetch failed:", e);
+      this.#showLoadErrorNotification();
       return [];
     }
   }

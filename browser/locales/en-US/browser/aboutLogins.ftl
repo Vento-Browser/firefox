@@ -180,6 +180,13 @@ master-password-reload-button =
   .label = Log in
   .accesskey = L
 
+## Passwords load error notification
+
+about-logins-vento-load-error-notification-message = Couldn’t load your passwords from the server. Check your connection and try reloading.
+vento-logins-load-error-reload-button =
+  .label = Reload
+  .accesskey = R
+
 ## Dialogs
 
 confirmation-dialog-cancel-button = Cancel
