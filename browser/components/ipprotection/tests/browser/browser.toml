@@ -14,11 +14,15 @@ prefs = [
 
 ["browser_IPPProxyManager.js"]
 
+["browser_IPPUsageHelper.js"]
+
 ["browser_IPProtectionService.js"]
 
 ["browser_guardian_client.js"]
 
 ["browser_ipprotection_alert_manager.js"]
+
+["browser_ipprotection_bandwidth_precision.js"]
 
 ["browser_ipprotection_confirmation_hints_site_exclusion.js"]
 
@@ -33,6 +37,12 @@ prefs = [
 ["browser_ipprotection_infobar.js"]
 
 ["browser_ipprotection_keyboard_navigation.js"]
+
+["browser_ipprotection_location_selector_telemetry.js"]
+
+["browser_ipprotection_locations_keyboard_navigation.js"]
+
+["browser_ipprotection_locations_list.js"]
 
 ["browser_ipprotection_message_bar.js"]
 
@@ -55,4 +65,6 @@ skip-if = [
   "devedition",
 ]
 
-["browser_ipprotection_usage.js"]
+["browser_ipprotection_utils.js"]
+
+["browser_ipprotection_viewer_site_exclusion.js"]

@@ -14,7 +14,6 @@ import {
   MESSAGE_TYPE_LIST,
   MESSAGE_TYPE_HASH,
 } from "modules/ActorConstants.mjs";
-import { MESSAGING_EXPERIMENTS_DEFAULT_FEATURES } from "modules/MessagingExperimentConstants.sys.mjs";
 
 enzyme.configure({ adapter: new Adapter() });
 
@@ -126,7 +125,7 @@ const TEST_GLOBAL = {
       prefix: "ASRouter",
     }),
   },
-  AWScreenUtils: {
+  ASRouterScreenUtils: {
     evaluateTargetingAndRemoveScreens() {
       return true;
     },
@@ -532,13 +531,7 @@ const TEST_GLOBAL = {
   FeatureCalloutBroker: {
     showFeatureCallout() {},
   },
-  NimbusFeatures: FakeNimbusFeatures([
-    ...MESSAGING_EXPERIMENTS_DEFAULT_FEATURES,
-    "glean",
-    "newtab",
-    "pocketNewtab",
-    "cookieBannerHandling",
-  ]),
+  NimbusFeatures: FakeNimbusFeatures,
   TelemetryEnvironment: {
     setExperimentActive() {},
     currentEnvironment: {
@@ -572,6 +565,12 @@ const TEST_GLOBAL = {
   },
   Logger: FakeLogger,
   getFxAccountsSingleton() {},
+  AWEnsureAddonInstalled() {
+    return Promise.resolve("complete");
+  },
+  AWWaitForNimbus() {
+    return Promise.resolve("ready");
+  },
   AboutNewTab: {},
   Glean: {
     messagingExperiments: {

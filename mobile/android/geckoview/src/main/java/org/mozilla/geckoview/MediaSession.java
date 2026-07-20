@@ -1,6 +1,4 @@
-/* -*- Mode: Java; c-basic-offset: 4; tab-width: 20; indent-tabs-mode: nil; -*-
- * vim: ts=4 sw=4 expandtab:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -202,6 +200,20 @@ public class MediaSession {
         @NonNull final GeckoSession session,
         @NonNull final MediaSession mediaSession,
         @NonNull final Metadata meta) {}
+
+    /**
+     * Notify that the tab's W3C Audio Session type changed. Embedders can use this to request the
+     * matching platform audio focus.
+     *
+     * @param session The associated GeckoSession.
+     * @param mediaSession The media session for the given GeckoSession.
+     * @param type The audio-session type the tab is claiming, as defined by the W3C Audio Session
+     *     specification: https://w3c.github.io/audio-session/#audio-session-type
+     */
+    default void onAudioSessionTypeChanged(
+        @NonNull final GeckoSession session,
+        @NonNull final MediaSession mediaSession,
+        @NonNull final String type) {}
 
     /**
      * Notify on updated supported features. Unsupported actions will have no effect.
@@ -578,6 +590,7 @@ public class MediaSession {
   private static final String SKIP_AD_EVENT = "GeckoView:MediaSession:SkipAd";
   private static final String SEEK_TO_EVENT = "GeckoView:MediaSession:SeekTo";
   private static final String MUTE_AUDIO_EVENT = "GeckoView:MediaSession:MuteAudio";
+  private static final String AUDIO_SESSION_TYPE_EVENT = "GeckoView:MediaSession:AudioSessionType";
 
   /* package */ static class Handler extends GeckoSessionHandler<MediaSession.Delegate> {
 
@@ -598,6 +611,7 @@ public class MediaSession {
             PLAYBACK_PAUSED_EVENT,
             PLAYBACK_PLAYING_EVENT,
             FEATURES_EVENT,
+            AUDIO_SESSION_TYPE_EVENT,
           });
       mSession = session;
       mMediaSession = new MediaSession(session);
@@ -646,6 +660,9 @@ public class MediaSession {
         }
         delegate.onFullscreen(mSession, mMediaSession, enabled, meta);
         callback.sendSuccess(true);
+      } else if (AUDIO_SESSION_TYPE_EVENT.equals(event)) {
+        delegate.onAudioSessionTypeChanged(
+            mSession, mMediaSession, message.getString("type", "auto"));
       }
     }
   }

@@ -8,9 +8,13 @@
 newtab-page-title = Tendayke Pyahu
 newtab-settings-button =
     .title = Eñemomba’e ne Tendayke Pyahu roguére
+#  (developer note): @nova-cleanup(remove-string): Remove newtab-customize-panel-icon-button once Nova lands, will be using newtab-customize-panel-label instead
 newtab-customize-panel-icon-button =
     .title = Emboava ko kuatiarogue
+#  (developer note): @nova-cleanup(remove-string): Remove newtab-customize-panel-icon-button-label once Nova lands, will be using newtab-customize-panel-label instead
 newtab-customize-panel-icon-button-label = Ñemomba’ete
+newtab-customize-panel-label =
+    .label = Ñemomba’ete
 newtab-personalize-settings-icon-label =
     .title = Eñemomba’e tendayke pyahúre
     .aria-label = Ñemboheko
@@ -26,6 +30,300 @@ newtab-logo-and-wordmark =
 newtab-card-dismiss-button =
     .title = Mboyke
     .aria-label = Mboyke
+
+## Strings for "Homepage" and "Firefox Home" sections of about:settings#home.
+## Homepage panel
+
+home-homepage-title =
+    .label = Kuatiarogue ñepyrũha
+home-homepage-new-windows =
+    .label = Ovetã pyahu
+home-homepage-new-tabs =
+    .label = tendayke pyahu
+# This option leads to the "Custom Homepage" subpage
+home-homepage-custom-homepage-button =
+    .label = Eiporavo peteĩ tendaite
+
+## Custom URLs subpage
+
+# Subheader on the Custom Homepage subpage. Followed by a form to enter URLs and a list of URLs already saved, if any.
+home-custom-homepage-card-header =
+    .label = Ñanduti kundaharape(ita)
+home-custom-homepage-address =
+    .placeholder = Ehai kundaharape
+home-custom-homepage-address-button =
+    .label = Embojuaju kundaharape
+# Shown when no custom websites/URLs to use as a homepage have been added yet
+home-custom-homepage-no-results =
+    .label = Ndaipóri ñanduti rogue mbojuajupyre.
+home-custom-homepage-delete-address-button =
+    .aria-label = Embogue kundaharape
+    .title = Embogue kundaharape
+# Further options to use when setting the home page. Two action buttons are placed in line with this prompt
+# to replace the current home page with a currently open page or bookmark.
+home-custom-homepage-replace-with-prompt =
+    .label = Emyengovia kóvandi
+# Button that appears in-line after text "Replace with" (home-custom-homepage-replace-with-prompt)
+home-custom-homepage-current-pages-button =
+    .label = Kuatiarogue ijurujavahína
+# Button that appears in-line after text "Replace with" (home-custom-homepage-replace-with-prompt)
+home-custom-homepage-bookmarks-button =
+    .label = Techaukahaita…
+
+## Firefox Home content
+
+home-prefs-content-header =
+    .label = { -firefox-home-brand-name }
+home-prefs-search-header2 =
+    .label = Heka
+home-prefs-stories-header2 =
+    .label = Tembiasakue
+    .description = Tetepy oiporavóva { -brand-product-name } reheguáva
+home-prefs-widgets-header =
+    .label = Widgets
+# Lists is a widget on New Tab, similar to a to-do widget
+home-prefs-lists-header =
+    .label = Tysyieta
+# Timer is a widget on New Tab, similar to the Pomodoro timer.
+home-prefs-timer-header =
+    .label = Aravojere
+# Sports is a widget on New Tab showing sports scores and schedules.
+home-prefs-sports-widget-header =
+    .label = Jehugarã
+# Clock is a widget on New Tab that displays time zones around the world.
+home-prefs-clocks-header =
+    .label = Aravopapaha
+# Privacy is a widget on New Tab that shows tracking protection activity.
+home-prefs-privacy-header =
+    .label = Ñemigua
+# Stocks is a widget on New Tab that shows stock ticker prices.
+home-prefs-stocks-header =
+    .label = Jejapo
+# Picture of the day is a widget on New Tab that shows a daily Wikimedia Commons image.
+home-prefs-picture-header =
+    .label = Ta’ãnga araguáva
+home-prefs-mission-message2 =
+    .message = Ore ykekohára oipytyvõ romombareteve hag̃ua ñanduti rogue.
+home-prefs-manage-topics-link2 =
+    .label = Eñangareko témare
+home-prefs-choose-wallpaper-link2 =
+    .label = Eiporavo mba’erechaha rugua
+home-prefs-firefox-logo-header =
+    .label = { -brand-short-name } ra’ãnga’i
+# Informational message bar that appears in the Firefox Home section when the options are disabled.
+# The user must select Firefox Home as their homepage for either new tabs or new windows to enable
+# the features in settings.
+home-prefs-firefox-home-disabled-notice =
+    .message = Eiporu hag̃ua ko’ã tembiapoite, emboheko tendayke térã ovetã pyahu { -firefox-home-brand-name } ndive.
+# Variables:
+#   $num (number) - Number of rows displayed
+home-prefs-sections-rows-option-srd =
+    .label =
+        { $num ->
+            [one] { $num } rysýi
+           *[other] { $num } rysýi
+        }
+# Dropdown option shown when an extension replaces the contents of new windows or tabs.
+# Variables:
+#   $extension (string) - Name of the extension
+home-prefs-homepage-extension-option =
+    .label = Jepysokue ({ $extension })
+home-restore-defaults-srd =
+    .label = mbopyahujey techa mboyvegua
+    .accesskey = m
+home-mode-choice-default-fx-srd =
+    .label = { -firefox-home-brand-name } (Ijypykue)
+home-mode-choice-custom-srd =
+    .label = URLs ñemomba’e…
+home-mode-choice-blank-srd =
+    .label = Kuatiarogue morotĩva
+home-prefs-shortcuts-header-srd =
+    .label = Jeike pya’eha
+home-prefs-shortcuts-select =
+    .aria-label = Jeike pya’eha
+home-prefs-shortcuts-by-option-sponsored-srd =
+    .label = Jeike pya’eha jehepyme’ẽpyre
+home-prefs-recommended-by-option-sponsored-stories-srd =
+    .label = Tembiasakue jehepyme’ẽguáva
+home-prefs-highlights-option-visited-pages-srd =
+    .label = Tenda jeikepyre
+home-prefs-highlights-options-bookmarks-srd =
+    .label = Techaukaha
+home-prefs-highlights-option-most-recent-download-srd =
+    .label = Oñemboguejy ramovéva
+home-prefs-recent-activity-header-srd =
+    .label = Tembiapo ramovegua
+home-prefs-recent-activity-select =
+    .aria-label = Tembiapo ramovegua
+home-prefs-weather-header-srd =
+    .label = Arapytu
+home-prefs-support-firefox-header-srd =
+    .label = Eipytyvõ { -brand-product-name }
+home-prefs-mission-message-learn-more-link-srd = Eikuaa mba’éichapa
+
+## Strings for the Privacy widget
+
+# Context menu item linking to more information about the Privacy widget.
+newtab-privacy-menu-learn-more = Eikuaave
+
+## Privacy widget — count readout
+
+# Label shown under the large tracker-count number, appearing like:
+# Line 1: 86
+# Line 2: Trackers blocked today
+# Translations can be adjusted to "Today's blocked trackers" or something
+# similar if this fixed order causes issues.
+# Variables:
+#   $count (number) - Number of trackers blocked today
+newtab-privacy-trackers-blocked-today =
+    { $count ->
+        [one] Tapykuehoha ojejoko ko árape
+       *[other] Tapykuehohaita ojejoko ko árape
+    }
+# Second line of the readout, under the large number and "Trackers blocked
+# today". Counts the sites those trackers were blocked on. The English is
+# shortened from "Blocked across { $count } sites" — translate it that fuller way
+# if the short fragment doesn't work in your language.
+# Variables:
+#   $count (number) - Number of sites where trackers were blocked
+newtab-privacy-across-sites =
+    { $count ->
+        [one] Opaite tendápe { $count }
+       *[other] Opaite tendaitápe { $count }
+    }
+
+## Privacy widget — empty state
+
+# Shown when no trackers have been blocked yet today.
+newtab-privacy-empty = { -brand-short-name } ojoko tapykuehoita oikundaha aja. Ko’ápe ojehecháta.
+
+## Privacy widget — informational messages
+##
+## Rotating "info" secondary messages. Each message has a body plus a matched
+## "-cta" button label sharing the same id stem (the CTA button isn't rendered
+## yet; the labels are authored so the pairing is ready).
+
+newtab-privacy-message-info-1 = { -brand-short-name } ojoko tapykuehoita ijehegui oikundaha aja.
+newtab-privacy-message-info-1-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-2 = Tapykueho jejoko oipytyvõ ani hag̃ua mba’apohaguasu ohapykueho ñandutípe.
+newtab-privacy-message-info-2-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-3 = Heta tenda oreko tapykuehoha, upévare mba’apohaguasu eike’ỹhague ohapykueho ñandutípe.
+newtab-privacy-message-info-3-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-4 = Eiporavóvo { -brand-short-name } he’ise eiporavoha ñemo’ã ijypykue rupi.
+newtab-privacy-message-info-4-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-5 = Umi tapykuehoha jokopyre he’ise sa’ive mba’apohaguasu nde rapykuehoha.
+newtab-privacy-message-info-5-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-6 = Ereko ne mba’ekuaarã { -brand-short-name } ndive. Ore norovendéi, hákatu ambue kundahára ojapokuaa.
+newtab-privacy-message-info-6-cta = Eikuaave
+newtab-privacy-message-info-7 = Ehecha mba’e tapykuehoha { -brand-short-name } ojoko.
+newtab-privacy-message-info-7-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-8 = Eikundahávo { -brand-short-name } ndive eykeko { -vendor-short-name } rembipota ojapóvo ñanduti iporãvéva.
+newtab-privacy-message-info-8-cta = Eikuaave
+newtab-privacy-message-info-9 = Ejapo { -brand-short-name } ne kundahára rehayhuvéva tekoñemi juajupyrépe g̃uarã.
+newtab-privacy-message-info-9-cta = Ejapo chugui yjypykuéva
+newtab-privacy-message-info-10 = Eñongatu ñe’ẽñemi { -brand-short-name }-pe eipuru hag̃ua jeike tekorosãme opaite hendápe.
+newtab-privacy-message-info-10-cta = Eho ñe’ẽñemíme
+newtab-privacy-message-info-11 = Eikuaa mba’éichapa { -brand-short-name } oipytyvõ ñekundaha ñemiverãme.
+newtab-privacy-message-info-11-cta = Eikuaave
+newtab-privacy-message-info-12-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-info-13-cta = Ehecha ñemo’ãrã
+
+## Privacy widget — promotional messages
+##
+## Rotating "promo" secondary messages suggesting another Firefox feature. Each
+## has a body plus a matched "-cta" button label.
+
+newtab-privacy-message-promo-monitor-1-cta = Eikuaave
+newtab-privacy-message-promo-monitor-2-cta = Eikuaave
+newtab-privacy-message-promo-signin-1-cta = Eñemboheraguapy
+newtab-privacy-message-promo-vpn-1-cta = Embojuruja VPN
+newtab-privacy-message-promo-vpn-2-cta = Embojuruja VPN
+newtab-privacy-message-promo-vpn-3-cta = Embojuruja VPN
+newtab-privacy-message-promo-private-window-1-cta = Embojuruja ovetã ñemi
+newtab-privacy-message-promo-relay-1-cta = Erekóke jurumo’ãha
+newtab-privacy-message-promo-relay-2-cta = Erekóke jurumo’ãha
+newtab-privacy-message-promo-relay-3-cta = Erekóke jurumo’ãha
+
+## Privacy widget — celebration messages
+##
+## Earned "celebration" moments (milestones, daily cap, streak, first
+## protection). Count-bearing ones interpolate { $count }.
+
+newtab-privacy-message-milestone-week-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-milestone-month-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-milestone-year-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-milestone-total-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-daily-cap-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-streak-cta = Ehecha ñemo’ãrã
+newtab-privacy-message-first-protection-cta = Ehecha ñemo’ãrã
+
+## Strings for the Stocks widget
+
+# Context menu item for searching stock ticker symbols.
+newtab-stocks-menu-search = Eheka jeku’e reheguáva
+# Context menu item linking to more information about the Stocks widget.
+newtab-stocks-menu-learn-more = Eikuaave
+
+## Screen-reader summary of a stock ticker.
+## Variables:
+##   $name (String) - the full fund/ETF name, e.g. "SPDR S&P 500 ETF Trust".
+##   $change (String) - the day's percentage change, e.g. "+2.1%".
+##   $price (String) - the last price, e.g. "$559.44".
+
+# Stock increased (went up) during the day
+newtab-stocks-ticker-status-up = { $name }, jupi { $change }, { $price }
+# Stock decreased (went down) during the day
+newtab-stocks-ticker-status-down = { $name }, karape { $change }, { $price }
+
+## Strings for the Picture of the Day widget
+
+# Title shown at the top of the widget, with the source name appended.
+# "Wikimedia Commons" is a brand name and should not be translated.
+newtab-picture-header = Picture of the day · Wikimedia Commons
+# Shorter title shown at the top of the widget, without the source name.
+newtab-picture-header-main = Ta’ãnga araguáva
+# Attribution line shown under the title once a picture loads: an author
+# credit, a link to the picture's source page, and a link to its license.
+# "©" is the copyright symbol.
+# $author (string) - the name of the image's author.
+newtab-picture-attribution-author = © { $author }
+# Link to the picture's source page (its Wikimedia Commons file page).
+# "Wikimedia Commons" is a brand name and should not be translated.
+newtab-picture-attribution-source-link = Wikimedia Commons
+# Screen-reader label for the license link; the visible text is the license
+# name (for example "CC BY-SA 4.0") provided with the picture.
+# $license (string) - the name of the license.
+newtab-picture-attribution-license =
+    .aria-label = Ehecha moneĩha { $license }
+# Tooltip and screen-reader label for the icon-only button that opens the
+# widget's context menu. The button never renders visible text.
+newtab-picture-widget-menu-button =
+    .title = Ta’ãnga aragua poravorã
+    .aria-label = Ta’ãnga aragua poravorã
+# Button that sets the current picture as the New Tab background wallpaper. The
+# button collapses to an icon when not hovered/focused, so .title is its tooltip.
+newtab-picture-set-wallpaper =
+    .label = Emoĩ mba’erechaha ruguárõ
+    .title = Emoĩ mba’erechaha ruguárõ
+    .aria-label = Emoĩ ta’ãnga aragua mba’erechaha ruguárõ
+# Context menu item that opens the New Tab customization panel.
+newtab-picture-menu-manage-wallpaper = Emongu’e jehechaha rugua
+# Context menu item that hides today’s picture, replacing it with an existing
+# wallpaper.
+newtab-picture-menu-hide-photo = Eñomi ta’ãnga aragua
+# Context menu item that restores today’s picture after it has been hidden.
+newtab-picture-menu-show-photo = Ehechauka ta’ãnga aragua
+# Context menu item linking to more information about the widget.
+newtab-picture-menu-learn-more = Eikuaave
+# Icon button shown on the widget once the picture is hidden; restores it.
+newtab-picture-show-button =
+    .title = Ehechauka ta’ãnga aragua
+    .aria-label = Ehechauka ta’ãnga aragua
+# Shown when there is no new picture to display yet.
+newtab-picture-check-back = Eju jey ko’ẽrõ ta’ãnga pyahurã rekávo
+# Screen-reader text alternative for the picture; fallback used when the source
+# provides no localized description.
+newtab-picture-image-alt = Wikimedia Commons ra’ãnga araguáva
 
 ## Search box component.
 
@@ -52,7 +350,7 @@ newtab-search-box-input =
     .placeholder = Eheka ñandutípe
     .aria-label = Eheka ñandutípe
 
-## Top Sites - General form dialog.
+## Clear text button for the URL and image URL input fields in the Top Sites form.
 
 newtab-topsites-add-search-engine-header = Embojuaju hekaha
 newtab-topsites-add-shortcut-header = Mbopya’eha pyahu
@@ -62,6 +360,7 @@ newtab-topsites-add-shortcut-label = Embojuaju jeike pya’eha
 newtab-topsites-add-shortcut-title =
     .title = Embojuaju jeike pya’eha
     .aria-label = Embojuaju jeike pya’eha
+newtab-shortcuts-pinned-area = Pa’ũguasu poravopyre
 newtab-topsites-title-label = Teratee
 newtab-topsites-title-input =
     .placeholder = Ehai herarã
@@ -72,6 +371,11 @@ newtab-topsites-url-validation = Oñeikotevẽ URL oiko porãva
 newtab-topsites-image-url-label = URL ra’ãnga ñemomba’etepyre
 newtab-topsites-use-image-link = Ta’ãnga ñemomba’etepyre…
 newtab-topsites-image-validation = Ta’ãnga nehenyhẽkuái. Eiporu peteĩ URL iñambuéva.
+
+## Clear text button for the URL and image URL input fields in the Top Sites form.
+
+newtab-topsites-clear-input =
+    .aria-label = Emopotĩ moñe’ẽrã
 
 ## Top Sites - General form dialog buttons. These are verbs/actions.
 
@@ -139,6 +443,11 @@ newtab-menu-report = Momarandu
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Joko
+# "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
+# e.g. Following the travel section of stories.
+newtab-menu-section-unfollow-topic = Ndahapykuehovéima
+# Context menu option to open a support page explaining the New Tab personalization features and privacy controls.
+newtab-menu-section-learn-more = Eikuaave
 # "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
 # e.g. Following the travel section of stories.
 newtab-menu-section-unfollow = Anive ehapykueho téma
@@ -305,9 +614,23 @@ newtab-error-fallback-refresh-link = Kuatiarogue mbopiro’y eñepyrũjey hag̃u
 
 newtab-custom-shortcuts-title = Jeike pya’eha
 newtab-custom-shortcuts-subtitle = Tenda eñongatúva térã eikeha
+#  (developer note): @nova-cleanup(remove-string): Remove old string once Nova lands. The newtab-custom-shortcuts-nova string will take over
 newtab-custom-shortcuts-toggle =
     .label = Jeike pya’eha
     .description = Tenda eñongatúva térã eikeha
+newtab-custom-shortcuts-nova =
+    .label = Jeike pya’eha
+newtab-custom-row-description =
+    .description = Tysýi papapy
+# Variables
+#   $num (number) - Number of rows to display
+#  (developer note): @nova-cleanup(remove-string): Remove string once Nova lands. We won't be using "row"/"rows" anymore for the dropdown
+newtab-custom-row-selector2 =
+    .label =
+        { $num ->
+            [one] { $num } Mba’erysýi
+           *[other] { $num } Mba’erysyikuéra
+        }
 # Variables
 #   $num (number) - Number of rows to display
 newtab-custom-row-selector =
@@ -318,11 +641,16 @@ newtab-custom-row-selector =
 newtab-custom-sponsored-sites = Jeike pya’eha jehepyme’ẽpyre
 newtab-custom-pocket-title = { -pocket-brand-name } oñe’ẽporãha
 newtab-custom-pocket-subtitle = Tetepy iporãva { -pocket-brand-name } oiporavopyre, { -brand-product-name } mba’éva pegua
+#  (developer note): @nova-cleanup(remove-string): Remove string once Nova lands. We won't be having a description under "Recommended stories" anymore
 newtab-custom-stories-toggle =
     .label = Tembiasakue momba’epyre
     .description = Tetepy iporãva oiporavóva { -brand-product-name } reheguáva
+newtab-recommended-stories-toggle =
+    .label = Tembiasakue momba’epyre
 newtab-custom-stories-personalized-toggle =
     .label = Tembiasakue
+newtab-custom-stories-personalized-checkbox =
+    .label = Tembiasakueita teéva ipyendáva ne rembiapóre
 newtab-custom-stories-personalized-checkbox-label = Tembiasakueita teéva ipyendáva ne rembiapóre
 newtab-custom-pocket-sponsored = Tembiasakue jehepyme’ẽguáva
 newtab-custom-pocket-show-recent-saves = Ehechauka eñongaturamóva
@@ -337,6 +665,18 @@ newtab-custom-widget-lists-toggle =
     .label = Tysýi
 newtab-custom-widget-timer-toggle =
     .label = Aravojere
+newtab-custom-widget-sports-toggle =
+    .label = Copa del Mundo
+newtab-custom-widget-clock-toggle =
+    .label = Aravopapaha
+newtab-custom-widget-sports-toggle2 =
+    .label = Tetemongu’e
+newtab-custom-widget-privacy-toggle =
+    .label = Ñemigua
+newtab-custom-widget-stocks-toggle =
+    .label = Jejapo
+newtab-custom-widget-picture-toggle =
+    .label = Ta’ãnga araguáva
 newtab-custom-widget-section-title = Widgets
 newtab-custom-widget-section-toggle =
     .label = Widgets
@@ -354,8 +694,12 @@ newtab-custom-settings = Eñangareko hetave ñembohekóre
 
 newtab-wallpaper-title = Mba’erechaha rugua
 newtab-wallpaper-reset = Emoñerũjey ypyguáramo
+#  (developer note): @nova-cleanup(remove-string): Remove old "Upload an image" string once Nova lands. The new "Add an image"  string will take over
 newtab-wallpaper-upload-image = Ehupi peteĩ ta’ãnga
+newtab-wallpaper-add-an-image = Embojuaju ta’ãnga
 newtab-wallpaper-custom-color = Eiporavo peteĩ sa’y
+newtab-wallpaper-toggle-title =
+    .label = Mba’erechaha rugua
 # Variables
 #   $file_size (number) - The number of the maximum image file size (in MB) that may be uploaded
 newtab-wallpaper-error-max-file-size = Ta’ãnga ohasáma tuichakuépe { $file_size } MB rehegua. Eñeha’ã ehupi marandurenda michĩvéva.
@@ -378,7 +722,9 @@ newtab-wallpaper-light-fox-anniversary = Aguara ñu mbyte ikapi’ipéva ojehech
 
 ## Solid Colors
 
+#  (developer note): @nova-cleanup(remove-string): Remove old "Solid colors" string once Nova lands. The simplified "Colors" string will take over
 newtab-wallpaper-category-title-colors = Sa’y ipeteĩva
+newtab-wallpaper-colors = Sa’yita
 newtab-wallpaper-blue = Hovy
 newtab-wallpaper-light-blue = Hovy kamgy
 newtab-wallpaper-light-purple = Pytãũ kangy
@@ -469,6 +815,9 @@ newtab-weather-menu-change-location = Emoambue tendatee
 newtab-weather-change-location-search-input-placeholder =
     .placeholder = Eheka tendatee
     .aria-label = Eheka tendatee
+# "Current" refers to the user's physical/geographic location detected via geolocation.
+newtab-weather-change-location-search-use-current =
+    .label = Eiporu ne rendaite ag̃agua
 newtab-weather-menu-weather-display = Ára jehechaha
 newtab-weather-todays-forecast = Arareko ko árape g̃uarã
 newtab-weather-see-full-forecast = Ehechapaite arareko
@@ -484,7 +833,6 @@ newtab-weather-menu-temperature-option-fahrenheit = Fahrenheit
 newtab-weather-menu-temperature-option-celsius = Celsius
 newtab-weather-menu-change-temperature-units-fahrenheit = Eva Fahrenheit ndive
 newtab-weather-menu-change-temperature-units-celsius = Eva Celsius ndive
-newtab-weather-menu-hide-weather-v2 = Eñomi arapytu
 newtab-weather-menu-hide-weather = Eñomi arareko Tendayke Pyahúpe
 newtab-weather-menu-learn-more = Eikuaave
 newtab-weather-menu-detect-my-location = Ehecha che rendaite
@@ -495,8 +843,18 @@ newtab-weather-opt-in-not-now =
     .label = Ani ko’ág̃a
 newtab-weather-opt-in-yes =
     .label = Héẽ
+newtab-weather-opt-in-headline = Eporandu ára reko oútava rehegua
+newtab-weather-opt-in-use-location =
+    .label = Eiporu tendaite
+newtab-weather-opt-in-choose-location = Eiporavo tendaite
 # We'll be showing static (fake) weather data if the user has not opted in to using their location
 newtab-weather-static-city = Táva Nueva York
+# "Highest" here refers to the highest temperature of the day
+newtab-weather-high =
+    .aria-label = Yvate
+# "Lowest" here refers to the lowest temperature of the day
+newtab-weather-low =
+    .aria-label = Karape
 # Variables:
 #   $provider (string) - Service provider for weather data
 newtab-weather-see-forecast-description =
@@ -548,8 +906,16 @@ newtab-topic-selection-button-pick-interests = Eiporavo eipotáva
 ## e.g. Following the travel section of stories.
 
 newtab-section-follow-button = Tapykueho
+# Variables:
+#   $topic (string) - Topic that the user can follow
+newtab-section-follow-button-label =
+    .aria-label = Ehapykueho { $topic }
 newtab-section-following-button = Ahapykueho
 newtab-section-unfollow-button = Ndahapykuehovéima
+# Variables:
+#   $topic (string) - Topic that the user is following and can unfollow
+newtab-section-unfollow-button-label =
+    .aria-label = Esegi: Anivete esegi { $topic }
 # A modal may appear next to the Follow button, directing users to try out the feature
 newtab-section-follow-highlight-title = Eiporuporã nde feed
 newtab-section-follow-highlight-subtitle = Ehapykueho ndegustáva ehecha hag̃ua hetave mbaʼe.
@@ -561,6 +927,22 @@ newtab-section-follow-highlight-subtitle = Ehapykueho ndegustáva ehecha hag̃ua
 newtab-section-block-button = Joko
 newtab-section-blocked-button = Jokopyre
 newtab-section-unblock-button = Mbojera
+# Variables:
+#   $topic (string) - Name of topic that user is following
+newtab-section-follow-topic =
+    .aria-label = Esegi { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is unfollowing
+newtab-section-unfollow-topic =
+    .aria-label = Anive esegi { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is blocking
+newtab-section-block-topic =
+    .aria-label = Ejoko { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is unblocking
+newtab-section-unblock-topic =
+    .aria-label = Ejoko’o { $topic }
 
 ## Confirmation modal for blocking a section
 
@@ -570,6 +952,7 @@ newtab-section-confirm-block-topic-p2 = Umi téma jokopyre nosẽmo’ãvéima c
 # Variables:
 #   $topic (string) - Name of topic that user is blocking
 newtab-section-block-topic-button = Ejoko { $topic }
+newtab-section-block-cancel-button = Eheja
 
 ## Strings for custom wallpaper highlight
 
@@ -590,6 +973,12 @@ newtab-custom-wallpaper-cta = Eha’ã jey
 newtab-new-user-custom-wallpaper-title = Eiporavo mba’erechaha rugua ejapo hag̃ua { -brand-product-name } nemba’erã.
 newtab-new-user-custom-wallpaper-subtitle = Pe tendayke pyahu toñeñandu porã mba’erechaha rugua ha sa’y eipotáva ndive.
 newtab-new-user-custom-wallpaper-cta = Eiporu ko’ág̃a
+
+## Strings for Nova wallpaper feature highlight
+
+newtab-wallpaper-feature-highlight-title = Mba’erechaha rugua pyahu og̃uahẽramóva
+newtab-wallpaper-feature-highlight-subtitle = Eiporavo ehayhuvéva ha ajapo peteĩteĩva tendayke pyahu nemoñandúta nde rogapeguáicha.
+newtab-wallpaper-feature-highlight-cta = Eiporavo mba’erechaha rugua
 
 ## Strings for download mobile highlight
 
@@ -631,6 +1020,20 @@ newtab-report-cancel = Heja
 newtab-report-submit = Mondo
 newtab-toast-thanks-for-reporting =
     .message = Aguyje emomarandu haguére.
+newtab-toast-widgets-hidden =
+    .message = Eiporavo ta’ãnga’i haiháva embojuaju jey hag̃ua widgets eipota vove.
+# Variables:
+#   $topic (string) - Topic that the user has followed
+newtab-section-toast-follow =
+    .message = Ko’ág̃a ehapykueho: { $topic }.
+# Variables:
+#   $topic (string) - Topic that the user has unfollowed
+newtab-section-toast-unfollow =
+    .message = Nderehapykuehovéima: { $topic }.
+# Variables:
+#   $topic (string) - Topic that the user has blocked
+newtab-section-toast-block =
+    .message = Nderehechamo’ãvéima { $topic } rembiasakue.
 
 ## Strings for task / to-do list productivity widget
 
@@ -645,32 +1048,62 @@ newtab-widget-lists-label-beta =
 # Variables:
 #   $number (number) - Amount of list items marked complete
 newtab-widget-lists-completed-list = Opapyre ({ $number })
+newtab-widget-lists-celebration-headline = Mba’apo porã
+newtab-widget-lists-celebration-subhead = Ára potĩ
 newtab-widget-task-list-menu-copy = Monguatia
 newtab-widget-lists-menu-edit = Embosako’i tysýi réra
+newtab-widget-lists-menu-edit2 =
+    .aria-label = Embosako’i tysýi réra
 newtab-widget-lists-menu-create = Emoheñói tysýi pyahu
 newtab-widget-lists-menu-delete = Embogue ko tysýi
 newtab-widget-lists-menu-copy = Embohasa tysýi kuatiajokohápe
-newtab-widget-lists-menu-hide = Eñomimba umi tysýi
 newtab-widget-lists-menu-learn-more = Eikuaave
-newtab-widget-lists-input-add-an-item =
+newtab-widget-lists-button-add-item = Embojuaju jehaipy
+newtab-widget-lists-input-add-an-item2 =
     .placeholder = Embojuaju jehaipy
+    .aria-label = Embojuaju jehaipy
 newtab-widget-lists-input-error = Emoinge moñe’ẽrã embojuaju hag̃ua mba’eporurã.
 newtab-widget-lists-input-menu-open-link = Joajuha ijurujáva
 newtab-widget-lists-input-menu-move-up = Jehupi
 newtab-widget-lists-input-menu-move-down = Emongu’e yvy gotyo
 newtab-widget-lists-input-menu-delete = Mboguete
 newtab-widget-lists-input-menu-edit = Mbosako’i
+newtab-widget-lists-input-menu-edit2 =
+    .aria-label = Embosako’i mba’epuru
+newtab-widget-lists-edit-clear =
+    .aria-label = Eheja
+    .title = Eheja
 # the + symbol emphasises the functionality of adding a new list
 newtab-widget-lists-dropdown-create =
     .label = + Emoheñói tysýi pyahu
 newtab-widget-lists-name-label-default =
     .label = Tembiaporã rysýi
+newtab-widget-lists-name-label-checklist =
+    .label = Tysýi hechajeyha
 newtab-widget-lists-name-placeholder-default =
     .placeholder = Tembiaporã rysýi
+newtab-widget-lists-name-placeholder-checklist2 =
+    .placeholder = Tysýi hechajeyha
+    .aria-label = Embosako’i tysýi réra
 # The placeholder value of the name field for a newly created list
-newtab-widget-lists-name-placeholder-new =
+newtab-widget-lists-name-placeholder-new2 =
     .placeholder = Tysýi pyahu
+    .aria-label = Embosako’i tysýi réra
 newtab-widget-section-title = Widgets
+newtab-widget-menu-hide = Eñomi widget
+newtab-widget-menu-change-size = Emoambue tuichakue
+# Parent label for a submenu in the widget menu that reorders the widget
+# among its siblings. "Left" and "Right" appear as items inside this submenu.
+newtab-widget-menu-move = Mongu’e
+# Submenu item under "Move"; moves the widget one position to the left.
+# RTL locales should translate this as "Right".
+newtab-widget-menu-move-left = Asugua
+# Submenu item under "Move"; moves the widget one position to the right.
+# RTL locales should translate this as "Left".
+newtab-widget-menu-move-right = Akatúa
+newtab-widget-size-small = Michĩva
+newtab-widget-size-medium = Mbyteguáva
+newtab-widget-size-large = Tuicháva
 # Tooltip for hide all widgets button
 newtab-widget-section-hide-all-button =
     .title = Eñomi widgets
@@ -681,9 +1114,27 @@ newtab-widget-section-maximize =
 newtab-widget-section-minimize =
     .title = Emomichĩ widgets
     .aria-label = Emomichĩmbaite widgets tuichaháicha
+newtab-widget-section-menu-button =
+    .title = Widgets poravoha
+    .aria-label = Embojuruja widgets poravoha
+newtab-widget-add-widgets-button =
+    .aria-label = Embojuaju widget
+    .title = Embojuaju widget
+newtab-widget-section-menu-manage = Eñangareko widgets
+newtab-widget-section-menu-hide-all = Eñomi widgets
+newtab-widget-section-menu-learn-more = Eikuaave
+newtab-widget-section-feedback = Ja’e mba’épa opensa
+# Button shown when additional widgets are hidden beyond the
+# first row, allowing users to show them.
+newtab-widget-section-show-more =
+    .label = Ehechaukave widgets
+# Button shown when the widgets row is expanded to multiple rows,
+# allowing users to collapse it back to one row.
+newtab-widget-section-show-less =
+    .label = Ehechauka’ive widgets
+newtab-widget-lists-name-default = Tysýi hechajeyha
 
-## Strings for timer productivity widget
-## When the timer ends, a system notification may be shown. Depending on which mode the timer is in, that message would be shown
+## Strings introduced by the Nova redesign of the Timer widget
 
 newtab-widget-timer-notification-title = Aravojere
 newtab-widget-timer-notification-focus = Opáma nde aravo. Ejapo porã. ¿Epytu’usépa?
@@ -701,8 +1152,9 @@ newtab-widget-timer-reset =
     .title = Mbojevyjey
 newtab-widget-timer-menu-notifications = Eipe’a ñemomarandu
 newtab-widget-timer-menu-notifications-on = Emyandy marandu’i
-newtab-widget-timer-menu-hide = Eñomi aravopapaha
 newtab-widget-timer-menu-learn-more = Kuaave
+newtab-widget-timer-menu-button =
+    .aria-label = Aravomoĩha porurã
 # The title displays above a set of top news headlines.
 newtab-daily-briefing-card-title = Marandu mba’eguasuvéva
 newtab-daily-briefing-card-menu-dismiss = Mokañy
@@ -712,12 +1164,306 @@ newtab-daily-briefing-card-timestamp = Hekopyahu ojapo { $minutes }m
 newtab-widget-message-title = Epyta umi tysýi ndive ha aravopapaha reheve
 # to-dos stands for "things to do".
 newtab-widget-message-copy = Mandu’arã guive tembiaporã peve, ñamindu’u ha jepytu’u jehetetirarã, ema’ẽ ne rembiapo ha aravo rehe.
+# One spot refers to a dedicated section on new tab to manage and use widgets
+newtab-widget-message-focus-forecasts-title = Tenda ha’eñóva ñemomarandurã, kuaarã ha hetave
+# "Make Firefox yours" refers to about:newtab. The call to action here ("Try it now")
+# is to customize the new tab page with a background image or color from
+# the built-in wallpaper collection or uploading your own image.
+newtab-promo-card-title-addons = Eñemomba’e { -brand-product-name } rehe
+newtab-promo-card-body-addons = Eiporavo mba’erecha rugua ore mba’égui térã ejapo ndetevoi.
+newtab-promo-card-cta-addons = Eiporu ko’ág̃a
 newtab-promo-card-title = Eipytyvõ { -brand-product-name }
 newtab-promo-card-body = Ore ykekohára oipytyvõ romombareteve hag̃ua ñanduti rogue
 newtab-promo-card-cta = Eikuaave
 newtab-promo-card-dismiss-button =
     .title = Mboyke
     .aria-label = Mboyke
+
+## Strings introduced by the Nova redesign of the Timer widget
+
+# Variables:
+#   $minutes (number) - The currently selected timer duration in minutes
+newtab-widget-timer-start-aria =
+    .aria-label =
+        { $minutes ->
+            [one] Emoñepyrũ aravokuaaukaha { $minutes } aravo’i
+           *[other] Emoñepyrũ aravokuaaukaha { $minutes } aravo’i
+        }
+newtab-widget-timer-pause-aria =
+    .aria-label = Emombyta aravokuaaukaha
+# Variables:
+#   $minutes (number) - The currently selected timer duration in minutes
+newtab-widget-timer-spinbutton-name =
+    .aria-label =
+        { $minutes ->
+            [one] { $minutes } aravo’i
+           *[other] { $minutes } aravo’ieta
+        }
+newtab-widget-timer-decrease-min =
+    .title = Emomichĩ 1 aravo’i
+newtab-widget-timer-increase-min =
+    .title = Embotuicha 1 aravo’i
+newtab-widget-timer-mode-group =
+    .aria-label = Aravokuaaukaha reko
+# Small label shown beneath the live time while the focus timer is running or paused.
+newtab-widget-timer-running-focus = Focus
+# Small label shown beneath the live time while the break timer is running or paused.
+newtab-widget-timer-running-break = Pytu’u
+# Context-menu item to hide the Timer widget. Replaces the shared "Hide widget"
+# copy with a widget-specific string per the Nova design.
+newtab-widget-timer-menu-hide = Eñomi aravokuaaukaha
+# Heading shown inside the Timer widget after a focus session ends.
+newtab-widget-timer-celebration-heading-focus = Emba’apo porã
+# Heading shown inside the Timer widget after a break session ends.
+newtab-widget-timer-celebration-heading-break = Opáma jepytu’u
+# Message shown inside the Timer widget after a focus session ends.
+newtab-widget-timer-celebration-message-focus = ¿Epytu’usépa?
+# Message shown inside the Timer widget after a break session ends.
+newtab-widget-timer-celebration-message-break = ¿Oĩmbáma atyrã?
+
+##
+
+newtab-sports-widget-menu-follow-teams = Esegi atyetápe
+newtab-sports-widget-menu-view-schedule = Ehecha arapapaha
+newtab-sports-widget-menu-view-upcoming = Ehecha tenondegua
+newtab-sports-widget-menu-view-results = Ehecha mba’éicha osẽ
+# Milestone dates (e.g. group stage, semifinals, etc.). Refers to calendar dates.
+newtab-sports-widget-menu-key-dates = Arange oikóva
+newtab-sports-widget-menu-learn-more = Eikuaave
+# “Keep tabs on” is an informal expression meaning to stay updated on, stay informed on, or regularly follow something (in this case, World Cup matches and updates).
+newtab-sports-widget-keep-tabs = Eñemomarandu Copa del Mundo rehe
+newtab-sports-widget-get-updates = Erekóta mbohekopyahu partído oiko jave ha hetave.
+newtab-sports-widget-view-schedule =
+    .label = Ehecha nde aravorã
+newtab-sports-widget-follow-teams =
+    .label = Esegi atyetápe
+newtab-sports-widget-view-matches =
+    .label = Ehecha partidoita
+# Variables:
+#   $number (number) - Maximum number of teams a user can choose to follow in the team selection state
+newtab-sports-widget-follow-teams-title =
+    { $number ->
+        [one] Esegi { $number } equipo peve
+       *[other] Esegi { $number } equipo peve
+    }
+newtab-sports-widget-choose-wallpaper =
+    .label = Eiporavo mba’erechaha rugua
+newtab-sports-widget-skip = Jepo
+newtab-sports-widget-search-country =
+    .placeholder = Eheka tetã
+    .aria-label = Eheka tetã
+newtab-sports-widget-cancel = Eheja
+newtab-sports-widget-back-button =
+    .aria-label = Tapykue
+newtab-sports-widget-done-button =
+    .label = Japopyre
+# Shown in the follow-teams list for a team that has been knocked out of the tournament.
+# Variables:
+#   $teamName (string) - the localized team name (e.g. "Canada").
+newtab-sports-widget-team-name-eliminated = { $teamName } (mboguepyre)
+newtab-sports-widget-view-all =
+    .label = Ehechapa
+newtab-sports-widget-show-less =
+    .label = Ehechauka’ive
+# Toggle that filters the list of teams the user follows
+newtab-sports-widget-followed-only-toggle =
+    .label = Aty ojesegíva añoite
+# Status shown when more matches are being fetched.
+newtab-sports-widget-loading-more = Ehupive ojojoguáva…
+# Watch is a verb (as in watch matches online).
+newtab-sports-widget-watch =
+    .label = Ehecha
+    .title = Ehecha oikóvo
+# Watch is a verb (as in watch matches online).
+newtab-sports-widget-watch-icon =
+    .aria-label = Ehecha oikóvo
+    .title = Ehecha oikóvo
+newtab-sports-widget-watch-dialog-close =
+    .aria-label = Emboty
+    .title = Emboty
+# Tag: user can watch without paying (sign-in may still be required).
+newtab-sports-widget-watch-stream-free = Reigua
+# Tag: user can start watching via a trial; continued access may require payment after it ends.
+newtab-sports-widget-watch-stream-free-trial = Jeporu rei
+# Tag: provider offers both a no-cost or trial path and a paid path.
+newtab-sports-widget-watch-stream-free-paid = Rei ha hepyme’ẽva
+# Tag: user must pay to watch (subscription, TV provider, premium plan, or add-on).
+newtab-sports-widget-watch-stream-paid = Hepyme’ẽva
+# Note: provider only streams some matches, not the full tournament.
+newtab-sports-widget-watch-stream-select-games-only = Partído poravopyre añoite
+# Heading for the list of streaming services available in the user’s country/region.
+newtab-sports-widget-watch-available-region = Eiporukuaáva eikohápe
+# Heading for the list of streaming services available outside the user’s country/region.
+newtab-sports-widget-watch-available-other-regions = Ambue tendápe
+# Button that opens the provider’s stream page in a new tab.
+newtab-sports-widget-watch-play =
+    .aria-label = Embojuruja ñe’ẽrã
+    .title = Embojuruja ñe’ẽrã
+newtab-sports-widget-group-stage = Atygua jehuga
+newtab-sports-widget-group-a = Aty A
+newtab-sports-widget-group-b = Aty B
+newtab-sports-widget-group-c = Aty C
+newtab-sports-widget-group-d = Aty D
+newtab-sports-widget-group-e = Aty E
+newtab-sports-widget-group-f = Aty F
+newtab-sports-widget-group-g = Aty G
+newtab-sports-widget-group-h = Aty H
+newtab-sports-widget-group-i = Aty I
+newtab-sports-widget-group-j = Aty J
+newtab-sports-widget-group-k = Aty K
+newtab-sports-widget-group-l = Aty L
+newtab-sports-widget-round-32 = 32hápe oĩva
+newtab-sports-widget-round-16 = 16hápe oĩva
+newtab-sports-widget-quarter-finals = 8 atýpe oĩva
+# The "LIVE" string is meant to be uppercase in English, but other languages and locales may vary in how they handle this.
+newtab-sports-widget-live = HECHAPY
+newtab-custom-widget-live-refresh =
+    .title = Embopyahu kytaita
+    .aria-label = Embopyahu kytaita
+# Milestone dates (e.g. group stage, semifinals, etc.). Refers to calendar dates.
+newtab-sports-widget-key-dates = Arange oikóva
+newtab-sports-widget-upcoming = Oupotáva
+# Used for a match currently ongoing
+newtab-sports-widget-now = Ko’ág̃a
+newtab-sports-widget-results = Apopyre
+newtab-sports-widget-semi-finals = Irundy opytáva
+newtab-sports-widget-bronze-finals = Mbohapyhápe osẽva
+# Final is the final match for 1st place.
+newtab-sports-widget-final = Paha
+# Variables:
+#   $start (Date) - Start date of a tournament stage
+#   $end (Date) - End date of a tournament stage
+newtab-sports-widget-key-date-range = { DATETIME($start, month: "short", day: "numeric") } – { DATETIME($end, month: "short", day: "numeric") }
+# Variables:
+#   $date (Date) - Date of a single tournament event
+newtab-sports-widget-key-date = { DATETIME($date, month: "short", day: "numeric") }
+newtab-sports-widget-delayed = Jokopyre
+newtab-sports-widget-postponed = Mbohasapyre
+newtab-sports-widget-suspended = Jejokopyre
+newtab-sports-widget-cancelled = Hejapyre
+newtab-sports-widget-information = Marandu partído rehegua
+newtab-sports-widget-no-live-data = Mba’ekuaarãita partído rehegua ndahekopyahúi ko’ag̃aite
+newtab-sports-widget-view-results-link = Ehecha mba’éicha osẽ
+newtab-sports-widget-third-place = Osẽva mbohapyhápe
+# Runner-up is the team in 2nd place.
+newtab-sports-widget-runner-up = Osẽva mokõihápe
+newtab-sports-widget-champions = Campeón
+newtab-sports-widget-world-cup-champions = Copa Mundial 2026 oganáva
+# Compact champions label for the medium-size widget result card; the larger
+# card uses newtab-sports-widget-world-cup-champions.
+newtab-sports-widget-world-cup-champions-short = Campeón 2026-pe
+# Variables:
+#   $date (Date) - The match start time
+newtab-sports-widget-match-time = { DATETIME($date, hour: "2-digit", minute: "2-digit") }
+newtab-sports-widget-match-full-time = Partído opámava
+newtab-sports-widget-match-halftime = Jepytu’u
+newtab-sports-widget-match-extra-time = Aravo’i juapyvegua
+newtab-sports-widget-match-penalties = Penal jechuta
+# Separator shown between two teams in a placeholder match row when no upcoming
+# match details are available yet.
+newtab-sports-widget-match-vs = vs
+# Note shown in the Upcoming tab when no match details are available yet.
+newtab-sports-widget-no-upcoming-matches = Eñatende eikuaa hag̃ua oikóva partído rehegua.
+
+## Sports widget live-games pagination. Shown when 2+ matches are live at the same time
+
+# arrow button that goes to the previous page of live matches.
+newtab-sports-widget-pagination-previous =
+    .aria-label = Mboyvegua
+    .title = Mboyvegua
+# arrow button that goes to the next page of live matches.
+newtab-sports-widget-pagination-next =
+    .aria-label = Tenonde
+    .title = Tenonde
+# Dot indicator that jumps directly to a given live match.
+# $index (number) - 1-based position of this dot in the list.
+# $total (number) - Total number of live matches.
+newtab-sports-widget-pagination-dot =
+    .aria-label = Partído oikóva { $index } { $total } rehegua
+    .title = Partído oikóva { $index } { $total } rehegua
+
+## Accessible labels for match rows in the sports widget. These are read by
+## screen readers to announce the match details and status.
+## Variables shared by all messages in this group:
+##   $homeTeam (String) - The full name of the home team (e.g. "Mexico")
+##   $awayTeam (String) - The full name of the away team (e.g. "Russia")
+
+# A finished match row (regular full-time result).
+# Variables:
+#   $homeScore (number) - The home team's regular-time score
+#   $awayScore (number) - The away team's regular-time score
+newtab-sports-widget-match-aria-label-results =
+    .aria-label = { $homeTeam }, { $homeScore } versus { $awayTeam }, { $awayScore }
+# A finished match row that went to a penalty shootout.
+# Parenthesized values are the shootout score.
+# Variables:
+#   $homeScore (number) - The home team's regular-time score
+#   $awayScore (number) - The away team's regular-time score
+#   $homePenalty (number) - The home team's penalty shootout score
+#   $awayPenalty (number) - The away team's penalty shootout score
+newtab-sports-widget-match-aria-label-results-penalties =
+    .aria-label = { $homeTeam }, { $homeScore } ({ $homePenalty }) versus { $awayTeam }, { $awayScore } ({ $awayPenalty })
+# A match that is currently in progress.
+# Variables:
+#   $homeScore (number) - The home team's current score
+#   $awayScore (number) - The away team's current score
+newtab-sports-widget-match-aria-label-now =
+    .aria-label = Oikóvo: { $homeTeam }, { $homeScore } versus { $awayTeam }, { $awayScore }
+# An upcoming scheduled match row. Announces kickoff time and date.
+# Variables:
+#   $date (Date) - The scheduled kickoff date/time
+newtab-sports-widget-match-aria-label-upcoming =
+    .aria-label = { $homeTeam } vs. { $awayTeam }, { DATETIME($date, hour: "numeric", minute: "numeric") }, { DATETIME($date, day: "numeric", month: "long") }
+# An upcoming match row whose status is "delayed".
+newtab-sports-widget-match-aria-label-upcoming-delayed =
+    .aria-label = { $homeTeam } vs. { $awayTeam }, tapykue
+# An upcoming match row whose status is "postponed".
+newtab-sports-widget-match-aria-label-upcoming-postponed =
+    .aria-label = { $homeTeam } vs. { $awayTeam }, mbohasapyre
+# An upcoming match row whose status is "suspended".
+newtab-sports-widget-match-aria-label-upcoming-suspended =
+    .aria-label = { $homeTeam } vs. { $awayTeam }, jokopyre
+# An upcoming match row whose status is "cancelled".
+newtab-sports-widget-match-aria-label-upcoming-cancelled =
+    .aria-label = { $homeTeam } vs. { $awayTeam }, hejapyre
+
+## Sports widget — team names (FIFA country codes)
+## Only includes names not adequately covered by standard country-code
+## internationalization tooling.
+
+newtab-sports-widget-team-name-label-bih =
+    .label = Bosnia Herzegovina
+newtab-sports-widget-team-name-label-civ =
+    .label = Costa de Marfil
+newtab-sports-widget-team-name-label-cod =
+    .label = DR Congo
+newtab-sports-widget-team-name-label-eng =
+    .label = Inglaterra
+newtab-sports-widget-team-name-label-sco =
+    .label = Escocia
+# Placeholder used in a match row's aria-label for an undecided team (shown visually as "--").
+newtab-sports-widget-team-tbd = Ojekuaa’ỹva gueteri
+
+## Sports widget OMC messages
+## Shown as on-screen messages promoting the Sports widget and World Cup wallpapers.
+
+newtab-sports-widget-message-wallpapers-title = Eg̃uahẽ Mundial ñepyrũme mba’erechaha rugua pyahu reheve
+newtab-sports-widget-message-wallpapers-body = Emog̃uahẽ upe energía partído oikotaha ára ne mohendahápe.
+newtab-sports-widget-message-wallpapers-cta = Eiporavo mba’erechaha rugua
+newtab-sports-widget-message-wallpapers-semifinals-title = Erekóke mba’erechaha rugua pyahu semifinal-pe g̃uarã
+newtab-sports-widget-message-add-widgets-cta =
+    .label = Embojuaju widgets
+newtab-sports-widget-message-day-in-play-title = Ereko nde ára pukukue jeku’épe umi widget { -brand-product-name } rupi.
+newtab-sports-widget-message-day-in-play-body = Ehecha Mundial, pepyta py’aguapýpe, pehecha aravo arapy tuichakue ha hetave.
+newtab-sports-widget-message-explore-widgets-cta =
+    .label = Emyasãi widgets
+
+## Survey prompts shown after the World Cup to gather feedback on the widgets experience.
+
+newtab-sports-widget-message-survey-title = Ore pytyvõ widgets porãverã
+newtab-sports-widget-message-survey-widget-title = ¿Mba’éicha oĩ Copa del Mundo widget?
+newtab-sports-widget-message-survey-cta =
+    .label = Ejapo encuesta
 
 ## Strings for activation window message variants. In certain experiment configurations,
 ## the strings from these variants may be displayed in a message below the search input
@@ -739,3 +1485,77 @@ newtab-activation-window-message-customization-focus-primary-button =
 # action is to customize newtab with a background image or colour, or by tweaking
 # the existing widgetry that appears on it.
 newtab-activation-window-message-values-focus-header = Ko pa’ũ ohuga ambue tekoguatarãme
+newtab-activation-window-message-values-focus-message = { -brand-product-name } omoneĩ eikundahávo nde eipotahaichaite, ndeháicha eñepyrũ hag̃ua ne rembiapo ñandutípe. Emboava { -brand-product-name }.
+
+## Strings for the Clock widget
+
+# Context menu item: toggle the clock card off.
+newtab-clock-widget-menu-hide = Eñomi aravopapaha
+newtab-clock-widget-menu-learn-more = Eikuaave
+newtab-clock-widget-menu-edit = Embosako’i aravopapaha
+newtab-clock-widget-menu-switch-to-12h = Emoambue 12 aravohapegua
+newtab-clock-widget-menu-switch-to-24h = Emoambue 24 aravohapegua
+newtab-clock-widget-label-your-clocks = Ijaravopapaha
+newtab-clock-widget-search-location-input =
+    .label = Tendaite
+    .placeholder = Eheka upe táva
+    .aria-label = Eheka upe táva
+# "Nickname (optional)" refers to a custom, user-defined label for a saved location
+# (e.g., "Home", "Office", or "School") to make it easier to recognize.
+# Not to be translated as a legal name, username, or alias used for identity verification.
+newtab-clock-widget-input-nickname =
+    .label = Teragua’u (eipotárõ)
+    .placeholder = Embojuaju teragua’u
+    .aria-label = Teragua’u (eipotárõ)
+# "Add new clock" is an icon-only button in the widget toolbar — the
+# attributes are consumed as tooltip/screen-reader label only. The button
+# never renders visible text.
+newtab-clock-widget-button-add =
+    .title = Embojuaju aravopapaha pyahu
+    .aria-label = Embojuaju aravopapaha pyahu
+newtab-clock-widget-button-add-clock = Mbojuaju
+newtab-clock-widget-button-cancel = Eheja
+newtab-clock-widget-button-back =
+    .title = Tapykue
+    .aria-label = Tapykue
+newtab-clock-widget-button-edit-clock =
+    .title = Embosako’i aravopapaha
+    .aria-label = Embosako’i aravopapaha
+newtab-clock-widget-button-save = Ñongatu
+newtab-clock-widget-button-remove-clock =
+    .title = Embogue aravopapaha
+    .aria-label = Embogue aravopapaha
+# Accessible name for a clock row in the "Your clocks" management panel
+# when the row has no user-provided nickname. Read aloud by screen
+# readers when focus lands on the row.
+# Variables:
+#   $city (string) - The city name displayed in the row.
+newtab-clock-widget-edit-item =
+    .aria-label = { $city }
+# Accessible name for a clock row when a user nickname has been set.
+# Variables:
+#   $city (string) - The city name displayed in the row.
+#   $nickname (string) - The user-provided nickname for the row.
+newtab-clock-widget-edit-item-with-nickname =
+    .aria-label = { $city }, teragua’u: { $nickname }
+newtab-clock-widget-add-clock-form =
+    .aria-label = Embojuaju aravopapaha
+newtab-clock-widget-edit-clock-form =
+    .aria-label = Embosako’i aravopapaha
+# "Search results" is the accessible label for the listbox dropdown that appears
+# below the location search field, listing matching cities as the user types.
+# It means "results of the search", not "search within the results".
+newtab-clock-widget-search-results =
+    .aria-label = Jehekaha rembiapokue
+# Shown in place of the search results when the user's query does not match any
+# supported city — e.g. typing a misspelled name or a place not in the IANA
+# time zone list.
+newtab-clock-widget-search-no-results = Ojuehegua’ỹva
+# "Open menu for clock" is an icon-only button in the widget toolbar — the
+# attributes are consumed as tooltip/screen-reader label only. The button
+# never renders visible text.
+newtab-clock-widget-menu-button =
+    .title = Embojuruja aravopapaha poravorã
+    .aria-label = Embojuruja aravopapaha poravorã
+# $nickname (String) - The user-defined nickname for a saved clock location (e.g., "Home", "Office").
+newtab-clock-widget-label-nickname-with-value = Teragua’u: { $nickname }

@@ -1,10 +1,6 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-#include "debugger/Environment-inl.h"
 
 #include "mozilla/Assertions.h"  // for AssertionConditionType
 #include "mozilla/Maybe.h"       // for Maybe, Some, Nothing
@@ -31,6 +27,7 @@
 #include "vm/Scope.h"                 // for ScopeKind, ScopeKindString
 #include "vm/StringType.h"            // for JSAtom
 
+#include "debugger/Environment-inl.h"
 #include "gc/StableCellHasher-inl.h"
 #include "vm/Compartment-inl.h"        // for Compartment::wrap
 #include "vm/EnvironmentObject-inl.h"  // for JSObject::enclosingEnvironment
@@ -49,16 +46,7 @@ using mozilla::Nothing;
 using mozilla::Some;
 
 const JSClassOps DebuggerEnvironment::classOps_ = {
-    nullptr,                               // addProperty
-    nullptr,                               // delProperty
-    nullptr,                               // enumerate
-    nullptr,                               // newEnumerate
-    nullptr,                               // resolve
-    nullptr,                               // mayResolve
-    nullptr,                               // finalize
-    nullptr,                               // call
-    nullptr,                               // construct
-    CallTraceMethod<DebuggerEnvironment>,  // trace
+    .trace = CallTraceMethod<DebuggerEnvironment>,
 };
 
 const JSClass DebuggerEnvironment::class_ = {
@@ -389,10 +377,9 @@ NativeObject* DebuggerEnvironment::initClass(JSContext* cx,
 DebuggerEnvironment* DebuggerEnvironment::create(
     JSContext* cx, HandleObject proto, HandleObject referent,
     Handle<NativeObject*> debugger) {
-  DebuggerEnvironment* obj =
-      IsInsideNursery(referent)
-          ? NewObjectWithGivenProto<DebuggerEnvironment>(cx, proto)
-          : NewTenuredObjectWithGivenProto<DebuggerEnvironment>(cx, proto);
+  NewObjectKind newKind = GetNewObjectKind(referent);
+  DebuggerEnvironment* obj = NewObjectWithGivenProto<DebuggerEnvironment>(
+      cx, proto, {.newKind = newKind});
   if (!obj) {
     return nullptr;
   }

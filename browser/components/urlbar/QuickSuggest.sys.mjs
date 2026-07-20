@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -14,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
   UrlbarUtils: "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs",
 });
 
@@ -265,12 +264,11 @@ class _QuickSuggest {
   }
 
   /**
-   * @returns {object}
-   *   Possible values of the `quickSuggestSettingsUi` Nimbus variable and its
-   *   fallback pref `browser.urlbar.quicksuggest.settingsUi`. When Suggest is
-   *   enabled, these values determine the Suggest settings that will be visible
-   *   in `about:preferences`. When Suggest is disabled, the variable/pref are
-   *   ignored and Suggest settings are hidden.
+   * Possible values of the `quickSuggestSettingsUi` Nimbus variable and its
+   * fallback pref `browser.urlbar.quicksuggest.settingsUi`. When Suggest is
+   * enabled, these values determine the Suggest settings that will be visible
+   * in `about:preferences`. When Suggest is disabled, the variable/pref are
+   * ignored and Suggest settings are hidden.
    */
   get SETTINGS_UI() {
     return SETTINGS_UI;
@@ -356,7 +354,7 @@ class _QuickSuggest {
 
   get logger() {
     if (!this._logger) {
-      this._logger = lazy.UrlbarUtils.getLogger({ prefix: "QuickSuggest" });
+      this._logger = lazy.UrlbarShared.getLogger({ prefix: "QuickSuggest" });
     }
     return this._logger;
   }
@@ -1179,11 +1177,6 @@ class _QuickSuggest {
     }
   }
 
-  // Lets tests easily mock whether the build is a Nightly build.
-  get _isNightlyBuild() {
-    return AppConstants.NIGHTLY_BUILD;
-  }
-
   async _test_reset(testOverrides = null) {
     if (this.#initStarted) {
       await this.initPromise;
@@ -1254,7 +1247,7 @@ function userAcceptedSuggestToU() {
  *   checks.
  */
 function shouldOnlineBeAvailable() {
-  return QuickSuggest._isNightlyBuild && userAcceptedSuggestToU();
+  return userAcceptedSuggestToU();
 }
 
 function getDismissalKey(result) {

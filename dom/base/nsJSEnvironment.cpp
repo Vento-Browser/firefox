@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -29,6 +27,7 @@
 #include "nsIXPConnect.h"
 #include "nsJSUtils.h"
 #include "nsPIDOMWindow.h"
+#include "nsPIDOMWindowInlines.h"
 #include "nsPresContext.h"
 #include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
@@ -90,6 +89,7 @@
 #include "prthread.h"
 #include "xpcpublic.h"
 #if defined(MOZ_MEMORY)
+#  include "mozilla/TaskController.h"
 #  include "mozmemory.h"
 #endif
 
@@ -396,7 +396,7 @@ void DispatchScriptErrorEvent(nsPIDOMWindowInner* win,
                               xpc::ErrorReport* xpcReport,
                               JS::Handle<JS::Value> exception,
                               JS::Handle<JSObject*> exceptionStack) {
-  nsContentUtils::AddScriptRunner(new ScriptErrorEvent(
+  nsContentUtils::AddScriptRunner(MakeAndAddRef<ScriptErrorEvent>(
       win, rootingCx, xpcReport, exception, exceptionStack));
 }
 
@@ -802,7 +802,7 @@ nsresult nsJSContext::AddSupportsPrimitiveTojsvals(JSContext* aCx,
 
       p->GetData(&data);
 
-      *aArgv = ::JS_NumberValue(data);
+      aArgv->setNumber(data);
 
       break;
     }
@@ -814,7 +814,7 @@ nsresult nsJSContext::AddSupportsPrimitiveTojsvals(JSContext* aCx,
 
       p->GetData(&data);
 
-      *aArgv = ::JS_NumberValue(data);
+      aArgv->setNumber(data);
 
       break;
     }
@@ -1264,7 +1264,11 @@ void nsJSContext::EndCycleCollectionCallback(
   else if (
       StaticPrefs::
           dom_memory_foreground_content_processes_have_larger_page_cache()) {
-    jemalloc_free_dirty_pages();
+    if (auto* tc = TaskController::Get()) {
+      tc->RequestIdleMemoryCleanup("CC completed");
+    } else {
+      jemalloc_free_dirty_pages();
+    }
   }
 #endif
 }
@@ -1534,14 +1538,18 @@ static void DOMGCSliceCallback(JSContext* aCx, JS::GCProgress aProgress,
       }
 
       MOZ_ASSERT(sCurrentGCStartTime);
-      glean::dom::gc_in_progress.AccumulateRawDuration(TimeStamp::Now() -
-                                                       sCurrentGCStartTime);
+      glean::dom::gc_in_progress.ProcessGet().AccumulateRawDuration(
+          TimeStamp::Now() - sCurrentGCStartTime);
 
 #if defined(MOZ_MEMORY)
       if (freeDirty &&
           StaticPrefs::
               dom_memory_foreground_content_processes_have_larger_page_cache()) {
-        jemalloc_free_dirty_pages();
+        if (auto* tc = TaskController::Get()) {
+          tc->RequestIdleMemoryCleanup("GC completed");
+        } else {
+          jemalloc_free_dirty_pages();
+        }
       }
 #endif
       break;
@@ -2063,7 +2071,7 @@ class nsJSArgArray final : public nsIJSArgArray {
                nsresult* prv);
 
   // nsISupports
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsJSArgArray,
                                                          nsIJSArgArray)
 

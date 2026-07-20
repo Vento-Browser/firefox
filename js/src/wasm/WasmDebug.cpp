@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- *
+/*
  * Copyright 2016 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -267,9 +265,8 @@ void DebugState::clearBreakpointsIn(JS::GCContext* gcx,
   if (breakpointSites_.empty()) {
     return;
   }
-  for (WasmBreakpointSiteMap::Enum e(breakpointSites_); !e.empty();
-       e.popFront()) {
-    WasmBreakpointSite* site = e.front().value();
+  for (auto iter = breakpointSites_.modIter(); !iter.done(); iter.next()) {
+    WasmBreakpointSite* site = iter.get().value();
     MOZ_ASSERT(site->instanceObject == instance);
 
     Breakpoint* nextbp;
@@ -283,7 +280,7 @@ void DebugState::clearBreakpointsIn(JS::GCContext* gcx,
     }
     if (site->isEmpty()) {
       gcx->delete_(instance, site, MemoryUse::BreakpointSite);
-      e.removeFront();
+      iter.remove();
     }
   }
 }
@@ -320,7 +317,6 @@ void DebugState::adjustEnterAndLeaveFrameTrapsState(JSContext* cx,
   }
 
   MOZ_RELEASE_ASSERT(&instance->codeMeta() == &codeMeta());
-  MOZ_RELEASE_ASSERT(instance->codeMetaForAsmJS() == codeMetaForAsmJS());
   uint32_t numFuncs = codeMeta().numFuncs();
   if (enabled) {
     MOZ_ASSERT(enterAndLeaveFrameTrapsCounter_ > 0);
@@ -411,10 +407,10 @@ bool DebugState::getGlobal(Instance& instance, uint32_t globalIndex,
         vp.set(NumberValue((double)value.i64()));
         break;
       case ValType::F32:
-        vp.set(NumberValue(JS::CanonicalizeNaN(value.f32())));
+        vp.set(NumberValue(value.f32()));
         break;
       case ValType::F64:
-        vp.set(NumberValue(JS::CanonicalizeNaN(value.f64())));
+        vp.set(NumberValue(value.f64()));
         break;
       case ValType::Ref:
         // It's possible to do better.  We could try some kind of hashing
@@ -447,11 +443,11 @@ bool DebugState::getGlobal(Instance& instance, uint32_t globalIndex,
       break;
     }
     case ValType::F32: {
-      vp.set(NumberValue(JS::CanonicalizeNaN(*static_cast<float*>(dataPtr))));
+      vp.set(NumberValue(*static_cast<float*>(dataPtr)));
       break;
     }
     case ValType::F64: {
-      vp.set(NumberValue(JS::CanonicalizeNaN(*static_cast<double*>(dataPtr))));
+      vp.set(NumberValue(*static_cast<double*>(dataPtr)));
       break;
     }
     case ValType::Ref: {
@@ -519,12 +515,11 @@ bool DebugState::getSourceMappingURL(JSContext* cx,
   return true;
 }
 
-void DebugState::addSizeOfMisc(
-    mozilla::MallocSizeOf mallocSizeOf, CodeMetadata::SeenSet* seenCodeMeta,
-    CodeMetadataForAsmJS::SeenSet* seenCodeMetaForAsmJS,
-    Code::SeenSet* seenCode, size_t* code, size_t* data) const {
-  code_->addSizeOfMiscIfNotSeen(mallocSizeOf, seenCodeMeta,
-                                seenCodeMetaForAsmJS, seenCode, code, data);
-  module_->addSizeOfMisc(mallocSizeOf, seenCodeMeta, seenCodeMetaForAsmJS,
-                         seenCode, code, data);
+void DebugState::addSizeOfMisc(mozilla::MallocSizeOf mallocSizeOf,
+                               CodeMetadata::SeenSet* seenCodeMeta,
+                               Code::SeenSet* seenCode, size_t* code,
+                               size_t* data) const {
+  code_->addSizeOfMiscIfNotSeen(mallocSizeOf, seenCodeMeta, seenCode, code,
+                                data);
+  module_->addSizeOfMisc(mallocSizeOf, seenCodeMeta, seenCode, code, data);
 }

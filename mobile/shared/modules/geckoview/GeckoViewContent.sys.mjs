@@ -23,6 +23,7 @@ export class GeckoViewContent extends GeckoViewModule {
       "GeckoView:UpdateInitData",
       "GeckoView:ZoomToInput",
       "GeckoView:IsPdfJs",
+      "GeckoView:GetBrokenSiteReport",
       "GeckoView:GetWebCompatInfo",
       "GeckoView:SendMoreWebCompatInfo",
     ]);
@@ -279,6 +280,9 @@ export class GeckoViewContent extends GeckoViewModule {
       case "GeckoView:ContainsFormData":
         this._containsFormData(aCallback);
         break;
+      case "GeckoView:GetBrokenSiteReport":
+        this._getBrokenSiteReport(aCallback);
+        break;
       case "GeckoView:GetWebCompatInfo":
         this._getWebCompatInfo(aCallback);
         break;
@@ -309,14 +313,12 @@ export class GeckoViewContent extends GeckoViewModule {
         if (this.browser.hasAttribute("primary")) {
           return;
         }
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:FocusRequest",
-        });
+        this.eventDispatcher.sendRequest("GeckoView:FocusRequest");
         aEvent.preventDefault();
         break;
       case "MozDOMFullscreen:Entered":
         if (this.browser == aEvent.target) {
-          const chromeWindow = this.browser.ownerGlobal;
+          const chromeWindow = this.browser.documentGlobal;
           const requestOrigin =
             chromeWindow.browsingContext?.fullscreenRequestOrigin?.get();
           if (!requestOrigin) {
@@ -332,8 +334,7 @@ export class GeckoViewContent extends GeckoViewModule {
         this.#sendExitDOMFullScreenEvent();
         break;
       case "pagetitlechanged":
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:PageTitleChanged",
+        this.eventDispatcher.sendRequest("GeckoView:PageTitleChanged", {
           title: this.browser.contentTitle,
         });
         break;
@@ -343,27 +344,22 @@ export class GeckoViewContent extends GeckoViewModule {
         // here Gecko will close it immediately.
         aEvent.preventDefault();
 
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:DOMWindowClose",
-        });
+        this.eventDispatcher.sendRequest("GeckoView:DOMWindowClose");
         break;
       case "pageinfo":
         if (aEvent.detail.previewImageURL) {
-          this.eventDispatcher.sendRequest({
-            type: "GeckoView:PreviewImage",
+          this.eventDispatcher.sendRequest("GeckoView:PreviewImage", {
             previewImageUrl: aEvent.detail.previewImageURL,
           });
         }
         break;
       case "cookiebannerdetected":
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:CookieBannerEvent:Detected",
-        });
+        this.eventDispatcher.sendRequest(
+          "GeckoView:CookieBannerEvent:Detected"
+        );
         break;
       case "cookiebannerhandled":
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:CookieBannerEvent:Handled",
-        });
+        this.eventDispatcher.sendRequest("GeckoView:CookieBannerEvent:Handled");
         break;
     }
   }
@@ -381,13 +377,9 @@ export class GeckoViewContent extends GeckoViewModule {
         }
         this.window.setTimeout(() => {
           if (this._contentCrashed) {
-            this.eventDispatcher.sendRequest({
-              type: "GeckoView:ContentCrash",
-            });
+            this.eventDispatcher.sendRequest("GeckoView:ContentCrash");
           } else {
-            this.eventDispatcher.sendRequest({
-              type: "GeckoView:ContentKill",
-            });
+            this.eventDispatcher.sendRequest("GeckoView:ContentKill");
           }
         }, 250);
         break;
@@ -405,6 +397,36 @@ export class GeckoViewContent extends GeckoViewModule {
         }
         break;
       }
+    }
+  }
+
+  async _getBrokenSiteReport(aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref(
+        "browser.webcompat.geckoview.enableAllTestMocks",
+        false
+      )
+    ) {
+      const mockResult = {
+        devicePixelRatio: 2.5,
+        antitracking: { hasTrackingContentBlocked: false },
+      };
+      aCallback.onSuccess(JSON.stringify(mockResult));
+      return;
+    }
+    try {
+      const actor =
+        this.browser.browsingContext.currentWindowGlobal.getActor(
+          "ReportBrokenSite"
+        );
+      const info = await actor.getBrokenSiteReport();
+
+      // Stringify to convert potential non-ASCII
+      // characters in the returned web compat info map.
+      aCallback.onSuccess(JSON.stringify(info));
+    } catch (error) {
+      aCallback.onError(`Cannot get broken site report, error: ${error}`);
     }
   }
 

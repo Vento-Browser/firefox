@@ -33,12 +33,13 @@ import {
   getShouldScrollToSelectedLocation,
   getShouldHighlightSelectedLocation,
   getSelectedTraceLocation,
+  getSearchOptions,
 } from "../../selectors/index";
 
 // Redux actions
 import actions from "../../actions/index";
 
-import SearchInFileBar from "./SearchInFileBar";
+import FileSearch from "./FileSearch";
 import HighlightLines from "./HighlightLines";
 import Preview from "./Preview/index";
 import Breakpoints from "./Breakpoints";
@@ -57,12 +58,21 @@ import {
   toSourceLine,
   toEditorPosition,
   onMouseOver,
+  clearSearch as clearSearchEditor,
+  find,
+  findNext,
+  findPrev,
 } from "../../utils/editor/index";
+
+import { searchKeys } from "../../constants";
+import { scrollList } from "../../utils/result-list";
 
 import { updateEditorSizeCssVariables } from "../../utils/ui";
 
 const { debounce } = require("resource://devtools/shared/debounce.js");
+const { throttle } = require("resource://devtools/shared/throttle.js");
 const classnames = require("resource://devtools/client/shared/classnames.js");
+const SourceEditor = require("resource://devtools/client/shared/sourceeditor/editor.js");
 
 const { appinfo } = Services;
 const isMacOS = appinfo.OS === "Darwin";
@@ -108,6 +118,14 @@ class Editor extends PureComponent {
       isOriginalSourceAndMapScopesEnabled: PropTypes.bool,
       shouldScrollToSelectedLocation: PropTypes.bool,
       setInScopeLines: PropTypes.func,
+      modifiers: PropTypes.object.isRequired,
+      setActiveSearch: PropTypes.func.isRequired,
+      closeFileSearch: PropTypes.func.isRequired,
+      querySearchWorker: PropTypes.func.isRequired,
+      selectLocation: PropTypes.func.isRequired,
+      showEditorContextMenu: PropTypes.func.isRequired,
+      showEditorGutterContextMenu: PropTypes.func.isRequired,
+      updateStyleSheetContent: PropTypes.func.isRequired,
     };
   }
 
@@ -169,8 +187,25 @@ class Editor extends PureComponent {
   }
 
   onEditorUpdated = viewUpdate => {
+    const { editor } = this.state;
     if (viewUpdate.docChanged || viewUpdate.geometryChanged) {
       updateEditorSizeCssVariables(viewUpdate.view.dom);
+      const { selectedLocation } = this.props;
+      // The updates made to the  stylesheet contents are
+      // only sent when these conditions are satisfied.
+      if (
+        // When a source is selected
+        selectedLocation &&
+        // When it is actually a stylesheet
+        selectedLocation.source.isStyleSheet &&
+        // When a user changes the doc content
+        editor.isViewUpdateFromUserInput(viewUpdate)
+      ) {
+        this.updateStyleSheetText(
+          selectedLocation.sourceActor,
+          viewUpdate.state.doc.toString()
+        );
+      }
       this.props.updateViewport();
     } else if (viewUpdate.selectionSet) {
       this.onCursorChange();
@@ -417,6 +452,8 @@ class Editor extends PureComponent {
   }
 
   onEditorScroll = debounce(this.props.updateViewport, 75);
+
+  updateStyleSheetText = throttle(this.props.updateStyleSheetContent, 500);
 
   /*
    * The default Esc command is overridden in the CodeMirror keymap to allow
@@ -678,9 +715,17 @@ class Editor extends PureComponent {
       this.showErrorMessage(value);
       return;
     }
+
+    if (selectedSource.isStyleSheet) {
+      await editor.setMode(SourceEditor.modes.css);
+    }
     await editor.setText(selectedSourceTextContent.value.value, {
       documentId: selectedSource.id,
     });
+    const isReadOnly =
+      !selectedSource.isStyleSheet ||
+      (selectedSource.isOriginal && !selectedSource.isPrettyPrinted);
+    await editor.setReadOnly(isReadOnly);
   }
 
   showErrorMessage(msg) {
@@ -788,12 +833,49 @@ class Editor extends PureComponent {
     );
   }
 
-  renderSearchInFileBar() {
-    if (!this.props.selectedSource) {
+  renderFileSearch() {
+    const {
+      selectedSource,
+      selectedSourceTextContent,
+      isPaused,
+      searchInFileEnabled,
+      modifiers,
+      setActiveSearch,
+      closeFileSearch,
+      querySearchWorker,
+      selectLocation,
+      searchOptions,
+      setSearchOptions,
+    } = this.props;
+
+    if (!selectedSource) {
       return null;
     }
-    return React.createElement(SearchInFileBar, {
+
+    const textContent =
+      selectedSourceTextContent && isFulfilled(selectedSourceTextContent)
+        ? selectedSourceTextContent.value
+        : null;
+
+    return React.createElement(FileSearch, {
       editor: this.state.editor,
+      setActiveSearch,
+      closeFileSearch,
+      querySearchWorker,
+      selectLocation,
+      searchOptions,
+      setSearchOptions,
+      scrollList,
+      createLocation,
+      clearSearchEditor,
+      find,
+      findNext,
+      findPrev,
+      textContent,
+      modifiers,
+      searchInFileEnabled,
+      selectedSource,
+      shouldScroll: !isPaused,
     });
   }
 
@@ -811,7 +893,7 @@ class Editor extends PureComponent {
         className: "editor-mount devtools-monospace",
         style: this.getInlineEditorStyles(),
       }),
-      this.renderSearchInFileBar(),
+      this.renderFileSearch(),
       this.renderItems()
     );
   }
@@ -853,6 +935,8 @@ const mapStateToProps = state => {
     shouldScrollToSelectedLocation: getShouldScrollToSelectedLocation(state),
     shouldHighlightSelectedLocation: getShouldHighlightSelectedLocation(state),
     selectedTraceLocation: getSelectedTraceLocation(state),
+    modifiers: getSearchOptions(state, "file-search"),
+    searchOptions: getSearchOptions(state, searchKeys.FILE_SEARCH),
   };
 };
 
@@ -871,6 +955,11 @@ const mapDispatchToProps = dispatch => ({
       showEditorGutterContextMenu: actions.showEditorGutterContextMenu,
       selectLocation: actions.selectLocation,
       setInScopeLines: actions.setInScopeLines,
+      setActiveSearch: actions.setActiveSearch,
+      closeFileSearch: actions.closeFileSearch,
+      querySearchWorker: actions.querySearchWorker,
+      setSearchOptions: actions.setSearchOptions,
+      updateStyleSheetContent: actions.updateStyleSheetContent,
     },
     dispatch
   ),

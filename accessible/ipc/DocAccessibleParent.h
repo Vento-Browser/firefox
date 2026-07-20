@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,18 +5,20 @@
 #ifndef mozilla_a11y_DocAccessibleParent_h
 #define mozilla_a11y_DocAccessibleParent_h
 
-#include "nsAccessibilityService.h"
 #include "mozilla/a11y/PDocAccessibleParent.h"
 #include "mozilla/a11y/RemoteAccessible.h"
 #include "mozilla/dom/BrowserBridgeParent.h"
+#include "nsAccessibilityService.h"
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
+#include "nsIMemoryReporter.h"
 #include "nsISupportsImpl.h"
 
 namespace mozilla {
 namespace dom {
+class BrowserParent;
 class CanonicalBrowsingContext;
-}
+}  // namespace dom
 
 namespace a11y {
 
@@ -74,6 +74,14 @@ class DocAccessibleParent : public RemoteAccessible,
   bool IsShutdown() const { return mShutdown; }
 
   /**
+   * Set whether this document is a static clone created for printing. We don't
+   * expose print documents or their descendant Accessibles to platform
+   * accessibility APIs; they are used purely to generate a tagged PDF.
+   */
+  void SetIsPrintDoc(bool aIsPrintDoc) { mIsPrintDoc = aIsPrintDoc; }
+  bool IsPrintDoc() const { return mIsPrintDoc; }
+
+  /**
    * Mark this actor as shutdown without doing any cleanup.  This should only
    * be called on actors that have just been initialized, so probably only from
    * RecvPDocAccessibleConstructor.
@@ -91,63 +99,68 @@ class DocAccessibleParent : public RemoteAccessible,
     return mBrowsingContext;
   }
 
+  /**
+   * Return our manager as a BrowserParent. This document's manager is always
+   * a BrowserParent since PDocAccessible is managed by PBrowser.
+   */
+  dom::BrowserParent* Manager() const;
+
   /*
    * Called when a message from a document in a child process notifies the main
    * process it is firing an event.
    */
-  virtual mozilla::ipc::IPCResult RecvEvent(const uint64_t& aID,
-                                            const uint32_t& aType) override;
+  mozilla::ipc::IPCResult RecvEvent(const uint64_t& aID, const uint32_t& aType);
 
   mozilla::ipc::IPCResult RecvStateChangeEvent(const uint64_t& aID,
                                                const uint64_t& aState,
-                                               const bool& aEnabled) final;
+                                               const bool& aEnabled);
 
   mozilla::ipc::IPCResult RecvCaretMoveEvent(
       const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect,
       const int32_t& aOffset, const bool& aIsSelectionCollapsed,
       const bool& aIsAtEndOfLine, const int32_t& aGranularity,
-      const bool& aFromUser, const bool& aSuppressEvent) final;
+      const bool& aFromUser, const bool& aSuppressEvent);
 
-  virtual mozilla::ipc::IPCResult RecvMutationEvents(
-      nsTArray<MutationEventData>&& aData) override;
+  mozilla::ipc::IPCResult RecvMutationEvents(
+      nsTArray<MutationEventData>&& aData);
 
-  virtual mozilla::ipc::IPCResult RecvRequestAckMutationEvents() override;
+  mozilla::ipc::IPCResult RecvRequestAckMutationEvents();
 
-  virtual mozilla::ipc::IPCResult RecvFocusEvent(
-      const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect) override;
+  mozilla::ipc::IPCResult RecvFocusEvent(const uint64_t& aID,
+                                         const LayoutDeviceIntRect& aCaretRect);
 
-  virtual mozilla::ipc::IPCResult RecvSelectionEvent(
-      const uint64_t& aID, const uint64_t& aWidgetID,
-      const uint32_t& aType) override;
+  mozilla::ipc::IPCResult RecvSelectionEvent(const uint64_t& aID,
+                                             const uint64_t& aWidgetID,
+                                             const uint32_t& aType);
 
-  virtual mozilla::ipc::IPCResult RecvScrollingEvent(
-      const uint64_t& aID, const uint64_t& aType, const uint32_t& aScrollX,
-      const uint32_t& aScrollY, const uint32_t& aMaxScrollX,
-      const uint32_t& aMaxScrollY) override;
+  mozilla::ipc::IPCResult RecvScrollingEvent(const uint64_t& aID,
+                                             const uint64_t& aType,
+                                             const uint32_t& aScrollX,
+                                             const uint32_t& aScrollY,
+                                             const uint32_t& aMaxScrollX,
+                                             const uint32_t& aMaxScrollY);
 
-  virtual mozilla::ipc::IPCResult RecvCache(
+  mozilla::ipc::IPCResult RecvCache(
       const mozilla::a11y::CacheUpdateType& aUpdateType,
-      nsTArray<CacheData>&& aData) override;
+      nsTArray<CacheData>&& aData);
 
-  virtual mozilla::ipc::IPCResult RecvSelectedAccessiblesChanged(
-      nsTArray<uint64_t>&& aSelectedIDs,
-      nsTArray<uint64_t>&& aUnselectedIDs) override;
+  mozilla::ipc::IPCResult RecvSelectedAccessiblesChanged(
+      nsTArray<uint64_t>&& aSelectedIDs, nsTArray<uint64_t>&& aUnselectedIDs);
 
-  virtual mozilla::ipc::IPCResult RecvAccessiblesWillMove(
-      nsTArray<uint64_t>&& aIDs) override;
+  mozilla::ipc::IPCResult RecvAccessiblesWillMove(nsTArray<uint64_t>&& aIDs);
 
-  virtual mozilla::ipc::IPCResult RecvAnnouncementEvent(
-      const uint64_t& aID, const nsAString& aAnnouncement,
-      const uint16_t& aPriority) override;
+  mozilla::ipc::IPCResult RecvAnnouncementEvent(const uint64_t& aID,
+                                                const nsAString& aAnnouncement,
+                                                const uint16_t& aPriority);
 
-  virtual mozilla::ipc::IPCResult RecvTextSelectionChangeEvent(
-      const uint64_t& aID, nsTArray<TextRangeData>&& aSelection) override;
+  mozilla::ipc::IPCResult RecvTextSelectionChangeEvent(
+      const uint64_t& aID, nsTArray<TextRangeData>&& aSelection);
 
   mozilla::ipc::IPCResult RecvRoleChangedEvent(
-      const a11y::role& aRole, const uint8_t& aRoleMapEntryIndex) final;
+      const a11y::role& aRole, const uint8_t& aRoleMapEntryIndex);
 
-  virtual mozilla::ipc::IPCResult RecvBindChildDoc(
-      NotNull<PDocAccessibleParent*> aChildDoc, const uint64_t& aID) override;
+  mozilla::ipc::IPCResult RecvBindChildDoc(
+      NotNull<PDocAccessibleParent*> aChildDoc, const uint64_t& aID);
 
   void Unbind() {
     if (RemoteAccessible* parent = RemoteParent()) {
@@ -160,7 +173,7 @@ class DocAccessibleParent : public RemoteAccessible,
     SetParent(nullptr);
   }
 
-  virtual mozilla::ipc::IPCResult RecvShutdown() override;
+  mozilla::ipc::IPCResult RecvShutdown();
   void Destroy();
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -293,9 +306,46 @@ class DocAccessibleParent : public RemoteAccessible,
   // are currently on screen (making any acc not in this list offscreen).
   nsTHashSet<uint64_t> mOnScreenAccessibles;
 
+#ifdef MOZ_WIDGET_COCOA
+  // Bounds (in screen-relative Gecko device pixels) of the focused accessible.
+  // This is used to suppress redundant notifications on viewport cache updates.
+  // This field is updated:
+  // - When a focus event is fired, changing the focused accessible
+  // - When a viewport cache update is recieved, and the computed bounds for
+  //   the focused accessible differ from the last-cached bounds in this field.
+  // Nothing() indicates we have not yet computed bounds for the focused acc.
+  Maybe<LayoutDeviceIntRect> mFocusedAccBounds;
+#endif
+
   static DocAccessibleParent* GetFrom(dom::BrowsingContext* aBrowsingContext);
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) override;
+
+  /**
+   * Return the cache domain set that should be used for accessibles in this
+   * document.
+   */
+  uint64_t EffectiveCacheDomains() const;
+
+  /**
+   * Return true if every domain in aRequiredCacheDomains is active for
+   * accessibles in this document.
+   */
+  bool DomainsAreActive(uint64_t aRequiredCacheDomains) const {
+    return (aRequiredCacheDomains & ~EffectiveCacheDomains()) == 0;
+  }
+
+  /**
+   * If any domain in aRequiredCacheDomains is not currently active for this
+   * document, request that it become active and return true. If all required
+   * domains are already active, return false. The caller should treat true as
+   * "can't proceed right now": the fields aren't in the cache yet.
+   */
+  bool RequestDomainsIfInactive(uint64_t aRequiredCacheDomains);
+
+#ifdef MOZ_ENABLE_SKIA_PDF
+  mozilla::ipc::IPCResult RecvPrinting();
+#endif
 
  private:
   ~DocAccessibleParent();
@@ -325,11 +375,14 @@ class DocAccessibleParent : public RemoteAccessible,
   };
 
   RemoteAccessible* CreateAcc(const AccessibleData& aAccData);
-  void AttachChild(RemoteAccessible* aParent, uint32_t aIndex,
+  bool AttachChild(RemoteAccessible* aParent, uint32_t aIndex,
                    RemoteAccessible* aChild);
   [[nodiscard]] bool CheckDocTree() const;
   xpcAccessibleGeneric* GetXPCAccessible(RemoteAccessible* aProxy);
 
+  /**
+   * Fire an event to both OS and XPCOM consumers.
+   */
   void FireEvent(RemoteAccessible* aAcc, const uint32_t& aType);
 
   /**
@@ -365,9 +418,11 @@ class DocAccessibleParent : public RemoteAccessible,
   uint32_t mPendingShowIndex = 0;
   nsTHashSet<uint64_t> mMovingIDs;
   uint64_t mActorID;
-  bool mTopLevel;
-  bool mTopLevelInContentProcess;
-  bool mShutdown;
+  bool mTopLevel : 1;
+  bool mTopLevelInContentProcess : 1;
+  bool mShutdown : 1;
+  bool mIsPrintDoc : 1 = false;
+  bool mIsInitialTreeDone : 1 = false;
   RefPtr<dom::CanonicalBrowsingContext> mBrowsingContext;
 
   nsTHashSet<RefPtr<dom::BrowserBridgeParent>> mPendingOOPChildDocs;

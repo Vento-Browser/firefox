@@ -74,12 +74,12 @@ add_task(async function searchEngineAlias() {
 add_task(async function searchRestriction() {
   gURLBar.blur();
   await UrlbarTestUtils.promisePopupOpen(window, () =>
-    gURLBar.search(UrlbarTokenizer.RESTRICT.SEARCH)
+    gURLBar.search(UrlbarShared.RESTRICT_TOKENS.SEARCH)
   );
   ok(gURLBar.hasAttribute("focused"), "url bar is focused");
   await UrlbarTestUtils.assertSearchMode(window, {
     engineName: UrlbarSearchUtils.getDefaultEngine().name,
-    source: UrlbarUtils.RESULT_SOURCE.SEARCH,
+    source: UrlbarShared.RESULT_SOURCE.SEARCH,
     // Entry is "other" because we didn't pass searchModeEntry to search().
     entry: "other",
   });
@@ -91,11 +91,11 @@ add_task(async function searchRestriction() {
 add_task(async function historyRestriction() {
   gURLBar.blur();
   await UrlbarTestUtils.promisePopupOpen(window, () =>
-    gURLBar.search(UrlbarTokenizer.RESTRICT.HISTORY)
+    gURLBar.search(UrlbarShared.RESTRICT_TOKENS.HISTORY)
   );
   ok(gURLBar.hasAttribute("focused"), "url bar is focused");
   await UrlbarTestUtils.assertSearchMode(window, {
-    source: UrlbarUtils.RESULT_SOURCE.HISTORY,
+    source: UrlbarShared.RESULT_SOURCE.HISTORY,
     entry: "other",
   });
   assertOneOffButtonsVisible(true);
@@ -110,11 +110,11 @@ add_task(async function historyRestrictionWithString() {
   // preserves them.
   let searchString = " foo bar ";
   await UrlbarTestUtils.promisePopupOpen(window, () =>
-    gURLBar.search(`${UrlbarTokenizer.RESTRICT.HISTORY} ${searchString}`)
+    gURLBar.search(`${UrlbarShared.RESTRICT_TOKENS.HISTORY} ${searchString}`)
   );
   ok(gURLBar.hasAttribute("focused"), "url bar is focused");
   await UrlbarTestUtils.assertSearchMode(window, {
-    source: UrlbarUtils.RESULT_SOURCE.HISTORY,
+    source: UrlbarShared.RESULT_SOURCE.HISTORY,
     entry: "other",
   });
   // We don't use assertUrlbarValue here since we expect to open a local search
@@ -134,13 +134,13 @@ add_task(async function historyRestrictionWithString() {
 add_task(async function tagRestriction() {
   gURLBar.blur();
   await UrlbarTestUtils.promisePopupOpen(window, () =>
-    gURLBar.search(UrlbarTokenizer.RESTRICT.TAG)
+    gURLBar.search(UrlbarShared.RESTRICT_TOKENS.TAG)
   );
   ok(gURLBar.hasAttribute("focused"), "url bar is focused");
   // Since tags are not a supported search mode, we should just insert the tag
   // restriction token and not enter search mode.
   await UrlbarTestUtils.assertSearchMode(window, null);
-  await assertUrlbarValue(`${UrlbarTokenizer.RESTRICT.TAG} `);
+  await assertUrlbarValue(`${UrlbarShared.RESTRICT_TOKENS.TAG} `);
   assertOneOffButtonsVisible(true);
   await UrlbarTestUtils.promisePopupClose(window);
 });
@@ -266,11 +266,11 @@ async function assertUrlbarValue(value) {
   let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.SEARCH,
+    UrlbarShared.RESULT_TYPE.SEARCH,
     "Should have type search for the first result"
   );
   // Strip search restriction token from value.
-  if (value[0] == UrlbarTokenizer.RESTRICT.SEARCH) {
+  if (value[0] == UrlbarShared.RESTRICT_TOKENS.SEARCH) {
     value = value.substring(1).trim();
   }
   Assert.equal(

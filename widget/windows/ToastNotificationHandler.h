@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,15 +5,16 @@
 #ifndef ToastNotificationHandler_h_
 #define ToastNotificationHandler_h_
 
-#include <windows.ui.notifications.h>
 #include <windows.data.xml.dom.h>
+#include <windows.ui.notifications.h>
 #include <wrl.h>
+
+#include "mozilla/Result.h"
 #include "nsCOMPtr.h"
 #include "nsICancelable.h"
 #include "nsIFile.h"
 #include "nsIWindowsAlertsService.h"
 #include "nsString.h"
-#include "mozilla/Result.h"
 
 namespace mozilla {
 namespace widget {
@@ -39,10 +39,12 @@ class ToastNotificationHandler final : public nsISupports {
       bool aRequireInteraction,
       const nsTArray<RefPtr<nsIAlertAction>>& aActions, bool aIsSystemPrincipal,
       const nsAString& aOpaqueRelaunchData, bool aInPrivateBrowsing,
-      bool aIsSilent, ImagePlacement aImagePlacement = ImagePlacement::eInline)
+      bool aIsSilent, ImagePlacement aImagePlacement = ImagePlacement::eInline,
+      const nsAString& aImagePathUnchecked = u""_ns)
       : mBackend(backend),
         mAumid(aAumid),
-        mHasImage(false),
+        mImageUri(aImagePathUnchecked),
+        mHasImage(!aImagePathUnchecked.IsEmpty()),
         mAlertNotification(aAlertNotification),
         mAlertListener(aAlertListener),
         mName(aName),

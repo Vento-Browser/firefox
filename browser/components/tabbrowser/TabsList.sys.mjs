@@ -173,12 +173,11 @@ class TabsListBase {
     } else if (event.target.classList.contains("all-tabs-close-button")) {
       const tab = getTabFromRow(event.target);
       if (tab) {
-        this.gBrowser.removeTab(
-          tab,
-          lazy.TabMetrics.userTriggeredContext(
+        this.gBrowser.removeTab(tab, {
+          metricsContext: lazy.TabMetrics.userTriggeredContext(
             lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
-          )
-        );
+          ),
+        });
       }
     } else {
       const rowVariant = getRowVariant(event.target);
@@ -195,7 +194,12 @@ class TabsListBase {
 
   _selectTab(tab) {
     if (this.gBrowser.selectedTab != tab) {
-      this.gBrowser.selectedTab = tab;
+      this.gBrowser.setSelectedTab(
+        tab,
+        this.gBrowser.TabMetrics.userTriggeredContext(
+          this.gBrowser.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
+        )
+      );
     } else {
       this.gBrowser.tabContainer._handleTabSelect();
     }
@@ -256,7 +260,7 @@ class TabsListBase {
   _refreshDOM() {
     if (!this.#domRefreshPromise) {
       this.#domRefreshPromise = new Promise(resolve => {
-        this.containerNode.ownerGlobal.requestAnimationFrame(() => {
+        this.containerNode.documentGlobal.requestAnimationFrame(() => {
           if (this.#domRefreshPromise) {
             if (this.listenersRegistered) {
               // Only re-render the menu DOM if the menu is still open.
@@ -347,10 +351,12 @@ class TabsListBase {
    * @param {MozTabbrowserTab} tab
    */
   _moveTab(tab) {
-    let item = this.tabToElement.get(tab);
-    if (item) {
-      this._removeItem(item, tab);
-      this._addTab(tab);
+    for (let t of tab.splitview?.tabs ?? [tab]) {
+      let item = this.tabToElement.get(t);
+      if (item) {
+        this._removeItem(item, t);
+        this._addTab(t);
+      }
     }
   }
 
@@ -537,11 +543,14 @@ export class TabsPanel extends TabsListBase {
 
     if (tab.userContextId) {
       tab.classList.forEach(property => {
-        if (property.startsWith("identity-color")) {
+        if (
+          property.startsWith("identity-color") ||
+          property.startsWith("identity-icon")
+        ) {
           button.classList.add(property);
-          button.classList.add("all-tabs-container-indicator");
         }
       });
+      button.classList.add("all-tabs-container-indicator");
     }
 
     if (tab.group) {
@@ -596,19 +605,24 @@ export class TabsPanel extends TabsListBase {
 
     row.style.setProperty(
       "--tab-group-color",
-      `var(--tab-group-color-${group.color})`
+      `var(--tab-group-${group.color})`
     );
     row.style.setProperty(
       "--tab-group-color-invert",
-      `var(--tab-group-color-${group.color}-invert)`
+      `var(--tab-group-${group.color}-invert)`
     );
     row.style.setProperty(
       "--tab-group-color-pale",
-      `var(--tab-group-color-${group.color}-pale)`
+      `var(--tab-group-${group.color}-pale)`
+    );
+    row.style.setProperty(
+      "--tab-group-background-color",
+      `var(--tab-group-${group.color})`
     );
 
     let button = doc.createXULElement("toolbarbutton");
     button.setAttribute("context", "open-tab-group-context-menu");
+    button.dataset.tabGroupId = group.id;
     button.classList.add(
       "all-tabs-button",
       "all-tabs-group-button",
@@ -711,7 +725,7 @@ export class TabsPanel extends TabsListBase {
 
     this.gBrowser.tabContainer.tabDragAndDrop.startTabDrag(
       event,
-      elementToDrag,
+      elementToDrag.splitview || elementToDrag,
       {
         fromTabList: true,
       }
@@ -788,18 +802,17 @@ export class TabsPanel extends TabsListBase {
 
     // NOTE: Given the list is opened only when the window is focused,
     //       we don't have to check `draggedTab.container`.
-    const metricsContext = {
-      isUserTriggered: true,
-      telemetrySource: lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU,
-    };
+    const metricsContext = lazy.TabMetrics.userTriggeredContext(
+      lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
+    );
     if (this.dropTargetDirection == -1) {
-      this.gBrowser.moveTabBefore(
-        draggedElement,
-        targetElement,
-        metricsContext
-      );
+      this.gBrowser.moveTabBefore(draggedElement, targetElement, {
+        metricsContext,
+      });
     } else {
-      this.gBrowser.moveTabAfter(draggedElement, targetElement, metricsContext);
+      this.gBrowser.moveTabAfter(draggedElement, targetElement, {
+        metricsContext,
+      });
     }
 
     this._clearDropTarget();
@@ -852,10 +865,19 @@ export class TabsPanel extends TabsListBase {
     }
 
     const threshold = rect.height * 0.5;
-    if (event.clientY < rect.top + threshold) {
-      this._setDropTarget(row, -1);
+    const direction = event.clientY < rect.top + threshold ? -1 : 0;
+    if (
+      getRowVariant(row) === ROW_VARIANT_TAB &&
+      getTabFromRow(row).splitview
+    ) {
+      const tab = getTabFromRow(row);
+      if (tab == tab.splitview.tabs[0]) {
+        this._setDropTarget(row, -1);
+      } else if (tab == tab.splitview.tabs[1]) {
+        this._setDropTarget(row, 0);
+      }
     } else {
-      this._setDropTarget(row, 0);
+      this._setDropTarget(row, direction);
     }
 
     return true;
@@ -923,11 +945,17 @@ export class TabsPanel extends TabsListBase {
       if (rowVariant == ROW_VARIANT_TAB) {
         const tab = getTabFromRow(row);
         this.gBrowser.removeTab(tab, {
-          telemetrySource: lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU,
           animate: true,
+          metricsContext: lazy.TabMetrics.userTriggeredContext(
+            lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
+          ),
         });
       } else if (rowVariant == ROW_VARIANT_TAB_GROUP) {
-        getTabGroupFromRow(row)?.saveAndClose({ isUserTriggered: true });
+        getTabGroupFromRow(row)?.saveAndClose(
+          lazy.TabMetrics.userTriggeredContext(
+            lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
+          )
+        );
       }
     }
   }

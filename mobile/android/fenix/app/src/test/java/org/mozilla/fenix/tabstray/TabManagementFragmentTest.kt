@@ -4,35 +4,31 @@
 
 package org.mozilla.fenix.tabstray
 
-import android.app.Dialog
 import android.content.Context
-import android.view.Window
-import android.view.WindowManager
 import androidx.navigation.NavController
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.mockkStatic
 import io.mockk.spyk
 import io.mockk.verify
-import mozilla.components.browser.state.state.ContentState
-import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.support.test.robolectric.testContext
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.NavGraphDirections
-import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.MockkRetryTestRule
 import org.mozilla.fenix.home.HomeScreenViewModel
 import org.mozilla.fenix.navigation.NavControllerProvider
+import org.mozilla.fenix.tabstray.data.createTab
+import org.mozilla.fenix.tabstray.redux.state.Page
+import org.mozilla.fenix.tabstray.redux.state.TabsTrayState
 import org.mozilla.fenix.tabstray.ui.TabManagementFragment
 import org.mozilla.fenix.utils.Settings
 import org.robolectric.RobolectricTestRunner
@@ -80,42 +76,12 @@ class TabManagementFragmentTest {
     fun `WHEN dismissTabManager is called THEN it dismisses the tab manager`() {
         val navController: NavController = mockk(relaxed = true)
         every { fragment.recordBreadcrumb(any()) } just Runs
+        every { context.components.appStore.state.mode.isPrivate } returns false
+        every { context.components.settings.privateBrowsingLockedFeatureEnabled } returns false
 
         fragment.dismissTabManager(navController = navController)
 
         verify { navController.popBackStack() }
-    }
-
-    @Test
-    fun `GIVEN a list of tabs WHEN a tab is present with an ID THEN the index is returned`() {
-        val tab1 = TabSessionState(
-            id = "tab1",
-            content = ContentState(
-                url = "https://mozilla.org",
-                private = false,
-            ),
-        )
-        val tab2 = TabSessionState(
-            id = "tab2",
-            content = ContentState(
-                url = "https://mozilla.org",
-                private = false,
-            ),
-        )
-        val tab3 = TabSessionState(
-            id = "tab3",
-            content = ContentState(
-                url = "https://mozilla.org",
-                private = false,
-            ),
-        )
-        val tabsList = listOf(
-            tab1,
-            tab2,
-            tab3,
-        )
-        val position = fragment.getTabPositionFromId(tabsList, "tab2")
-        assertEquals(1, position)
     }
 
     @Test
@@ -153,6 +119,161 @@ class TabManagementFragmentTest {
         val result = testShouldShowLockPbmBanner(shouldShowBanner = false)
         assertFalse(result)
     }
+
+    @Test
+    fun `GIVEN transition animation setting is disabled THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns false
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.NormalTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN TabTray mode is multi-select THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.NormalTabs,
+                mode = TabsTrayState.Mode.Select(setOf(fakeTab(isPrivate = false))),
+                tabState = fakeTab(isPrivate = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to normal tab on normal TabsTray page THEN tabManagerOpeningAnimationEnabled returns true`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertTrue(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.NormalTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to private tab on private TabsTray page THEN tabManagerOpeningAnimationEnabled returns true`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertTrue(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.PrivateTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = true),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to private tab on normal TabsTray page THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.NormalTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = true),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to normal tab on private TabsTray page THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.PrivateTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to normal tab on synced TabsTray page THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.SyncedTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN transition to private tab on synced TabsTray page THEN tabManagerOpeningAnimationEnabled returns false`() {
+        val mockSettings = mockk<Settings>()
+        every { mockSettings.tabManagerOpeningAnimationEnabled } returns true
+        every { context.components.settings } returns mockSettings
+        assertFalse(
+            fragment.shouldPerformTransitionAnimation(
+                selectedPage = Page.SyncedTabs,
+                mode = TabsTrayState.Mode.Normal,
+                tabState = fakeTab(isPrivate = true),
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN privateBrowsingLockedFeatureEnabled is true and is normal browsing WHEN dismissTabManager is called THEN UpdatePrivateBrowsingLock is dispatched`() {
+        val navController: NavController = mockk(relaxed = true)
+        every { fragment.recordBreadcrumb(any()) } just Runs
+        every { context.components.settings.privateBrowsingLockedFeatureEnabled } returns true
+        every { context.components.appStore.state.mode.isPrivate } returns false
+
+        fragment.dismissTabManager(navController = navController)
+
+        val appStore = context.components.appStore
+        verify(exactly = 1) { appStore.dispatch(AppAction.PrivateBrowsingLockAction.UpdatePrivateBrowsingLock(isLocked = true)) }
+    }
+
+    @Test
+    fun `GIVEN privateBrowsingLockedFeatureEnabled is false and is normal browsing WHEN dismissTabManager is called THEN UpdatePrivateBrowsingLock is not dispatched`() {
+        val navController: NavController = mockk(relaxed = true)
+        every { fragment.recordBreadcrumb(any()) } just Runs
+        every { context.components.settings.privateBrowsingLockedFeatureEnabled } returns false
+        every { context.components.appStore.state.mode.isPrivate } returns false
+
+        fragment.dismissTabManager(navController = navController)
+
+        val appStore = context.components.appStore
+        verify(exactly = 0) { appStore.dispatch(AppAction.PrivateBrowsingLockAction.UpdatePrivateBrowsingLock(isLocked = true)) }
+    }
+
+    fun `GIVEN privateBrowsingLockedFeatureEnabled is true and is private browsing WHEN dismissTabManager is called THEN UpdatePrivateBrowsingLock is not dispatched`() {
+        val navController: NavController = mockk(relaxed = true)
+        every { fragment.recordBreadcrumb(any()) } just Runs
+        every { context.components.settings.privateBrowsingLockedFeatureEnabled } returns true
+        every { context.components.appStore.state.mode.isPrivate } returns true
+
+        fragment.dismissTabManager(navController = navController)
+
+        val appStore = context.components.appStore
+        verify(exactly = 0) { appStore.dispatch(AppAction.PrivateBrowsingLockAction.UpdatePrivateBrowsingLock(isLocked = true)) }
+    }
+
+    private fun fakeTab(isPrivate: Boolean) = createTab(
+        url = "www.mozilla.org",
+        private = isPrivate,
+    )
 
     private fun testShouldShowLockPbmBanner(
         isPrivateMode: Boolean = true,

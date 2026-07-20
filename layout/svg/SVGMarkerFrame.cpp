@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -135,18 +133,17 @@ void SVGMarkerFrame::PaintMark(gfxContext& aContext,
   // The CTM of each frame referencing us may be different.
   SVGFrame->NotifySVGChanged(
       ISVGDisplayableFrame::ChangeFlag::TransformChanged);
-  auto contextPaint = MakeRefPtr<SVGContextPaintImpl>();
-  contextPaint->Init(aContext.GetDrawTarget(),
-                     aToMarkedFrameUserSpace * aContext.CurrentMatrixDouble(),
-                     aMarkedFrame, SVGContextPaint::GetContextPaint(marker),
-                     aImgParams);
+  auto contextPaint = MakeRefPtr<SVGContextPaint>(
+      aContext.GetDrawTarget(),
+      aToMarkedFrameUserSpace * aContext.CurrentMatrixDouble(), aMarkedFrame,
+      SVGContextPaint::GetContextPaint(marker), aImgParams);
   AutoSetRestoreSVGContextPaint autoSetRestore(contextPaint,
                                                marker->OwnerDoc());
   SVGUtils::PaintFrameWithEffects(kid, aContext, markTM, aImgParams);
 }
 
 SVGBBox SVGMarkerFrame::GetMarkBBoxContribution(const Matrix& aToBBoxUserspace,
-                                                uint32_t aFlags,
+                                                SVGBBoxFlags aFlags,
                                                 SVGGeometryFrame* aMarkedFrame,
                                                 const SVGMark& aMark,
                                                 float aStrokeWidth) {

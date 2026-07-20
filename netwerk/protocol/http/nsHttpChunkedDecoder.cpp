@@ -1,15 +1,16 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // HttpLog.h should generally be included first
-#include "HttpLog.h"
+#include "nsHttpChunkedDecoder.h"
 
 #include <errno.h>
-#include "nsHttpChunkedDecoder.h"
-#include <algorithm>
 #include <string.h>
+
+#include <algorithm>
+
+#include "HttpLog.h"
 
 namespace mozilla {
 namespace net {

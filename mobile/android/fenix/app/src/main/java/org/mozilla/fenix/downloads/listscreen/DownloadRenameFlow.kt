@@ -12,11 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -122,10 +125,18 @@ fun DownloadRenameDialog(
     onCancel: () -> Unit,
     onCannotRenameDismiss: () -> Unit,
 ) {
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     val currentError: RenameFileError? = when {
         fileNameState.text.contains("/") -> RenameFileError.InvalidFileName
         error is RenameFileError.NameAlreadyExists &&
                 error.proposedFileName == fileNameState.text -> error
+        error is RenameFileError.CaseOnlyNameChange &&
+            error.proposedFileName == fileNameState.text -> error
         else -> null
     }
 
@@ -142,6 +153,7 @@ fun DownloadRenameDialog(
                 fileNameState = fileNameState,
                 onFileNameChange = onFileNameChange,
                 currentError = currentError,
+                focusRequester = focusRequester,
             )
         },
         confirmButton = {
@@ -167,9 +179,21 @@ fun DownloadRenameDialog(
     }
 }
 
+/**
+ * A text field component used within the [DownloadRenameDialog].
+ * It handles displaying the current file name, validation errors,
+ * and supporting text for character limits.
+ *
+ * @param fileNameState The current state of the text input including selection.
+ * @param focusRequester The [FocusRequester] used to focus this text field.
+ * @param onFileNameChange Callback for when the user edits the text.
+ * @param currentError The specific [RenameFileError] to display, if any.
+ * @param modifier Modifier for layout adjustments.
+ */
 @Composable
-private fun DownloadRenameDialogTextField(
+fun DownloadRenameDialogTextField(
     fileNameState: TextFieldValue,
+    focusRequester: FocusRequester,
     onFileNameChange: (TextFieldValue) -> Unit,
     currentError: RenameFileError?,
     modifier: Modifier = Modifier,
@@ -182,6 +206,8 @@ private fun DownloadRenameDialogTextField(
                 R.string.download_rename_error_exists_error,
                 currentError.proposedFileName,
             )
+        is RenameFileError.CaseOnlyNameChange ->
+            stringResource(R.string.download_rename_error_case_only_error)
         else -> null
     }
 
@@ -202,6 +228,7 @@ private fun DownloadRenameDialogTextField(
         singleLine = true,
         modifier = modifier
             .fillMaxWidth()
+            .focusRequester(focusRequester)
             .testTag(DownloadsListTestTag.RENAME_DIALOG_TEXT_FIELD),
     )
 }

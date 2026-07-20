@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +9,6 @@
 #include "mozilla/AlertNotification.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
-#include "mozilla/glean/DomNotificationMetrics.h"
 #include "mozilla/ipc/Endpoint.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIServiceWorkerManager.h"
@@ -307,8 +304,6 @@ mozilla::ipc::IPCResult NotificationParent::RecvShow(Maybe<IPCImage>&& aIcon,
       rv = uriClassifier->Classify(mArgs.mPrincipal, callback, &willClassify);
 
       if (NS_SUCCEEDED(rv) && willClassify) {
-        glean::web_notification::show_safe_browsing_block.AddToDenominator(1);
-
         mShowPending = true;
         promise->Then(
             GetMainThreadSerialEventTarget(), __func__,
@@ -334,8 +329,6 @@ mozilla::ipc::IPCResult NotificationParent::RecvShow(Maybe<IPCImage>&& aIcon,
               self->mShowPending = false;
               self->mClosePending = false;
 
-              glean::web_notification::show_safe_browsing_block.AddToNumerator(
-                  1);
               RemovePermission(self->mArgs.mPrincipal);
 
               CopyableErrorResult rv;
@@ -400,13 +393,14 @@ nsresult NotificationParent::Show(Maybe<IPCImage>&& aIcon) {
     }
   }
 
-  nsTArray<RefPtr<nsIAlertAction>> actions;
-  MOZ_ASSERT(options.actions().Length() <= kMaxActions);
-  for (const auto& action : options.actions()) {
-    actions.AppendElement(new AlertAction(action.name(), action.title()));
+  if (StaticPrefs::dom_webnotifications_actions_enabled()) {
+    nsTArray<RefPtr<nsIAlertAction>> actions;
+    MOZ_ASSERT(options.actions().Length() <= kMaxActions);
+    for (const auto& action : options.actions()) {
+      actions.AppendElement(new AlertAction(action.name(), action.title()));
+    }
+    alert->SetActions(actions);
   }
-
-  alert->SetActions(actions);
 
   MOZ_TRY(alert->GetId(mId));
 

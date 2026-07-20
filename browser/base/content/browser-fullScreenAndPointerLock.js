@@ -1,5 +1,4 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -42,19 +41,39 @@ var PointerlockFsWarning = {
       let timeout = Services.prefs.getIntPref(
         "pointer-lock-api.warning.timeout"
       );
-      this.show(aOrigin, "pointerlock-warning", timeout, 0);
+      this.show(aOrigin, "pointerlock-warning", timeout, 0, false);
     }
   },
 
-  showFullScreen(aOrigin) {
-    let timeout = Services.prefs.getIntPref("full-screen-api.warning.timeout");
+  _getTimeout(keyboardLockEnabled) {
+    if (keyboardLockEnabled) {
+      return Services.prefs.getIntPref(
+        "full-screen-api.keyboardlock-warning.timeout"
+      );
+    }
+    return Services.prefs.getIntPref("full-screen-api.warning.timeout");
+  },
+
+  // Show info that top level has entered fullscreen. Ultimately, it is always
+  // ancestors who are in control of what is displayed on screen.
+  // By always displaying the top level, we try to make that clear to the user.
+  showFullScreen(browsingContext, keyboardLockEnabled) {
+    const origin =
+      browsingContext.top.currentWindowGlobal.documentPrincipal.originNoSuffix;
+    const timeout = this._getTimeout(keyboardLockEnabled);
     let delay = Services.prefs.getIntPref("full-screen-api.warning.delay");
-    this.show(aOrigin, "fullscreen-warning", timeout, delay);
+    this.show(
+      origin,
+      "fullscreen-warning",
+      timeout,
+      delay,
+      keyboardLockEnabled
+    );
   },
 
   // Shows a warning that the site has entered fullscreen or
   // pointer lock for a short duration.
-  show(aOrigin, elementId, timeout, delay) {
+  show(aOrigin, elementId, timeout, delay, keyboardLockEnabled) {
     if (!this._element) {
       this._element = document.getElementById(elementId);
       // Setup event listeners
@@ -112,6 +131,25 @@ var PointerlockFsWarning = {
       });
     }
 
+    let buttonElement = this._element.querySelector("#fullscreen-exit-button");
+    if (buttonElement) {
+      if (AppConstants.platform == "macosx") {
+        document.l10n.setAttributes(
+          buttonElement,
+          keyboardLockEnabled
+            ? "fullscreen-keyboardlock-exit-mac-button"
+            : "fullscreen-exit-mac-button"
+        );
+      } else {
+        document.l10n.setAttributes(
+          buttonElement,
+          keyboardLockEnabled
+            ? "fullscreen-keyboardlock-exit-button"
+            : "fullscreen-exit-button"
+        );
+      }
+    }
+
     this._element.dataset.identity =
       gIdentityHandler.pointerlockFsWarningClassName;
 
@@ -151,6 +189,10 @@ var PointerlockFsWarning = {
     this._element
       .querySelector(".pointerlockfswarning-domain-text")
       .removeAttribute("data-l10n-id");
+    let buttonElement = this._element.querySelector("#fullscreen-exit-button");
+    if (buttonElement) {
+      buttonElement.removeAttribute("data-l10n-id");
+    }
     // Remove all event listeners
     this._element.removeEventListener("transitionend", this);
     this._element.removeEventListener("transitioncancel", this);
@@ -458,17 +500,13 @@ var FullScreen = {
     // shiftSize is sent from Cocoa widget code as a very precise double. We
     // don't need that kind of precision in our CSS.
     shiftSize = shiftSize.toFixed(2);
-    gNavToolbox.classList.toggle("fullscreen-with-menubar", shiftSize > 0);
-
-    let transform = shiftSize > 0 ? `translateY(${shiftSize}px)` : "";
-    gNavToolbox.style.transform = transform;
-    gURLBar.style.transform = gURLBar.hasAttribute("breakout") ? transform : "";
-    let searchbar = document.getElementById("searchbar-new");
-    if (searchbar) {
-      searchbar.style.transform = searchbar.hasAttribute("breakout")
-        ? transform
-        : "";
-    }
+    let translate = shiftSize > 0 ? `0 ${shiftSize}px` : "";
+    gNavToolbox.classList.toggle("fullscreen-floating-toolbox", shiftSize > 0);
+    gNavToolbox.style.translate = translate;
+    gURLBar.style.setProperty("--toolbar-shift-translate", translate);
+    document
+      .getElementById("searchbar-new")
+      ?.style.setProperty("--toolbar-shift-translate", translate);
     if (shiftSize > 0) {
       // If the mouse tracking missed our fullScreenToggler, then the toolbox
       // might not have been shown before the menubar is animated down. Make
@@ -599,12 +637,20 @@ var FullScreen = {
       let notifications = PopupNotifications.getNotification(
         this._permissionNotificationIDs
       ).filter(n => !n.dismissed);
-      PopupNotifications.remove(notifications, true);
+      PopupNotifications.remove(
+        notifications,
+        /* withoutUserResponse = */ true
+      );
       if (notifications.length) {
         this._logWarningPermissionPromptFS("promptCanceled");
       }
     }
     document.documentElement.setAttribute("inDOMFullscreen", true);
+    // DOM fullscreen hides the nav toolbox, so the sidebar should hide too.
+    document.documentElement.toggleAttribute(
+      "fullscreenNavToolboxHidden",
+      true
+    );
 
     XULBrowserWindow.onEnterDOMFullscreen();
 
@@ -704,6 +750,12 @@ var FullScreen = {
     );
 
     document.documentElement.removeAttribute("inDOMFullscreen");
+    // Leaving DOM fullscreen may return to F11 fullscreen with the nav toolbox
+    // still collapsed, so only clear the attribute if the chrome is showing.
+    document.documentElement.toggleAttribute(
+      "fullscreenNavToolboxHidden",
+      this._isChromeCollapsed
+    );
 
     return needToWaitForChildExit;
   },
@@ -805,7 +857,7 @@ var FullScreen = {
   },
 
   _isRemoteBrowser(aBrowser) {
-    return gMultiProcessBrowser && aBrowser.getAttribute("remote") == "true";
+    return gMultiProcessBrowser && aBrowser.hasAttribute("remote");
   },
 
   getMouseTargetRect() {
@@ -858,14 +910,14 @@ var FullScreen = {
     }
   },
 
-  // UrlbarController listener method
+  // UrlbarChildController listener method
   onViewOpen() {
     if (!this._isChromeCollapsed) {
       this._isPopupOpen = true;
     }
   },
 
-  // UrlbarController listener method
+  // UrlbarChildController listener method
   onViewClose() {
     this._isPopupOpen = false;
     this.hideNavToolbox(true);
@@ -916,6 +968,7 @@ var FullScreen = {
     }
 
     this._isChromeCollapsed = false;
+    document.documentElement.removeAttribute("fullscreenNavToolboxHidden");
     Services.obs.notifyObservers(
       gNavToolbox,
       "fullscreen-nav-toolbox",
@@ -984,6 +1037,10 @@ var FullScreen = {
     gNavToolbox.style.marginTop =
       -gNavToolbox.getBoundingClientRect().height + "px";
     this._isChromeCollapsed = true;
+    document.documentElement.toggleAttribute(
+      "fullscreenNavToolboxHidden",
+      true
+    );
     Services.obs.notifyObservers(
       gNavToolbox,
       "fullscreen-nav-toolbox",

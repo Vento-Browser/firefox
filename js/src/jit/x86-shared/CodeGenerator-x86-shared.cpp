@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,6 +6,8 @@
 
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
+
+#include <bit>
 
 #include "jit/CodeGenerator.h"
 #include "jit/InlineScriptTree.h"
@@ -315,81 +315,6 @@ void CodeGenerator::visitWasmSelect(LWasmSelect* ins) {
   }
 
   masm.bind(&done);
-}
-
-void CodeGenerator::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins) {
-  const MAsmJSLoadHeap* mir = ins->mir();
-  MOZ_ASSERT(mir->access().offset64() == 0);
-
-  const LAllocation* ptr = ins->ptr();
-  const LAllocation* boundsCheckLimit = ins->boundsCheckLimit();
-  AnyRegister out = ToAnyRegister(ins->output());
-
-  Scalar::Type accessType = mir->accessType();
-
-  OutOfLineCode* ool = nullptr;
-  if (mir->needsBoundsCheck()) {
-    ool = new (alloc()) LambdaOutOfLineCode([=, this](OutOfLineCode& ool) {
-      switch (accessType) {
-        case Scalar::Int64:
-        case Scalar::BigInt64:
-        case Scalar::BigUint64:
-        case Scalar::Simd128:
-        case Scalar::Float16:
-        case Scalar::MaxTypedArrayViewType:
-          MOZ_CRASH("unexpected array type");
-        case Scalar::Float32:
-          masm.loadConstantFloat32(float(GenericNaN()), out.fpu());
-          break;
-        case Scalar::Float64:
-          masm.loadConstantDouble(GenericNaN(), out.fpu());
-          break;
-        case Scalar::Int8:
-        case Scalar::Uint8:
-        case Scalar::Int16:
-        case Scalar::Uint16:
-        case Scalar::Int32:
-        case Scalar::Uint32:
-        case Scalar::Uint8Clamped:
-          Register destReg = out.gpr();
-          masm.mov(ImmWord(0), destReg);
-          break;
-      }
-      masm.jmp(ool.rejoin());
-    });
-    addOutOfLineCode(ool, mir);
-
-    masm.wasmBoundsCheck32(Assembler::AboveOrEqual, ToRegister(ptr),
-                           ToRegister(boundsCheckLimit), ool->entry());
-  }
-
-  Operand srcAddr = toMemoryAccessOperand(ins, 0);
-  masm.wasmLoad(mir->access(), srcAddr, out);
-
-  if (ool) {
-    masm.bind(ool->rejoin());
-  }
-}
-
-void CodeGenerator::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins) {
-  const MAsmJSStoreHeap* mir = ins->mir();
-
-  const LAllocation* ptr = ins->ptr();
-  const LAllocation* value = ins->value();
-  const LAllocation* boundsCheckLimit = ins->boundsCheckLimit();
-
-  Label rejoin;
-  if (mir->needsBoundsCheck()) {
-    masm.wasmBoundsCheck32(Assembler::AboveOrEqual, ToRegister(ptr),
-                           ToRegister(boundsCheckLimit), &rejoin);
-  }
-
-  Operand dstAddr = toMemoryAccessOperand(ins, 0);
-  masm.wasmStore(mir->access(), ToAnyRegister(value), dstAddr);
-
-  if (rejoin.used()) {
-    masm.bind(&rejoin);
-  }
 }
 
 void CodeGenerator::visitWasmAddOffset(LWasmAddOffset* lir) {
@@ -796,7 +721,7 @@ void CodeGenerator::visitMulI(LMulI* ins) {
           return;
         default:
           // Use shift if cannot overflow and constant is power of 2
-          int32_t shift = FloorLog2(constant);
+          int32_t shift = FloorLog2(uint32_t(constant));
           if (constant > 0 && (1 << shift) == constant) {
             if (lhs != out) {
               masm.movl(lhs, out);
@@ -1001,7 +926,7 @@ static void UnsignedDivideWithConstant(MacroAssembler& masm, LUDivOrUMod* ins,
 #endif
 
   // The denominator isn't a power of 2 (see LDivPowTwoI and LModPowTwoI).
-  MOZ_ASSERT(!mozilla::IsPowerOfTwo(d));
+  MOZ_ASSERT(!std::has_single_bit(d));
 
   auto rmc = ReciprocalMulConstants::computeUnsignedDivisionConstants(d);
 
@@ -1231,7 +1156,7 @@ static void DivideWithConstant(MacroAssembler& masm, LDivOrMod* ins,
 
   // The absolute value of the denominator isn't a power of 2 (see LDivPowTwoI
   // and LModPowTwoI).
-  MOZ_ASSERT(!mozilla::IsPowerOfTwo(mozilla::Abs(d)));
+  MOZ_ASSERT(!std::has_single_bit(mozilla::Abs(d)));
 
   auto* mir = ins->mir();
 

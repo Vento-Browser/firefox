@@ -1,43 +1,45 @@
-# Trigger Listeners
+# Triggers
 
-A set of action listeners that can be used to trigger CFR messages.
+Triggers can be used to decide when messages are shown.
 
 ## Usage
 
-[As part of the CFR definition](https://searchfox.org/mozilla-central/rev/2bfe3415fb3a2fba9b1c694bc0b376365e086927/browser/components/newtab/lib/CFRMessageProvider.jsm#194) the message can register at most one trigger used to decide when the message is shown.
+Messages can define a single `trigger` object used to determine when the message should be shown.
+The `trigger` object must include an `id` string identifying the trigger action and may include optional trigger-specific properties such as `params`, `patterns`, or `regexPatterns`.
 
-Most triggers (unless otherwise specified) take the same arguments of `hosts` and/or `patterns`
-used to target the message to specific websites.
+## Multiple triggers
 
-```javascript
-// Optional set of hosts to filter out triggers only to certain websites
-let params: string[];
-// Optional set of [match patterns](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns) to filter out triggers only to certain websites
-let patterns: string[];
-```
+A message may declare multiple triggers via the `triggers` array instead of the
+singular `trigger`. The message becomes eligible when **any** one of the listed
+triggers matches, which avoids duplicating a message once per trigger:
 
 ```javascript
 {
   ...
-  // Show the message when opening mozilla.org
-  "trigger": { "id": "openURL", "params": ["mozilla.org", "www.mozilla.org"] }
+  triggers: [
+    { id: "openURL", params: ["example.com"] },
+    { id: "frequentVisits", params: ["example.com"] }
+  ]
   ...
 }
 ```
 
-```javascript
-{
-  ...
-  // Show the message when opening any HTTP, HTTPS URL.
-  trigger: { id: "openURL", patterns: ["*://*/*"] }
-  ...
-}
-```
+When `trigger` and `triggers` are both present, `triggers` takes precedence.
+
+**Targeting is evaluated using the context of whichever trigger fired.** Because
+each trigger contributes its own context, a context value provided by one
+trigger is only available when *that* trigger fires. A targeting expression that
+depends on a specific trigger's context (such as `tabsClosedCount` from
+`nthTabClosed`) evaluates to `false` when a different trigger fires and does not
+supply that value. When using `triggers`, make sure the `targeting` expression
+is valid for every trigger listed. If the triggers need genuinely different
+targeting, use separate messages instead.
 
 ## Available trigger actions
 
 - [`openArticleURL`](#openarticleurl)
 - [`openBookmarkedURL`](#openbookmarkedurl)
+- [`userBookmarkFolderActivity`](#userbookmarkfolderactivity)
 - [`frequentVisits`](#frequentvisits)
 - [`openURL`](#openurl)
 - [`newSavedLogin`](#newsavedlogin)
@@ -65,18 +67,64 @@ let patterns: string[];
 - [`elementClicked`](#elementclicked)
 - [`ipProtectionReady`](#ipprotectionready)
 - [`ipProtectionPanelClosed`](#ipprotectionpanelclosed)
+- [`ipProtectionBandwidthReset`](#ipprotectionbandwidthreset)
 - [`selectableProfilesUpdated`](#selectableprofilesupdated)
 - [`smartWindowNewTab`](#smartwindownewtab)
+- [`nimbusUpdate`](#nimbusupdate)
 
 ### `openArticleURL`
 
 Happens when the user loads a Reader Mode compatible webpage.
+
+Supports filtering with `params`, [`patterns`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns), and `regexPatterns`.
+
+```javascript
+// Optional set of hosts to filter out triggers only to certain websites
+let params: string[];
+// Optional set of Match patterns to filter out triggers only to certain websites
+let patterns: string[];
+// Optional regular expression patterns to filter out triggers only to certain websites
+let regexPatterns: string[];
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening mozilla.org
+  "trigger": { "id": "openArticleURL", "params": ["mozilla.org", "www.mozilla.org"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening any HTTP, HTTPS URL.
+  trigger: { id: "openArticleURL", patterns: ["*://*/*"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening a URL that matches the regular expression.
+  trigger: { id: "openArticleURL", regexPatterns: ["^https://.*\\.mozilla\\.org/.*"] }
+  ...
+}
+```
 
 ### `openBookmarkedURL`
 
 Happens when the user bookmarks or navigates to a bookmarked URL.
 
 Does not filter by host or patterns.
+
+### `userBookmarkFolderActivity`
+
+Happens when the user either creates a new bookmark folder or saves a bookmark
+into a user-created folder. Does not fire if the active window is a private
+window.
 
 ### `frequentVisits`
 
@@ -101,6 +149,44 @@ interface visit {
 let recentVisits: visit[];
 ```
 
+Supports filtering with `params`, [`patterns`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns), and `regexPatterns`.
+
+```javascript
+// Optional set of hosts to filter out triggers only to certain websites
+let params: string[];
+// Optional set of Match patterns to filter out triggers only to certain websites
+let patterns: string[];
+// Optional regular expression patterns to filter out triggers only to certain websites
+let regexPatterns: string[];
+```
+
+```javascript
+{
+  ...
+  // Show the message when visiting mozilla.org
+  "trigger": { "id": "frequentVisits", "params": ["mozilla.org", "www.mozilla.org"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when visiting any HTTP, HTTPS URL.
+  trigger: { id: "frequentVisits", patterns: ["*://*/*"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when visiting a URL that matches the regular expression.
+  trigger: { id: "frequentVisits", regexPatterns: ["^https://.*\\.mozilla\\.org/.*"] }
+  ...
+}
+```
+
 ### `openURL`
 
 Happens every time the user loads a new URL that matches the provided `hosts` or `patterns`.
@@ -109,6 +195,44 @@ During a browsing session it keeps track of visits to unique urls that can be us
 ```javascript
 // True on the third visit for the URL which the trigger matched on
 visitsCount >= 3
+```
+
+Supports filtering with `params`, [`patterns`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns), and `regexPatterns`.
+
+```javascript
+// Optional set of hosts to filter out triggers only to certain websites
+let params: string[];
+// Optional set of Match patterns to filter out triggers only to certain websites
+let patterns: string[];
+// Optional regular expression patterns to filter out triggers only to certain websites
+let regexPatterns: string[];
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening mozilla.org
+  "trigger": { "id": "openURL", "params": ["mozilla.org", "www.mozilla.org"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening any HTTP, HTTPS URL.
+  trigger: { id: "openURL", patterns: ["*://*/*"] }
+  ...
+}
+```
+
+```javascript
+{
+  ...
+  // Show the message when opening a URL that matches the regular expression.
+  trigger: { id: "openURL", regexPatterns: ["^https://.*\\.mozilla\\.org/.*"] }
+  ...
+}
 ```
 
 ### `newSavedLogin`
@@ -149,7 +273,7 @@ Provides a context of the number of pages loaded in the current browsing session
 Does not filter by host or patterns.
 
 The event it reports back is one of two things:
- * A combination of OR-ed [nsIWebProgressListener](https://searchfox.org/mozilla-central/source/uriloader/base/nsIWebProgressListener.idl) `STATE_BLOCKED_*` flags
+ * A combination of OR-ed [nsIWebProgressListener](https://searchfox.org/firefox-main/source/uriloader/base/nsIWebProgressListener.idl) `STATE_BLOCKED_*` flags
  * A string constant, such as [`"ContentBlockingMilestone"`](https://searchfox.org/mozilla-central/rev/8a2d8d26e25ef70c98c6036612aad534b76b9815/toolkit/components/antitracking/TrackingDBService.jsm#327-334)
 
 
@@ -236,6 +360,16 @@ Happens when the user closes n or more tabs in a session
 {
   trigger: { id: "nthTabClosed" },
   targeting: "currentTabsOpen >= 4"
+}
+```
+```js
+// The trigger also includes an optional action context variable
+// when a caller marks the tab.smartWindowActionSource before close.
+// Here, the message triggers when the close was attributed to a specific source
+// (e.g., "close_current_tab" set by a toolcall)
+{
+  trigger: { id: "nthTabClosed" },
+  targeting: "actionSource == 'close_current_tab'"
 }
 ```
 
@@ -376,7 +510,9 @@ Happens when a page action appears in the location bar. The specific page action
 ```js
 {
   trigger: { id: "pageActionInUrlbar" },
-  targeting: "pageAction == 'reader-mode-button'"
+  targeting: "pageAction == 'reader-mode-button'",
+  params: ["example.com"],
+  patterns: ["https://www.example.com/*"]
 }
 ```
 
@@ -456,6 +592,17 @@ The `hasUsedSiteExceptions` boolean context variable is available in targeting, 
 }
 ```
 
+### `ipProtectionBandwidthReset`
+
+Fires when the IP protection bandwidth quota resets at the start of a new month.
+
+```js
+{
+  trigger: { id: "ipProtectionBandwidthReset" },
+  targeting: "'browser.ipProtection.userEnableCount' | preferenceValue > 0",
+}
+```
+
 ### `selectableProfilesUpdated`
 
 Fires to keep multi-profile feature users informed of changes to data collection settings. Within a profile group, any update to these shared profile settings triggers this event for all other running remote profile instances.
@@ -490,3 +637,29 @@ Occurs every time a user opens a new Smart Window tab.
   targeting: "isAIWindow && 'browser.smartwindow.firstrun.hasCompleted' | preferenceValue",
 }
 ```
+
+### `nimbusUpdate`
+
+Fired after ASRouter's Nimbus experiment enrollment listener finishes reloading
+messages from the `messaging-experiments` provider. Because messages are already
+in `ASRouter.state.messages` by the time this trigger fires, any message using it
+will be routed synchronously on the same tick as enrollment, without waiting for
+a timer or restart.
+
+This is the correct trigger for moments page (`update_action`) messages delivered
+via Nimbus experiments. It replaces the deprecated `momentsUpdate` pseudo-trigger.
+
+```js
+{
+  trigger: { id: "nimbusUpdate" },
+  template: "update_action",
+  content: {
+    action: {
+      id: "moments-wnp",
+      data: { url: "https://www.mozilla.org/firefox/welcome/12", expireDelta: 172800000 }
+    }
+  }
+}
+```
+
+Does not filter by host, patterns, or params.

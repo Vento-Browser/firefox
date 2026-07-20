@@ -204,7 +204,7 @@ add_task(async function resultMenu_showLessFrequently() {
     openByMouse: true,
   });
   Assert.ok(!menuitem, "Menuitem should be absent before closing the view");
-  gURLBar.view.resultMenu.hidePopup(true);
+  gURLBar.view.resultMenu.removeAttribute("open");
   await UrlbarTestUtils.promisePopupClose(window);
 
   await doShowLessFrequently({
@@ -234,9 +234,9 @@ add_task(async function resultMenu_notInterested() {
   await doDismissTest("not_interested", true);
 });
 
-// Tests the "Not relevant" result menu dismissal command.
-add_task(async function resultMenu_notRelevant() {
-  await doDismissTest("not_relevant", false);
+// Tests the "Dismiss" result menu dismissal command.
+add_task(async function resultMenu_dismiss() {
+  await doDismissTest("dismiss", false);
 });
 
 // Tests the "Manage" result menu.
@@ -362,7 +362,7 @@ async function doDismissTest(command, allDismissed) {
   );
   Assert.equal(
     details.type,
-    UrlbarUtils.RESULT_TYPE.TIP,
+    UrlbarShared.RESULT_TYPE.TIP,
     "Row should be a tip after dismissal"
   );
   Assert.equal(
@@ -407,7 +407,7 @@ async function doDismissTest(command, allDismissed) {
   for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
     details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.ok(
-      details.type != UrlbarUtils.RESULT_TYPE.TIP &&
+      details.type != UrlbarShared.RESULT_TYPE.TIP &&
         !isAddonResult(details.result),
       "Tip result and addon result should not be present"
     );

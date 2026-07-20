@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,19 +5,20 @@
 #ifndef NS_DEVICECONTEXT_H_
 #define NS_DEVICECONTEXT_H_
 
-#include <stdint.h>                    // for uint32_t
+#include <stdint.h>  // for uint32_t
+
 #include "gfxTypes.h"                  // for gfxFloat
+#include "mozilla/AppUnits.h"          // for AppUnits
 #include "mozilla/RefPtr.h"            // for RefPtr
+#include "mozilla/gfx/Point.h"         // for IntSize
+#include "mozilla/gfx/PrintPromise.h"  // for PrintEndDocumentPromise
 #include "nsCOMPtr.h"                  // for nsCOMPtr
 #include "nsCoord.h"                   // for nscoord
 #include "nsError.h"                   // for nsresult
+#include "nsFontMetrics.h"             // for nsFontMetrics::Params
 #include "nsISupports.h"               // for NS_INLINE_DECL_REFCOUNTING
 #include "nsMathUtils.h"               // for NS_round
 #include "nscore.h"                    // for char16_t, nsAString
-#include "mozilla/AppUnits.h"          // for AppUnits
-#include "nsFontMetrics.h"             // for nsFontMetrics::Params
-#include "mozilla/gfx/Point.h"         // for IntSize
-#include "mozilla/gfx/PrintPromise.h"  // for PrintEndDocumentPromise
 
 class gfxContext;
 class gfxTextPerfMetrics;
@@ -200,7 +200,8 @@ class nsDeviceContext final {
    * @return error status
    */
   nsresult BeginDocument(const nsAString& aTitle,
-                         const nsAString& aPrintToFileName, int32_t aStartPage,
+                         const nsAString& aPrintToFileName,
+                         uint64_t aBrowsingContextId, int32_t aStartPage,
                          int32_t aEndPage);
 
   /**
@@ -304,6 +305,7 @@ class nsDeviceContext final {
   RefPtr<PrintTarget> mPrintTarget;
   bool mIsCurrentlyPrintingDoc;
   bool mIsInitialized = false;
+  uint64_t mBrowsingContextId = 0;
 };
 
 #endif /* NS_DEVICECONTEXT_H_ */

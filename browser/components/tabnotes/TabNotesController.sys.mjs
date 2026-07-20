@@ -83,14 +83,14 @@ class TabNotesControllerClass {
     Services.obs.addObserver(this, "CanonicalURL:ActorUnregistered");
     if (this.TAB_NOTES_ENABLED) {
       lazy.logConsole.debug("browserFirstWindowReady", "Tab notes enabled");
-      this.#init().then(() => {
+      return this.#init().then(() => {
         for (const win of lazy.BrowserWindowTracker.orderedWindows) {
           this.#initWindow(win);
         }
       });
-    } else {
-      lazy.logConsole.debug("browserFirstWindowReady", "Tab notes disabled");
     }
+    lazy.logConsole.debug("browserFirstWindowReady", "Tab notes disabled");
+    return Promise.resolve();
   }
 
   /**
@@ -137,6 +137,16 @@ class TabNotesControllerClass {
   #initWindow(win) {
     EVENTS.forEach(eventName => win.addEventListener(eventName, this));
     win.gBrowser.addTabsProgressListener(this);
+
+    // check tabs that may have had canonicalUrl restored from session data
+    for (const tab of win.gBrowser.tabs) {
+      if (tab.canonicalUrl && lazy.TabNotes.isEligible(tab)) {
+        lazy.TabNotes.has(tab).then(hasTabNote => {
+          tab.hasTabNote = hasTabNote;
+        });
+      }
+    }
+
     lazy.logConsole.debug("initWindow", win, EVENTS);
   }
 
@@ -172,7 +182,7 @@ class TabNotesControllerClass {
    * @see tabnotes.manifest
    */
   browserQuitApplicationGranted() {
-    this.#deinit();
+    return this.#deinit();
   }
 
   /**
@@ -202,10 +212,17 @@ class TabNotesControllerClass {
           const browser = event.target;
           const { canonicalUrl } = event.detail;
           const gBrowser = browser.getTabBrowser();
+          /** @type {MozTabbrowserTab} */
           const tab = gBrowser.getTabForBrowser(browser);
           tab.canonicalUrl = canonicalUrl;
           lazy.TabNotes.has(tab).then(hasTabNote => {
             tab.hasTabNote = hasTabNote;
+            lazy.logConsole.debug("TabNote:Determined", tab, hasTabNote);
+            tab.dispatchEvent(
+              new CustomEvent("TabNote:Determined", {
+                detail: { hasTabNote },
+              })
+            );
           });
 
           lazy.logConsole.debug("CanonicalURL:Identified", tab, canonicalUrl);
@@ -213,10 +230,11 @@ class TabNotesControllerClass {
         break;
       case "TabNote:Created":
         {
-          const { telemetrySource } = event.detail;
+          const { note, telemetrySource } = event.detail;
           if (telemetrySource) {
             Glean.tabNotes.added.record({
               source: telemetrySource,
+              note_length: note.text.length,
             });
           }
           // A new tab note was created for a specific canonical URL. Ensure that
@@ -236,10 +254,11 @@ class TabNotesControllerClass {
       case "TabNote:Edited":
         {
           const { canonicalUrl } = event.target;
-          const { telemetrySource } = event.detail;
+          const { note, telemetrySource } = event.detail;
           if (telemetrySource) {
             Glean.tabNotes.edited.record({
               source: telemetrySource,
+              note_length: note.text.length,
             });
           }
           lazy.logConsole.debug("TabNote:Edited", canonicalUrl);
@@ -295,7 +314,7 @@ class TabNotesControllerClass {
    *
    * @type {Extract<nsIObserver, Function>}
    */
-  observe(aSubject, aTopic) {
+  observe(_aSubject, aTopic) {
     switch (aTopic) {
       case "CanonicalURL:ActorRegistered":
         // Tab notes pref was flipped from disabled to enabled while the
@@ -431,11 +450,18 @@ class TabNotesControllerClass {
       return;
     }
 
+    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SESSION_STORE) {
+      // Location was changed as part of a session restoration. In this case
+      // the canonical URL was already retrieved from session data.
+      lazy.logConsole.debug("preserving tab note state during session restore");
+      return;
+    }
+
     // General case: we are doing normal navigation to another URL, so we
     // clear the canonical URL/tab note state on the tab and wait for
     // `CanonicalURL:Identified` to tell us whether the new location has
     // a tab note.
-    const tab = aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser);
+    const tab = aBrowser.documentGlobal.gBrowser.getTabForBrowser(aBrowser);
     this.#resetTab(tab);
     lazy.logConsole.debug("clear tab note due to location change", tab);
   }

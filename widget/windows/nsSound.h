@@ -1,5 +1,4 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
+/*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,17 +6,15 @@
 #ifndef _nsSound_h_
 #define _nsSound_h_
 
-#include "nsISound.h"
-#include "nsIObserver.h"
-#include "nsIStreamLoader.h"
-#include "nsCOMPtr.h"
 #include "mozilla/StaticPtr.h"
+#include "nsCOMPtr.h"
+#include "nsIObserver.h"
+#include "nsISound.h"
 
 class nsIThread;
 class nsIRunnable;
 
 class nsSound : public nsISound,
-                public nsIStreamLoaderObserver,
                 public nsIObserver
 
 {
@@ -27,7 +24,6 @@ class nsSound : public nsISound,
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSISOUND
-  NS_DECL_NSISTREAMLOADEROBSERVER
   NS_DECL_NSIOBSERVER
 
  private:

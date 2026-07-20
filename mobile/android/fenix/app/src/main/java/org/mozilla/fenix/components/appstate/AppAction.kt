@@ -9,6 +9,7 @@ import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.state.content.DownloadState
 import mozilla.components.concept.storage.BookmarkNode
 import mozilla.components.concept.sync.TabData
+import mozilla.components.feature.protection.dashboard.TrackersBlockedCategory
 import mozilla.components.feature.tab.collections.TabCollection
 import mozilla.components.feature.top.sites.TopSite
 import mozilla.components.lib.crash.Crash.NativeCodeCrash
@@ -23,16 +24,22 @@ import org.mozilla.fenix.browser.StandardSnackbarError
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.setup.checklist.ChecklistItem
+import org.mozilla.fenix.components.appstate.sports.SportsWidgetState
 import org.mozilla.fenix.components.appstate.webcompat.WebCompatState
 import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.home.bookmarks.Bookmark
 import org.mozilla.fenix.home.pocket.PocketImpression
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesSelectedCategory
+import org.mozilla.fenix.home.pocket.controller.StoriesImpressionSource
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTab
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTabState
 import org.mozilla.fenix.home.recenttabs.RecentTab
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem
+import org.mozilla.fenix.home.sports.MatchCard
+import org.mozilla.fenix.home.sports.SportCardErrorState
+import org.mozilla.fenix.home.topsites.AddShortcutEntryPoint
+import org.mozilla.fenix.home.topsites.AddShortcutSource
 import org.mozilla.fenix.library.history.PendingDeletionHistory
 import org.mozilla.fenix.messaging.MessagingState
 import org.mozilla.fenix.wallpapers.Wallpaper
@@ -60,6 +67,11 @@ sealed class AppAction : Action {
      * Updates whether the first frame of the homescreen has been [drawn].
      */
     data class UpdateFirstFrameDrawn(val drawn: Boolean) : AppAction()
+
+    /**
+     * Updates whether the fox peek animation should play on the next homepage view.
+     */
+    data class UpdateShowFoxPeekAnimation(val ready: Boolean) : AppAction()
     data class AddNonFatalCrash(val crash: NativeCodeCrash) : AppAction()
     data class RemoveNonFatalCrash(val crash: NativeCodeCrash) : AppAction()
     object RemoveAllNonFatalCrashes : AppAction()
@@ -68,7 +80,6 @@ sealed class AppAction : Action {
         val topSites: List<TopSite>,
         val mode: BrowsingMode,
         val collections: List<TabCollection>,
-        val showCollectionPlaceholder: Boolean,
         val recentTabs: List<RecentTab>,
         val bookmarks: List<Bookmark>,
         val recentHistory: List<RecentlyVisitedItem>,
@@ -117,8 +128,6 @@ sealed class AppAction : Action {
      */
     data class UndoPendingDeletionSet(val historyItems: Set<PendingDeletionHistory>) : AppAction()
 
-    data object RemoveCollectionsPlaceholder : AppAction()
-
     /**
      * Action dispatched when the user has authenticated with their account.
      */
@@ -163,6 +172,13 @@ sealed class AppAction : Action {
      * Action dispatched when open in firefox action is completed.
      */
     data object OpenInFirefoxFinished : AppAction()
+
+    /**
+     * Updates whether Firefox is the default browser.
+     *
+     * @property isDefault The updated boolean to [AppState.isDefaultBrowser]
+     */
+    data class UpdateDefaultBrowserStatus(val isDefault: Boolean) : AppAction()
 
     /**
      * [Action]s related to interactions with the Messaging Framework.
@@ -372,6 +388,29 @@ sealed class AppAction : Action {
     }
 
     /**
+     * [AppAction]s related to Google Lens image search.
+     */
+    sealed class LensAction : AppAction() {
+        /** The user has requested a Lens image search. */
+        data object LensRequested : LensAction()
+
+        /** The user has requested a Lens image search for an already-known image URL. */
+        data class LensRequestedWithImageUrl(val imageUrl: String) : LensAction()
+
+        /** The Lens request has been consumed and the image chooser launched. */
+        data object LensRequestConsumed : LensAction()
+
+        /** The Lens flow was dismissed or failed. */
+        data object LensDismissed : LensAction()
+
+        /** The Lens image upload completed and a results URL is available. */
+        data class LensResultAvailable(val url: String) : LensAction()
+
+        /** The Lens result URL has been consumed and navigation triggered. */
+        data object LensResultConsumed : LensAction()
+    }
+
+    /**
      * [AppAction]s related to Qr Scanner.
      */
     sealed class QrScannerAction : AppAction() {
@@ -407,8 +446,33 @@ sealed class AppAction : Action {
     sealed class ShortcutAction : AppAction() {
         /**
          * [ShortcutAction] dispatched when a shortcut is added.
+         *
+         * @property source The [AddShortcutSource] of how the shortcut was added.
+         * @property entryPoint The [AddShortcutEntryPoint] from where the add flow was started from.
          */
-        data object ShortcutAdded : ShortcutAction()
+        data class ShortcutAdded(
+            val source: AddShortcutSource,
+            val entryPoint: AddShortcutEntryPoint,
+        ) : ShortcutAction()
+
+        /**
+         * [ShortcutAction] dispatched when the popular-list bottom sheet for adding a shortcut is shown.
+         *
+         * @property entryPoint The [AddShortcutEntryPoint] from where the add flow was started from.
+         */
+        data class AddShortcutSheetShown(
+            val entryPoint: AddShortcutEntryPoint,
+        ) : ShortcutAction()
+
+        /**
+         * [ShortcutAction] dispatched when the manual add website dialog is shown.
+         */
+        data object AddWebsiteDialogShown : ShortcutAction()
+
+        /**
+         * [ShortcutAction] dispatched when a frecent top site is promoted to a pinned shortcut.
+         */
+        data object FrecencyTopSitePromoted : ShortcutAction()
     }
 
     /**
@@ -562,10 +626,12 @@ sealed class AppAction : Action {
          *
          * @property recommendation The [ContentRecommendation] that was clicked.
          * @property position The position (0-index) of the [ContentRecommendation].
+         * @property source The surface where the clicked recommendation was shown.
          */
         data class ContentRecommendationClicked(
             val recommendation: ContentRecommendation,
             val position: Int,
+            val source: StoriesImpressionSource,
         ) : ContentRecommendationsAction()
 
         /**
@@ -585,9 +651,12 @@ sealed class AppAction : Action {
          *
          * @property impressions A list of [PocketImpression]s detailing the story shown and
          * their respective position.
+         * @property source The surface where the stories were shown.
          */
-        data class PocketStoriesShown(val impressions: List<PocketImpression>) :
-            ContentRecommendationsAction()
+        data class PocketStoriesShown(
+            val impressions: List<PocketImpression>,
+            val source: StoriesImpressionSource,
+        ) : ContentRecommendationsAction()
 
         /**
          * Cleans all in-memory data about Pocket stories and categories.
@@ -783,5 +852,154 @@ sealed class AppAction : Action {
          * @property notification The [SupportedMenuNotifications] type to be removed.
          */
         data class RemoveMenuNotification(val notification: SupportedMenuNotifications) : MenuNotification()
+    }
+
+    /**
+     * [AppAction]s related to the the trackers blocked state.
+     */
+    sealed class BlockedTrackersAction : AppAction() {
+        /**
+         * Updates the total count of trackers blocked for the privacy report.
+         *
+         * @property count The new count of trackers blocked.
+         */
+        data class UpdateTrackersBlockedCount(val count: Int) : BlockedTrackersAction()
+
+        /**
+         * Updates the details about what trackers have been blocked this week.
+         *
+         * @property blockedTrackerCategories The list of trackers blocked this week as a tracker category split.
+         */
+        data class UpdateTrackersBlockedThisWeek(
+            val blockedTrackerCategories: List<TrackersBlockedCategory>,
+        ) : BlockedTrackersAction()
+
+        /**
+         * Updates the earliest date for which we have information about blocked trackers.
+         *
+         * @property date The earliest date for which we have information about blocked trackers as a Unix time stamp.
+         * May be `null` if this information is not available.
+         */
+        data class UpdateEarliestTrackingDate(val date: Long?) : BlockedTrackersAction()
+    }
+
+    /**
+     * [AppAction]s related to the sports widget.
+     */
+    sealed class SportsWidgetAction : AppAction() {
+        /**
+         * Dispatched when countries were selected in the sports widget country selector.
+         *
+         * @property countryCodes Set of ISO codes of the selected countries.
+         */
+        data class CountriesSelected(val countryCodes: Set<String>) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the user skips the "Follow your team" card.
+         */
+        data object FollowTeamSkipped : SportsWidgetAction()
+
+        /**
+         * Dispatched when the sports widget's visibility changes.
+         *
+         * @property isVisible The new visibility state of the sports widget.
+         */
+        data class VisibilityChanged(val isVisible: Boolean) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the countdown widget's visibility changes.
+         *
+         * @property isCountdownVisible The new visibility state of the countdown widget.
+         */
+        data class CountdownVisibilityChanged(val isCountdownVisible: Boolean) : SportsWidgetAction()
+
+        /**
+         * Dispatched when new match card data is available for the homepage sports widget.
+         *
+         * @property matchCardStates The new [MatchCard]s to display, or empty if no match
+         * should be shown.
+         */
+        data class MatchCardStateUpdated(val matchCardStates: List<MatchCard>) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the set of teams eliminated from the tournament changes,
+         * derived from the latest fetched match data. Drives the eliminated-team
+         * styling in the country selector bottom sheet.
+         *
+         * @property countryCodes ISO codes of teams flagged eliminated in the last response.
+         */
+        data class EliminatedCountriesUpdated(val countryCodes: Set<String>) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the sport widget's debug tool visibility changes.
+         *
+         * @property visible Whether the debug tool should be displayed.
+         */
+        data class DebugToolVisibilityChanged(val visible: Boolean) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the user toggles the world cup started override setting in the sport widget's debug tool.
+         * This overrides [SportsWidgetState.hasWorldCupStarted] and should be used for debug only.
+         *
+         * @property hasWorldCupStartedOverride Whether the world cup has started.
+         */
+        data class WorldCupStartedOverrideUpdated(val hasWorldCupStartedOverride: Boolean) : SportsWidgetAction()
+
+        /**
+         * Dispatched when the user toggles the skip follow team setting in the sport widget's debug tool.
+         * This should be used for debug only.
+         *
+         * @property hasSkippedFollowTeam Whether the user skipped the "Follow your team" card.
+         */
+        data class SkipFollowTeamUpdated(val hasSkippedFollowTeam: Boolean) : SportsWidgetAction()
+
+        /**
+         * Dispatched to request a fetch of the latest match data from the sports API.
+         * Triggered by manual user refresh or when the selected countries change.
+         */
+        data object FetchMatches : SportsWidgetAction()
+
+        /**
+         * Dispatched when a match data fetch fails.
+         *
+         * @property error The [SportCardErrorState] describing the failure.
+         */
+        data class FetchFailed(val error: SportCardErrorState) : SportsWidgetAction()
+
+        /**
+         * Dispatched to clear any active [SportsWidgetState.errorState] without otherwise
+         * touching widget data. Used on resume to retire a stale ConnectionInterrupted
+         * banner once the device is back online and there's no fetch to schedule (e.g.
+         * during the pre-7-day countdown phase).
+         */
+        data object ErrorStateCleared : SportsWidgetAction()
+
+        /**
+         * Dispatched when the user toggles the one week to the world cup override setting
+         * in the sport widget's debug tool. This overrides [SportsWidgetState.isOneWeekToWorldCup] and should
+         * be used for debug only.
+         *
+         * @property isOneWeekToWorldCupOverride Whether it's one week to the World Cup.
+         */
+        data class OneWeekToWorldCupOverrideUpdated(val isOneWeekToWorldCupOverride: Boolean) : SportsWidgetAction()
+    }
+
+    /**
+     * [SnackbarAction]s related to the IP Protection feature.
+     */
+    sealed class IPProtectionSnackbarAction : SnackbarAction() {
+        /**
+         * Dispatched when IP Protection feature experienced a connection error.
+         *
+         * @property title The title to display in the snackbar.
+         */
+        data class ConnectionError(val title: String) : IPProtectionSnackbarAction()
+
+        /**
+         * Dispatched when IP Protection feature experienced a connection error.
+         *
+         * @property title The title to display in the snackbar.
+         */
+        data class DataLimitReached(val title: String) : IPProtectionSnackbarAction()
     }
 }

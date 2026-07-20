@@ -1,19 +1,17 @@
-/* -*- Mode: C++; tab-width: 40; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set sw=2 ts=4 expandtab:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ScreenHelperAndroid.h"
-#include "AndroidRect.h"
-#include "nsThreadUtils.h"
 
 #include <mozilla/jni/Refs.h>
 
+#include "AndroidRect.h"
 #include "AndroidVsync.h"
 #include "mozilla/java/GeckoAppShellWrappers.h"
 #include "mozilla/java/ScreenManagerHelperNatives.h"
 #include "mozilla/widget/ScreenManager.h"
+#include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 
 using namespace mozilla;

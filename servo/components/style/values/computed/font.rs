@@ -6,6 +6,7 @@
 
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
+use crate::typed_om::{ToTyped, TypedValue};
 use crate::values::animated::ToAnimatedValue;
 use crate::values::computed::{
     Angle, Context, Integer, Length, NonNegativeLength, NonNegativeNumber, Number, Percentage,
@@ -19,7 +20,7 @@ use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
 use crate::values::specified::font::{
     self as specified, KeywordInfo, MAX_FONT_WEIGHT, MIN_FONT_WEIGHT,
 };
-use crate::values::specified::length::{FontBaseSize, LineHeightBase, NoCalcLength};
+use crate::values::specified::length::{FontBaseSize, LineHeightBase};
 use crate::values::CSSInteger;
 use crate::Atom;
 use cssparser::{match_ignore_ascii_case, serialize_identifier, CssStringWriter, Parser};
@@ -27,7 +28,8 @@ use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use num_traits::abs;
 use num_traits::cast::AsPrimitive;
 use std::fmt::{self, Write};
-use style_traits::{CssWriter, ParseError, ToCss, ToTyped, TypedValue};
+use style_traits::{CssWriter, ParseError, ToCss};
+use thin_vec::ThinVec;
 
 pub use crate::values::computed::Length as MozScriptMinSize;
 pub use crate::values::specified::font::MozScriptSizeMultiplier;
@@ -63,14 +65,15 @@ pub use crate::values::specified::Number as SpecifiedNumber;
     ComputeSquaredDistance,
     Copy,
     Debug,
+    Deserialize,
     Eq,
     Hash,
     MallocSizeOf,
     PartialEq,
     PartialOrd,
+    Serialize,
     ToResolvedValue,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 pub struct FixedPoint<T, const FRACTION_BITS: u16> {
     /// The actual representation.
     pub value: T,
@@ -140,14 +143,14 @@ pub type FontWeightFixedPoint = FixedPoint<u16, FONT_WEIGHT_FRACTION_BITS>;
     ComputeSquaredDistance,
     Copy,
     Debug,
+    Deserialize,
     Hash,
     MallocSizeOf,
     PartialEq,
     PartialOrd,
+    Serialize,
     ToResolvedValue,
-    ToTyped,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(C)]
 pub struct FontWeight(FontWeightFixedPoint);
 impl ToAnimatedValue for FontWeight {
@@ -170,6 +173,12 @@ impl ToCss for FontWeight {
         W: fmt::Write,
     {
         self.value().to_css(dest)
+    }
+}
+
+impl ToTyped for FontWeight {
+    fn to_typed(&self, dest: &mut ThinVec<TypedValue>) -> Result<(), ()> {
+        self.value().to_typed(dest)
     }
 }
 
@@ -254,14 +263,14 @@ impl FontWeight {
     ComputeSquaredDistance,
     Copy,
     Debug,
+    Deserialize,
     MallocSizeOf,
     PartialEq,
+    Serialize,
     ToAnimatedZero,
     ToCss,
     ToTyped,
 )]
-#[cfg_attr(feature = "servo", derive(Serialize, Deserialize))]
-#[typed_value(derive_fields)]
 /// The computed value of font-size
 pub struct FontSize {
     /// The computed size, that we use to compute ems etc. This accounts for
@@ -347,10 +356,21 @@ impl ToResolvedValue for FontSize {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, ToComputedValue, ToResolvedValue, ToTyped)]
-#[cfg_attr(feature = "servo", derive(Hash, Serialize, Deserialize))]
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    PartialEq,
+    Serialize,
+    ToComputedValue,
+    ToResolvedValue,
+    ToTyped,
+)]
 /// Specifies a prioritized list of font family names or generic family names.
 #[repr(C)]
+#[typed(todo_derive_fields)]
 pub struct FontFamily {
     /// The actual list of family names.
     pub families: FontFamilyList,
@@ -492,9 +512,18 @@ impl ToCss for FontFamily {
 
 /// The name of a font family of choice.
 #[derive(
-    Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue, ToShmem,
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    Serialize,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(C)]
 pub struct FamilyName {
     /// Name of the font family.
@@ -552,9 +581,19 @@ impl ToCss for FamilyName {
 }
 
 #[derive(
-    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue, ToShmem,
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    Serialize,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 /// Font family names must either be given quoted as strings,
 /// or unquoted as a sequence of one or more identifiers.
 #[repr(u8)]
@@ -571,9 +610,19 @@ pub enum FontFamilyNameSyntax {
 /// A set of faces that vary in weight, width or slope.
 /// cbindgen:derive-mut-casts=true
 #[derive(
-    Clone, Debug, Eq, MallocSizeOf, PartialEq, ToCss, ToComputedValue, ToResolvedValue, ToShmem,
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    Serialize,
+    ToCss,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize, Hash))]
 #[repr(u8)]
 pub enum SingleFontFamily {
     /// The name of a font family of choice.
@@ -604,17 +653,18 @@ fn math_enabled(context: &ParserContext) -> bool {
     Clone,
     Copy,
     Debug,
+    Deserialize,
     Eq,
     Hash,
     MallocSizeOf,
     PartialEq,
     Parse,
+    Serialize,
     ToCss,
     ToComputedValue,
     ToResolvedValue,
     ToShmem,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(u32)]
 #[allow(missing_docs)]
 pub enum GenericFontFamily {
@@ -717,8 +767,18 @@ impl Parse for SingleFontFamily {
 }
 
 /// A list of font families.
-#[derive(Clone, Debug, ToComputedValue, ToResolvedValue, ToShmem, PartialEq, Eq)]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize, Hash))]
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Hash,
+    Serialize,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+    PartialEq,
+    Eq,
+)]
 #[repr(C)]
 pub struct FontFamilyList {
     /// The actual list of font families specified.
@@ -862,7 +922,7 @@ impl ToComputedValue for specified::FontSizeAdjust {
             }};
         }
 
-        match *self {
+        match self {
             Self::None => FontSizeAdjust::None,
             Self::ExHeight(val) => {
                 resolve!(
@@ -951,15 +1011,15 @@ where
     if settings_list.len() > 1 {
         settings_list.sort_by_key(|k| k.tag().0);
         // dedup() keeps the first of any duplicates, but we want the last,
-        // so we implement it manually here.
-        let mut prev_tag = settings_list.last().unwrap().tag();
-        for i in (0..settings_list.len() - 1).rev() {
-            let cur_tag = settings_list[i].tag();
-            if cur_tag == prev_tag {
-                settings_list.remove(i);
+        // so swap elements in the dedup_by closure if their tags are equal.
+        settings_list.dedup_by(|a, b| {
+            if a.tag() == b.tag() {
+                std::mem::swap(a, b);
+                true
+            } else {
+                false
             }
-            prev_tag = cur_tag;
-        }
+        });
     }
 }
 
@@ -993,9 +1053,11 @@ where
     Clone,
     Copy,
     Debug,
+    Deserialize,
     Eq,
     MallocSizeOf,
     PartialEq,
+    Serialize,
     SpecifiedValueInfo,
     ToComputedValue,
     ToResolvedValue,
@@ -1003,7 +1065,7 @@ where
     ToTyped,
 )]
 #[repr(C)]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[typed(todo_derive_fields)]
 #[value_info(other_values = "normal")]
 pub struct FontLanguageOverride(pub u32);
 
@@ -1055,15 +1117,8 @@ impl ToComputedValue for specified::MozScriptMinSize {
         // we use the parent size
         let base_size = FontBaseSize::InheritedStyle;
         let line_height_base = LineHeightBase::InheritedStyle;
-        match self.0 {
-            NoCalcLength::FontRelative(value) => {
-                value.to_computed_value(cx, base_size, line_height_base)
-            },
-            NoCalcLength::ServoCharacterWidth(value) => {
-                value.to_computed_value(base_size.resolve(cx).computed_size())
-            },
-            ref l => l.to_computed_value(cx),
-        }
+        self.0
+            .to_computed_value_with_base_size(cx, base_size, line_height_base)
     }
 
     fn from_computed_value(other: &MozScriptMinSize) -> Self {
@@ -1074,7 +1129,6 @@ impl ToComputedValue for specified::MozScriptMinSize {
 /// The computed value of the math-depth property.
 pub type MathDepth = i8;
 
-#[cfg(feature = "gecko")]
 impl ToComputedValue for specified::MathDepth {
     type ComputedValue = MathDepth;
 
@@ -1082,7 +1136,7 @@ impl ToComputedValue for specified::MathDepth {
         use crate::properties::longhands::math_style::SpecifiedValue as MathStyleValue;
         use std::{cmp, i8};
 
-        let int = match *self {
+        let int = match self {
             specified::MathDepth::AutoAdd => {
                 let parent = cx.builder.get_parent_font().clone_math_depth() as i32;
                 let style = cx.builder.get_parent_font().clone_math_style();
@@ -1147,16 +1201,18 @@ pub type FontStyleFixedPoint = FixedPoint<i16, FONT_STYLE_FRACTION_BITS>;
     ComputeSquaredDistance,
     Copy,
     Debug,
+    Deserialize,
     Eq,
     Hash,
     MallocSizeOf,
     PartialEq,
     PartialOrd,
+    Serialize,
     ToResolvedValue,
     ToTyped,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(C)]
+#[typed(todo_derive_fields)]
 pub struct FontStyle(FontStyleFixedPoint);
 
 impl FontStyle {
@@ -1263,9 +1319,18 @@ pub type FontStretchFixedPoint = FixedPoint<u16, FONT_STRETCH_FRACTION_BITS>;
 /// cbindgen:derive-gt
 /// cbindgen:derive-gte
 #[derive(
-    Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd, ToResolvedValue,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    Deserialize,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToResolvedValue,
 )]
-#[cfg_attr(feature = "servo", derive(Deserialize, Hash, Serialize))]
 #[repr(C)]
 pub struct FontStretch(pub FontStretchFixedPoint);
 
@@ -1390,11 +1455,11 @@ impl ToCss for FontStretch {
 }
 
 impl ToTyped for FontStretch {
-    fn to_typed(&self) -> Option<TypedValue> {
-        self.as_keyword()
-            .map_or(self.to_percentage().to_typed(), |keyword| {
-                keyword.to_typed()
-            })
+    fn to_typed(&self, dest: &mut ThinVec<TypedValue>) -> Result<(), ()> {
+        match self.as_keyword() {
+            Some(keyword) => keyword.to_typed(dest),
+            None => self.to_percentage().to_typed(dest),
+        }
     }
 }
 
@@ -1422,7 +1487,7 @@ impl ToResolvedValue for LineHeight {
         #[cfg(feature = "gecko")]
         {
             // Resolve <number> to an absolute <length> based on font size.
-            if matches!(self, Self::Normal | Self::MozBlockHeight) {
+            if matches!(self, Self::Normal) {
                 return self;
             }
             let wm = context.style.writing_mode;

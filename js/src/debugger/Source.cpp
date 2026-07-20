@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -40,7 +38,7 @@
 
 #include "debugger/Debugger-inl.h"  // for Debugger::fromJSObject
 #include "vm/JSObject-inl.h"        // for InitClass
-#include "vm/NativeObject-inl.h"    // for NewTenuredObjectWithGivenProto
+#include "vm/NativeObject-inl.h"
 #include "wasm/WasmInstance-inl.h"
 
 namespace js {
@@ -55,16 +53,7 @@ using mozilla::Nothing;
 using mozilla::Some;
 
 const JSClassOps DebuggerSource::classOps_ = {
-    nullptr,                          // addProperty
-    nullptr,                          // delProperty
-    nullptr,                          // enumerate
-    nullptr,                          // newEnumerate
-    nullptr,                          // resolve
-    nullptr,                          // mayResolve
-    nullptr,                          // finalize
-    nullptr,                          // call
-    nullptr,                          // construct
-    CallTraceMethod<DebuggerSource>,  // trace
+    .trace = CallTraceMethod<DebuggerSource>,
 };
 
 const JSClass DebuggerSource::class_ = {
@@ -86,7 +75,8 @@ DebuggerSource* DebuggerSource::create(JSContext* cx, HandleObject proto,
                                        Handle<DebuggerSourceReferent> referent,
                                        Handle<NativeObject*> debugger) {
   Rooted<DebuggerSource*> sourceObj(
-      cx, NewTenuredObjectWithGivenProto<DebuggerSource>(cx, proto));
+      cx, NewObjectWithGivenProto<DebuggerSource>(cx, proto,
+                                                  {.newKind = TenuredObject}));
   if (!sourceObj) {
     return nullptr;
   }
@@ -386,11 +376,8 @@ struct DebuggerSourceGetDisplayURLMatcher {
     return ss->hasDisplayURL() ? ss->displayURL() : nullptr;
   }
   ReturnType match(Handle<WasmInstanceObject*> wasmInstance) {
-    return wasmInstance->instance().codeMetaForAsmJS()
-               ? wasmInstance->instance()
-                     .codeMetaForAsmJS()
-                     ->displayURL()  // asm.js
-               : nullptr;            // wasm
+    // Wasm sources don't have display URLs
+    return nullptr;
   }
 };
 

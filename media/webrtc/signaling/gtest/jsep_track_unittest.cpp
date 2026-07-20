@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,15 +6,18 @@
 #include "ssl.h"
 
 #define GTEST_HAS_RTTI 0
+#include <tuple>
+
+#include "CodecConfig.h"
+#include "MockJsepCodecPreferences.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include "MockJsepCodecPreferences.h"
 #include "jsapi/DefaultCodecPreferences.h"
+#include "jsapi/RTCRtpTransceiver.h"
 #include "jsep/JsepTrack.h"
+#include "sdp/SdpHelper.h"
 #include "sdp/SipccSdp.h"
 #include "sdp/SipccSdpParser.h"
-#include "sdp/SdpHelper.h"
 
 using testing::UnorderedElementsAre;
 
@@ -36,9 +37,13 @@ struct CodecOverrides {
   bool addDtmfCodec = false;
   bool enableRemb = true;
   bool enableTransportCC = true;
+  bool enableAudioTransportCC = true;
+  bool enableRtx = true;
   void ApplyToPrefs(MockJsepCodecPreferences& aPrefs) const {
     aPrefs.mUseRemb = enableRemb;
     aPrefs.mUseTransportCC = enableTransportCC;
+    aPrefs.mUseAudioTransportCC = enableAudioTransportCC;
+    aPrefs.mUseRtx = enableRtx;
   }
 };
 
@@ -78,7 +83,7 @@ class JsepTrackTest : public JsepTrackTestBase {
     std::cout << "CodecPrefrences: " << prefsRef << "\n";
     std::vector<UniquePtr<JsepCodecDescription>> results;
     results.emplace_back(JsepAudioCodecDescription::CreateDefaultOpus(prefs));
-    results.emplace_back(JsepAudioCodecDescription::CreateDefaultG722());
+    results.emplace_back(JsepAudioCodecDescription::CreateDefaultG722(prefs));
     if (overrides.addDtmfCodec) {
       results.emplace_back(
           JsepAudioCodecDescription::CreateDefaultTelephoneEvent());
@@ -255,6 +260,41 @@ class JsepTrackTest : public JsepTrackTestBase {
     return UniquePtr<JsepCodecDescription>(codecs[codecIndex]->Clone());
   }
 
+  UniquePtr<JsepCodecDescription> GetCodec(const JsepTrack& track,
+                                           const std::string& name) const {
+    if (!track.GetNegotiatedDetails() ||
+        track.GetNegotiatedDetails()->GetEncodingCount() != 1U) {
+      return nullptr;
+    }
+
+    const auto& codecs =
+        track.GetNegotiatedDetails()->GetEncoding(0).GetCodecs();
+    for (const auto& codec : codecs) {
+      if (codec->mName == name) {
+        return UniquePtr<JsepCodecDescription>(codec->Clone());
+      }
+    }
+    return nullptr;
+  }
+
+  UniquePtr<JsepAudioCodecDescription> AsAudio(
+      UniquePtr<JsepCodecDescription> codec) {
+    if (codec && codec->Type() == SdpMediaSection::kAudio) {
+      return UniquePtr<JsepAudioCodecDescription>(
+          static_cast<JsepAudioCodecDescription*>(codec.release()));
+    }
+    return nullptr;
+  }
+
+  UniquePtr<JsepVideoCodecDescription> AsVideo(
+      UniquePtr<JsepCodecDescription> codec) {
+    if (codec && codec->Type() == SdpMediaSection::kVideo) {
+      return UniquePtr<JsepVideoCodecDescription>(
+          static_cast<JsepVideoCodecDescription*>(codec.release()));
+    }
+    return nullptr;
+  }
+
   UniquePtr<JsepVideoCodecDescription> GetVideoCodec(
       const JsepTrack& track, size_t expectedSize = 1,
       size_t codecIndex = 0) const {
@@ -273,9 +313,10 @@ class JsepTrackTest : public JsepTrackTestBase {
         static_cast<JsepAudioCodecDescription*>(codec.release()));
   }
 
-  void CheckOtherFbExists(const JsepVideoCodecDescription& videoCodec,
+  template <typename T>
+  void CheckOtherFbExists(const T& codec,
                           SdpRtcpFbAttributeList::Type type) const {
-    for (const auto& fb : videoCodec.mOtherFbTypes) {
+    for (const auto& fb : codec.mOtherFbTypes) {
       if (fb.type == type) {
         return;  // found the RtcpFb type, so stop looking
       }
@@ -1074,6 +1115,145 @@ TEST_F(JsepTrackTest, VideoNegotiationOfferAnswerRemb) {
   CheckOtherFbExists(*codec, SdpRtcpFbAttributeList::kRemb);
 }
 
+TEST_F(JsepTrackTest, AudioNegotiationOfferTransportCC) {
+  InitCodecs({.enableAudioTransportCC = false});
+  // enable TransportCC on the offer codecs
+  ((JsepAudioCodecDescription&)*mOffCodecs[0]).EnableTransportCC();
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  // make sure TransportCC is on offer and not on answer
+  ASSERT_NE(mOffer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  ASSERT_EQ(mAnswer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  CheckOffEncodingCount(1);
+  CheckAnsEncodingCount(1);
+
+  UniquePtr<JsepAudioCodecDescription> codec;
+  ASSERT_TRUE((codec = GetAudioCodec(mSendOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mSendAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+}
+
+TEST_F(JsepTrackTest, AudioNegotiationAnswerTransportCC) {
+  InitCodecs({.enableAudioTransportCC = false});
+  // enable TransportCC on the answer codecs
+  ((JsepAudioCodecDescription&)*mAnsCodecs[0]).EnableTransportCC();
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  // make sure TransportCC is not on offer and not on answer
+  ASSERT_EQ(mOffer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  ASSERT_EQ(mAnswer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  CheckOffEncodingCount(1);
+  CheckAnsEncodingCount(1);
+
+  UniquePtr<JsepAudioCodecDescription> codec;
+  ASSERT_TRUE((codec = GetAudioCodec(mSendOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mSendAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 0U);
+}
+
+TEST_F(JsepTrackTest, AudioNegotiationOfferAnswerTransportCC) {
+  InitCodecs({.enableAudioTransportCC = false});
+  // enable TransportCC on the offer and answer codecs
+  ((JsepAudioCodecDescription&)*mOffCodecs[0]).EnableTransportCC();
+  ((JsepAudioCodecDescription&)*mAnsCodecs[0]).EnableTransportCC();
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  // make sure TransportCC is on offer and on answer
+  ASSERT_NE(mOffer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  ASSERT_NE(mAnswer->ToString().find("a=rtcp-fb:109 transport-cc"),
+            std::string::npos);
+  CheckOffEncodingCount(1);
+  CheckAnsEncodingCount(1);
+
+  UniquePtr<JsepAudioCodecDescription> codec;
+  ASSERT_TRUE((codec = GetAudioCodec(mSendOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 1U);
+  CheckOtherFbExists<JsepAudioCodecDescription>(
+      *codec, SdpRtcpFbAttributeList::kTransportCC);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 1U);
+  CheckOtherFbExists<JsepAudioCodecDescription>(
+      *codec, SdpRtcpFbAttributeList::kTransportCC);
+  ASSERT_TRUE((codec = GetAudioCodec(mSendAns, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 1U);
+  CheckOtherFbExists<JsepAudioCodecDescription>(
+      *codec, SdpRtcpFbAttributeList::kTransportCC);
+  ASSERT_TRUE((codec = GetAudioCodec(mRecvOff, 2, 0)));
+  ASSERT_EQ(codec->mOtherFbTypes.size(), 1U);
+  CheckOtherFbExists<JsepAudioCodecDescription>(
+      *codec, SdpRtcpFbAttributeList::kTransportCC);
+}
+
+TEST_F(JsepTrackTest, AudioTransportCCFbSetUnsetWhenAnswerRejects) {
+  InitCodecs({.enableAudioTransportCC = false});
+  // Offer enables TransportCC, answer does not. After negotiation TC is
+  // dropped; AudioCodecConfig::mTransportCCFbSet must reflect that even though
+  // JsepAudioCodecDescription::mTransportCCEnabled stays true on the offerer.
+  ((JsepAudioCodecDescription&)*mOffCodecs[0]).EnableTransportCC();
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  for (const JsepTrack* track : {&mSendOff, &mRecvAns, &mSendAns, &mRecvOff}) {
+    ASSERT_TRUE(track->GetNegotiatedDetails());
+    std::vector<AudioCodecConfig> configs;
+    dom::RTCRtpTransceiver::NegotiatedDetailsToAudioCodecConfigs(
+        *track->GetNegotiatedDetails(), &configs);
+    ASSERT_FALSE(configs.empty());
+    for (const auto& config : configs) {
+      EXPECT_FALSE(config.mTransportCCFbSet)
+          << "codec " << config.mName
+          << " has mTransportCCFbSet=true despite negotiation rejecting TC";
+    }
+  }
+}
+
+TEST_F(JsepTrackTest, AudioTransportCCFbSetWhenBothSidesNegotiate) {
+  InitCodecs(CodecOverrides{});
+  ((JsepAudioCodecDescription&)*mOffCodecs[0]).EnableTransportCC();
+  ((JsepAudioCodecDescription&)*mAnsCodecs[0]).EnableTransportCC();
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  for (const JsepTrack* track : {&mSendOff, &mRecvAns, &mSendAns, &mRecvOff}) {
+    ASSERT_TRUE(track->GetNegotiatedDetails());
+    std::vector<AudioCodecConfig> configs;
+    dom::RTCRtpTransceiver::NegotiatedDetailsToAudioCodecConfigs(
+        *track->GetNegotiatedDetails(), &configs);
+    bool sawOpusWithTC = false;
+    for (const auto& config : configs) {
+      if (config.mName == "opus") {
+        sawOpusWithTC = config.mTransportCCFbSet;
+      }
+    }
+    EXPECT_TRUE(sawOpusWithTC)
+        << "opus should have mTransportCCFbSet=true after both sides negotiate "
+           "transport-cc";
+  }
+}
+
 TEST_F(JsepTrackTest, VideoNegotiationOfferTransportCC) {
   InitCodecs({.offer = {.enableRemb = false, .enableTransportCC = true},
               .answer = {.enableRemb = false, .enableTransportCC = false}});
@@ -1555,6 +1735,74 @@ TEST_F(JsepTrackTest, RtcpFbWithPayloadTypeAsymmetry) {
   ASSERT_EQ(expectedOtherFbTypes, codec->mOtherFbTypes);
 }
 
+TEST_F(JsepTrackTest, OfferRedUlpfecNoRtx) {
+  InitCodecs({.offer = {.addFecCodecs = true, .enableRtx = false},
+              .answer = {.addFecCodecs = true, .enableRtx = true}});
+  InitTracks(SdpMediaSection::kVideo);
+  InitSdp(SdpMediaSection::kVideo);
+  OfferAnswer();
+
+  CheckOffEncodingCount(1);
+  CheckAnsEncodingCount(1);
+
+  for (const auto& type : {"VP8", "AV1", "H264"}) {
+    for (const auto& [description, track] :
+         {std::tuple{"Offerer send", &mSendOff},
+          std::tuple{"Offerer recv", &mRecvOff},
+          std::tuple{"Answerer send", &mSendAns},
+          std::tuple{"Answerer recv", &mRecvAns}}) {
+      auto codec = AsVideo(GetCodec(*track, type));
+      ASSERT_TRUE(codec)
+      << description << " track has codec for " << type;
+      ASSERT_TRUE(codec->mFECEnabled)
+      << description << " " << type << " has fec";
+      ASSERT_FALSE(codec->mULPFECPayloadType.empty())
+      << description << " " << type << " has ulpfec";
+      ASSERT_FALSE(codec->mREDPayloadType.empty())
+      << description << " " << type << " has red";
+      ASSERT_TRUE(codec->mREDRTXPayloadType.empty())
+      << description << " " << type << " does not have red/rtx";
+    }
+  }
+}
+
+TEST_F(JsepTrackTest, AnswerRedUlpfecNoRtx) {
+  InitCodecs({.offer = {.addFecCodecs = true, .enableRtx = true},
+              .answer = {.addFecCodecs = true, .enableRtx = false}});
+  InitTracks(SdpMediaSection::kVideo);
+  InitSdp(SdpMediaSection::kVideo);
+  OfferAnswer();
+
+  CheckOffEncodingCount(1);
+  CheckAnsEncodingCount(1);
+
+  for (const auto& type : {"VP8", "AV1", "H264"}) {
+    for (const auto& [description, track] :
+         {std::tuple{"Offerer send", &mSendOff},
+          std::tuple{"Offerer recv", &mRecvOff},
+          std::tuple{"Answerer send", &mSendAns},
+          std::tuple{"Answerer recv", &mRecvAns}}) {
+      auto codec = AsVideo(GetCodec(*track, type));
+      ASSERT_TRUE(codec)
+      << description << " track has codec for " << type;
+      ASSERT_TRUE(codec->mFECEnabled)
+      << description << " " << type << " has fec";
+      ASSERT_FALSE(codec->mULPFECPayloadType.empty())
+      << description << " " << type << " has ulpfec";
+      ASSERT_FALSE(codec->mREDPayloadType.empty())
+      << description << " " << type << " has red";
+      if (track != &mRecvOff) {
+        ASSERT_TRUE(codec->mREDRTXPayloadType.empty())
+        << description << " " << type << " does not have red/rtx";
+      } else {
+        ASSERT_FALSE(codec->mREDRTXPayloadType.empty())
+        << description << " " << type
+        << " has red/rtx, since it offered to receive it";
+      }
+    }
+  }
+}
+
 TEST_F(JsepTrackTest, AudioSdpFmtpLine) {
   mOffCodecs = MakeCodecs(
       {.addFecCodecs = true, .preferRed = true, .addDtmfCodec = true});
@@ -1665,6 +1913,31 @@ TEST_F(JsepTrackTest, NonDefaultAudioSdpFmtpLine) {
   EXPECT_TRUE((codec = GetAudioCodec(mSendAns, 3, 2)));
   EXPECT_EQ("telephone-event", codec->mName);
   EXPECT_EQ("2-9", codec->mSdpFmtpLine.valueOr("nothing"));
+}
+
+TEST_F(JsepTrackTest, OpusPtimeNegotiatedFromRemoteFmtp) {
+  Init(SdpMediaSection::kAudio);
+
+  for (auto& codec : mOffCodecs) {
+    if (codec->mName == "opus") {
+      auto* audio = static_cast<JsepAudioCodecDescription*>(codec.get());
+      audio->mFrameSizeMs = 40;
+      audio->mMinFrameSizeMs = 10;
+      audio->mMaxFrameSizeMs = 60;
+      audio->mFECEnabled = true;
+    }
+  }
+
+  InitTracks(SdpMediaSection::kAudio);
+  InitSdp(SdpMediaSection::kAudio);
+  OfferAnswer();
+
+  UniquePtr<JsepAudioCodecDescription> codec;
+  ASSERT_TRUE((codec = GetAudioCodec(mSendAns, 2, 0)));
+  ASSERT_EQ("opus", codec->mName);
+  ASSERT_EQ(40U, codec->mFrameSizeMs);
+  ASSERT_EQ(10U, codec->mMinFrameSizeMs);
+  ASSERT_EQ(60U, codec->mMaxFrameSizeMs);
 }
 
 TEST_F(JsepTrackTest, VideoSdpFmtpLine) {
@@ -1814,7 +2087,7 @@ TEST(JsepTrackRecvPayloadTypesTest, SingleTrackPTsAreUnique)
     codec->mDirection = sdp::kSend;
     offer1Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection1);
   }
@@ -1864,7 +2137,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreUnique)
     codec->mDirection = sdp::kSend;
     offer1Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection1);
   }
@@ -1873,7 +2146,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreUnique)
     codec->mDirection = sdp::kSend;
     offer1Msection2.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection2);
   }
@@ -1932,7 +2205,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreDuplicates)
     codec->mDirection = sdp::kSend;
     offer1Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection1);
   }
@@ -1940,7 +2213,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreDuplicates)
     codec->mDirection = sdp::kSend;
     offer1Msection2.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection2);
   }
@@ -2003,7 +2276,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsOverlap)
     codec->mDirection = sdp::kSend;
     offer1Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection1);
   }
@@ -2012,7 +2285,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsOverlap)
     codec->mDirection = sdp::kSend;
     offer1Msection2.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection2);
   }
@@ -2076,7 +2349,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
     codec->mDirection = sdp::kSend;
     offer1Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection1);
   }
@@ -2085,7 +2358,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
     codec->mDirection = sdp::kSend;
     offer1Msection2.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer1Msection2);
   }
@@ -2133,7 +2406,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
     codec->mDirection = sdp::kSend;
     offer2Msection1.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer2Msection1);
   }
@@ -2142,7 +2415,7 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
     codec->mDirection = sdp::kSend;
     offer2Msection2.AddCodec(codec->mDefaultPt, codec->mName, codec->mClock,
                              codec->mChannels);
-    auto clone = WrapUnique(codec->Clone());
+    UniquePtr<JsepCodecDescription> clone = codec->Clone();
     clone->mDirection = sdp::kRecv;
     clone->AddToMediaSection(answer2Msection2);
   }
@@ -2168,4 +2441,114 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre());
   EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 2));
 }
+
+TEST(JsepTrackRecvSsrcTest, SsrcExtractionOnSendingMsection)
+{
+  // A sending remote m-section with a=ssrc lines should have those SSRCs
+  // captured as expected receive SSRCs.
+  constexpr auto audio = SdpMediaSection::MediaType::kAudio;
+
+  SipccSdp sdp(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
+  SdpMediaSection& msection = sdp.AddMediaSection(
+      audio, SdpDirectionAttribute::kSendonly, 0,
+      SdpHelper::GetProtocolForMediaType(audio), sdp::kIPv4, "0.0.0.0");
+  msection.SetSsrcs({12345678}, "test-cname");
+
+  JsepTrack t{audio, sdp::kRecv};
+  t.RecvTrackSetRemote(sdp, msection);
+
+  ASSERT_EQ(t.GetSsrcs().size(), 1u);
+  EXPECT_EQ(t.GetSsrcs().front(), 12345678u);
+}
+
+TEST(JsepTrackRecvSsrcTest, SsrcExtractionOnNonSendingMsection)
+{
+  // A non-sending (recvonly) remote m-section with a=ssrc lines is unusual
+  // but the SSRCs are extracted unless they duplicate our own send SSRCs.
+  constexpr auto audio = SdpMediaSection::MediaType::kAudio;
+
+  SipccSdp sdp(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
+  SdpMediaSection& msection = sdp.AddMediaSection(
+      audio, SdpDirectionAttribute::kRecvonly, 0,
+      SdpHelper::GetProtocolForMediaType(audio), sdp::kIPv4, "0.0.0.0");
+  msection.SetSsrcs({12345678}, "test-cname");
+
+  JsepTrack t{audio, sdp::kRecv};
+  // No own send SSRCs → no collision → SSRC is retained.
+  t.RecvTrackSetRemote(sdp, msection);
+
+  ASSERT_EQ(t.GetSsrcs().size(), 1u);
+  EXPECT_EQ(t.GetSsrcs().front(), 12345678u);
+}
+
+TEST(JsepTrackRecvSsrcTest, DuplicateSendSsrcFiltered)
+{
+  // If a remote a=ssrc value duplicates one of our own send SSRCs, it must
+  // be filtered out to prevent EnsureLocalSSRC() from regenerating our send
+  // SSRC to a value the peer never negotiated.
+  constexpr auto audio = SdpMediaSection::MediaType::kAudio;
+
+  SipccSdp sdp(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
+  SdpMediaSection& msection = sdp.AddMediaSection(
+      audio, SdpDirectionAttribute::kRecvonly, 0,
+      SdpHelper::GetProtocolForMediaType(audio), sdp::kIPv4, "0.0.0.0");
+  // Remote places two SSRCs in its recvonly section (unusual but seen with
+  // FaceTime): one collides with our send SSRC, one does not.
+  msection.SetSsrcs({12345678, 99999999}, "test-cname");
+
+  JsepTrack t{audio, sdp::kRecv};
+  // 12345678 is one of our own send SSRCs — it should be filtered out.
+  t.RecvTrackSetRemote(sdp, msection, {12345678});
+
+  ASSERT_EQ(t.GetSsrcs().size(), 1u);
+  EXPECT_EQ(t.GetSsrcs().front(), 99999999u);
+}
+
+TEST(JsepTrackRecvSsrcTest, MultipleUniqueSsrcsExtracted)
+{
+  // All unique SSRCs from a sending m-section should be captured in order.
+  constexpr auto audio = SdpMediaSection::MediaType::kAudio;
+
+  SipccSdp sdp(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
+  SdpMediaSection& msection = sdp.AddMediaSection(
+      audio, SdpDirectionAttribute::kSendonly, 0,
+      SdpHelper::GetProtocolForMediaType(audio), sdp::kIPv4, "0.0.0.0");
+  msection.SetSsrcs({11111111, 22222222, 33333333}, "test-cname");
+
+  JsepTrack t{audio, sdp::kRecv};
+  t.RecvTrackSetRemote(sdp, msection);
+
+  ASSERT_EQ(t.GetSsrcs().size(), 3u);
+  EXPECT_EQ(t.GetSsrcs()[0], 11111111u);
+  EXPECT_EQ(t.GetSsrcs()[1], 22222222u);
+  EXPECT_EQ(t.GetSsrcs()[2], 33333333u);
+}
+
+TEST(JsepTrackRecvSsrcTest, DuplicateSsrcLinesDeduped)
+{
+  // The same SSRC can appear on multiple a=ssrc lines with different
+  // attributes (e.g., cname on one line, msid on another). It should only
+  // be added to mSsrcs once.
+  constexpr auto audio = SdpMediaSection::MediaType::kAudio;
+
+  SipccSdp sdp(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
+  SdpMediaSection& msection = sdp.AddMediaSection(
+      audio, SdpDirectionAttribute::kSendonly, 0,
+      SdpHelper::GetProtocolForMediaType(audio), sdp::kIPv4, "0.0.0.0");
+
+  auto ssrcAttr = MakeUnique<SdpSsrcAttributeList>();
+  ssrcAttr->PushEntry(12345678, "cname:test-cname");
+  ssrcAttr->PushEntry(12345678, "msid:stream1 track1");
+  ssrcAttr->PushEntry(87654321, "cname:test-cname");
+  ssrcAttr->PushEntry(87654321, "msid:stream1 track2");
+  msection.GetAttributeList().SetAttribute(std::move(ssrcAttr));
+
+  JsepTrack t{audio, sdp::kRecv};
+  t.RecvTrackSetRemote(sdp, msection);
+
+  ASSERT_EQ(t.GetSsrcs().size(), 2u);
+  EXPECT_EQ(t.GetSsrcs()[0], 12345678u);
+  EXPECT_EQ(t.GetSsrcs()[1], 87654321u);
+}
+
 }  // namespace mozilla

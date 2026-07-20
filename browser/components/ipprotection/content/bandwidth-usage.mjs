@@ -8,6 +8,7 @@ import {
   LINKS,
   BANDWIDTH,
 } from "chrome://browser/content/ipprotection/ipprotection-constants.mjs";
+import { formatRemainingBandwidth } from "chrome://browser/content/ipprotection/ipprotection-utils.mjs";
 
 /**
  * Element used for displaying VPN bandwidth usage.
@@ -28,12 +29,12 @@ export default class BandwidthUsageCustomElement extends MozLitElement {
 
   get bandwidthPercent() {
     const percent = (100 * this.bandwidthUsed) / this.max;
-    if (percent > 90) {
+    if (percent >= 90) {
       return 90;
-    } else if (percent > 75) {
+    } else if (percent >= 75) {
       return 75;
     }
-    return percent.toFixed(0);
+    return Math.floor(percent);
   }
 
   get remainingMB() {
@@ -57,28 +58,19 @@ export default class BandwidthUsageCustomElement extends MozLitElement {
   }
 
   get remainingRounded() {
-    if (this.remainingGB < 1) {
-      // Bug 2006997 - Handle this scenario where less than 1 GB used.
-      return Math.floor(this.remainingMB);
-    } else if (this.bandwidthUsedGB < 1) {
-      return Math.floor(this.remainingGB);
-    }
-
-    return Math.round(this.remainingGB);
+    return formatRemainingBandwidth(this.remaining).value;
   }
 
   get bandwidthLeftDataL10nId() {
-    if (this.remainingGB < 1) {
-      return "ip-protection-bandwidth-left-mb";
-    }
-    return "ip-protection-bandwidth-left-gb";
+    return formatRemainingBandwidth(this.remaining).useGB
+      ? "ip-protection-bandwidth-left-gb-1"
+      : "ip-protection-bandwidth-left-mb-1";
   }
 
   get bandwidthLeftThisMonthDataL10nId() {
-    if (this.remainingGB < 1) {
-      return "ip-protection-bandwidth-left-this-month-mb";
-    }
-    return "ip-protection-bandwidth-left-this-month-gb";
+    return formatRemainingBandwidth(this.remaining).useGB
+      ? "ip-protection-bandwidth-left-this-month-gb"
+      : "ip-protection-bandwidth-left-this-month-mb";
   }
 
   constructor() {
@@ -93,14 +85,16 @@ export default class BandwidthUsageCustomElement extends MozLitElement {
 
     let descriptionText;
     if (this.remaining > 0) {
-      descriptionText = html`<span
+      descriptionText = html`<div
         id="progress-description"
         data-l10n-id=${this.bandwidthLeftDataL10nId}
         data-l10n-args=${JSON.stringify({
           usageLeft: this.remainingRounded,
           maxUsage: this.maxGB,
         })}
-      ></span>`;
+      >
+        <span data-l10n-name="usage"></span>
+      </div>`;
     } else {
       descriptionText = html`<span
         id="progress-description"
@@ -113,10 +107,10 @@ export default class BandwidthUsageCustomElement extends MozLitElement {
 
     return html`
       <div class="container">
-        <h3
-          id="bandwidth-header"
-          data-l10n-id="ip-protection-bandwidth-header"
-        ></h3>
+        <span
+          id="bandwidth-section-label"
+          data-l10n-id="ip-protection-bandwidth-header-1"
+        ></span>
         <div>
           <span
             id="usage-help-text"
@@ -128,15 +122,17 @@ export default class BandwidthUsageCustomElement extends MozLitElement {
           <a
             is="moz-support-link"
             part="support-link"
-            support-page=${LINKS.SUPPORT_URL}
+            support-page=${LINKS.SUPPORT_SLUG}
           ></a>
         </div>
         <div id="progress-container">
           <progress
             id="progress-bar"
             max=${this.maxGB}
-            value=${this.bandwidthUsedGB}
+            value=${parseFloat(this.bandwidthUsedGB.toFixed(1))}
             percent=${this.bandwidthPercent}
+            aria-labelledby="bandwidth-section-label"
+            aria-describedby="progress-description"
           ></progress>
           <div id="min-progress"></div>
         </div>

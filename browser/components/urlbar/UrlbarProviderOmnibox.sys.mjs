@@ -20,7 +20,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/ExtensionSearchHandler.sys.mjs",
 
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
-  UrlbarResult: "moz-src:///browser/components/urlbar/UrlbarResult.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
 });
 
 /**
@@ -59,7 +60,7 @@ export class UrlbarProviderOmnibox extends UrlbarProvider {
         queryContext.searchString,
         queryContext.tokens[0].value
       ) &&
-      !queryContext.searchMode
+      !queryContext.restrictInSearchMode()
     ) {
       return true;
     }
@@ -99,8 +100,8 @@ export class UrlbarProviderOmnibox extends UrlbarProvider {
     let keyword = queryContext.tokens[0].value;
     let description = lazy.ExtensionSearchHandler.getDescription(keyword);
     let heuristicResult = new lazy.UrlbarResult({
-      type: UrlbarUtils.RESULT_TYPE.OMNIBOX,
-      source: UrlbarUtils.RESULT_SOURCE.ADDON,
+      type: lazy.UrlbarShared.RESULT_TYPE.OMNIBOX,
+      source: lazy.UrlbarShared.RESULT_SOURCE.ADDON,
       heuristic: true,
       payload: {
         title: description,
@@ -134,8 +135,8 @@ export class UrlbarProviderOmnibox extends UrlbarProvider {
             continue;
           }
           let result = new lazy.UrlbarResult({
-            type: UrlbarUtils.RESULT_TYPE.OMNIBOX,
-            source: UrlbarUtils.RESULT_SOURCE.ADDON,
+            type: lazy.UrlbarShared.RESULT_TYPE.OMNIBOX,
+            source: lazy.UrlbarShared.RESULT_SOURCE.ADDON,
             payload: {
               title: suggestion.description,
               content,

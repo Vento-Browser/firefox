@@ -198,7 +198,7 @@ add_task(async function pasteMaxChars() {
   for (let i = 0; i < maxChars; i++) {
     value += String.fromCharCode("a".charCodeAt(0) + i);
   }
-  await selectAndPaste(value);
+  await UrlbarTestUtils.selectAndPaste(value, window);
 
   // Suggestions should be fetched since the pasted string is not longer than
   // maxChars.
@@ -229,7 +229,7 @@ add_task(async function pasteMoreThanMaxChars() {
   for (let i = 0; i < 2 * maxChars; i++) {
     value += String.fromCharCode("a".charCodeAt(0) + i);
   }
-  await selectAndPaste(value);
+  await UrlbarTestUtils.selectAndPaste(value, window);
 
   // Suggestions should not be fetched since the value was pasted and it was
   // longer than maxChars.
@@ -246,7 +246,7 @@ add_task(async function pasteMoreThanMaxChars() {
 
   // Paste again.  The string is longer than maxChars, so suggestions should not
   // be fetched.
-  await selectAndPaste(value);
+  await UrlbarTestUtils.selectAndPaste(value, window);
   await assertSuggestions([]);
 
   await SpecialPowers.popPrefEnv();
@@ -269,7 +269,7 @@ add_task(async function heuristicAddsFormHistory() {
 
   let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
   Assert.ok(result.heuristic);
-  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.SEARCH);
+  Assert.equal(result.type, UrlbarShared.RESULT_TYPE.SEARCH);
   Assert.equal(result.searchParams.query, "foo");
 
   let uri = (await SearchService.getDefault()).getSubmission("foo").uri;
@@ -336,7 +336,7 @@ async function getSuggestionResults() {
   for (let i = 0; i < matchCount; i++) {
     let result = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     if (
-      result.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
+      result.type == UrlbarShared.RESULT_TYPE.SEARCH &&
       result.searchParams.suggestion
     ) {
       result.index = i;

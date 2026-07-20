@@ -66,7 +66,7 @@ async function AssertNoPrivateResult(win) {
   for (let i = 0; i < count; ++i) {
     let result = await UrlbarTestUtils.getDetailsOfResultAt(win, i);
     Assert.ok(
-      result.type != UrlbarUtils.RESULT_TYPE.SEARCH ||
+      result.type != UrlbarShared.RESULT_TYPE.SEARCH ||
         !result.searchParams.inPrivateWindow,
       "Check this result is not a 'Search in a Private Window' one"
     );
@@ -79,7 +79,7 @@ async function AssertPrivateResult(win, engine, isPrivateEngine) {
   let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.SEARCH,
+    UrlbarShared.RESULT_TYPE.SEARCH,
     "Check result type"
   );
   Assert.ok(result.searchParams.inPrivateWindow, "Check inPrivateWindow");
@@ -269,20 +269,20 @@ add_task(async function test_restrict() {
   );
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
-    value: UrlbarTokenizer.RESTRICT.SEARCH,
+    value: UrlbarShared.RESTRICT_TOKENS.SEARCH,
   });
   await AssertNoPrivateResult(window);
 
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
-    value: UrlbarTokenizer.RESTRICT.SEARCH + " ",
+    value: UrlbarShared.RESTRICT_TOKENS.SEARCH + " ",
   });
   await AssertNoPrivateResult(window);
   await UrlbarTestUtils.exitSearchMode(window);
 
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
-    value: " " + UrlbarTokenizer.RESTRICT.SEARCH,
+    value: " " + UrlbarShared.RESTRICT_TOKENS.SEARCH,
   });
   await AssertNoPrivateResult(window);
 });
@@ -294,14 +294,14 @@ add_task(async function test_restrict_search() {
   let engine = await SearchService.getDefaultPrivate();
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
-    value: UrlbarTokenizer.RESTRICT.SEARCH + "test",
+    value: UrlbarShared.RESTRICT_TOKENS.SEARCH + "test",
   });
   let result = await AssertPrivateResult(window, engine, true);
   Assert.equal(result.searchParams.query, "test");
 
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
-    value: "test" + UrlbarTokenizer.RESTRICT.SEARCH,
+    value: "test" + UrlbarShared.RESTRICT_TOKENS.SEARCH,
   });
   result = await AssertPrivateResult(window, engine, true);
   Assert.equal(result.searchParams.query, "test?");

@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -12,6 +10,7 @@
 #include "mozilla/ScopeExit.h"              // mozilla::MakeScopeExit
 #include "mozilla/Try.h"                    // MOZ_TRY
 
+#include <bit>          // std::endian
 #include <stddef.h>     // size_t
 #include <stdint.h>     // uint8_t, uint16_t, uint32_t
 #include <type_traits>  // std::has_unique_object_representations
@@ -600,6 +599,7 @@ template <XDRMode mode>
   MOZ_TRY(xdr->codeUint32(stencil.specifier.rawDataRef()));
   MOZ_TRY(xdr->codeUint32(stencil.firstUnsupportedAttributeKey.rawDataRef()));
   MOZ_TRY(XDRVectorContent(xdr, stencil.attributes));
+  MOZ_TRY(xdr->codeEnumU8(&stencil.phase));
 
   return Ok();
 }
@@ -623,6 +623,7 @@ template <XDRMode mode>
   MOZ_TRY(xdr->codeUint32(stencil.localName.rawDataRef()));
   MOZ_TRY(xdr->codeUint32(stencil.importName.rawDataRef()));
   MOZ_TRY(xdr->codeUint32(stencil.exportName.rawDataRef()));
+  MOZ_TRY(xdr->codeEnumU8(&stencil.importNameValueType));
   MOZ_TRY(xdr->codeUint32(&stencil.lineno));
   MOZ_TRY(xdr->codeUint32(stencil.column.addressOfValueForTranscode()));
 
@@ -780,8 +781,6 @@ static XDRResult CodeMarker(XDRState<mode>* xdr, SectionMarker marker) {
 template <XDRMode mode>
 /* static */ XDRResult StencilXDR::codeCompilationStencil(
     XDRState<mode>* xdr, CompilationStencil& stencil) {
-  MOZ_ASSERT(!stencil.hasAsmJS());
-
   if constexpr (mode == XDR_DECODE) {
     const auto& options = static_cast<XDRStencilDecoder*>(xdr)->options();
     if (options.borrowBuffer) {
@@ -1114,6 +1113,14 @@ XDRResult StencilXDR::codeSourceData(XDRState<mode>* const xdr,
     Missing,
   };
 
+  // We need to freeze the ScriptSource state while encoding it.
+  // The actual logic reads either the compressed or uncompressed raw data.
+  // Neither of compression nor uncompression should be performed.
+  mozilla::Maybe<ScriptSource::GenericReader> reader;
+  if (mode == XDR_ENCODE) {
+    reader.emplace(ss);
+  }
+
   DataType tag;
   {
     // This is terrible, but we can't do better.  When |mode == XDR_DECODE| we
@@ -1378,7 +1385,11 @@ JS_PUBLIC_API bool JS::GetScriptTranscodingBuildId(
   // XDR depends on pointer size and endianness.
   static_assert(sizeof(uintptr_t) == 4 || sizeof(uintptr_t) == 8);
   buildId->infallibleAppend(sizeof(uintptr_t) == 4 ? '4' : '8');
-  buildId->infallibleAppend(MOZ_LITTLE_ENDIAN() ? 'l' : 'b');
+  if constexpr (std::endian::native == std::endian::little) {
+    buildId->infallibleAppend('l');
+  } else {
+    buildId->infallibleAppend('b');
+  }
 
   return true;
 }
@@ -1613,18 +1624,10 @@ template /* static */ XDRResult StencilXDR::codeCompilationStencil(
 
 /* static */ XDRResult StencilXDR::checkCompilationStencil(
     XDRStencilEncoder* encoder, const CompilationStencil& stencil) {
-  if (stencil.hasAsmJS()) {
-    return encoder->fail(JS::TranscodeResult::Failure_AsmJSNotSupported);
-  }
-
   return Ok();
 }
 
 /* static */ XDRResult StencilXDR::checkCompilationStencil(
     const ExtensibleCompilationStencil& stencil) {
-  if (stencil.hasAsmJS()) {
-    return mozilla::Err(JS::TranscodeResult::Failure_AsmJSNotSupported);
-  }
-
   return Ok();
 }

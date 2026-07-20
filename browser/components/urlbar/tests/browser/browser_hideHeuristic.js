@@ -39,8 +39,8 @@ add_task(async function extension() {
         type: UrlbarUtils.PROVIDER_TYPE.EXTENSION,
         results: [
           new UrlbarResult({
-            type: UrlbarUtils.RESULT_TYPE.URL,
-            source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+            type: UrlbarShared.RESULT_TYPE.URL,
+            source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
             heuristic: true,
             payload: {
               url,
@@ -127,7 +127,7 @@ add_task(async function searchTip() {
       Assert.ok(true, "View opened");
       Assert.equal(UrlbarTestUtils.getResultCount(window), 1);
       let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
-      Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.TIP);
+      Assert.equal(result.type, UrlbarShared.RESULT_TYPE.TIP);
       Assert.ok(result.heuristic);
       Assert.ok(UrlbarTestUtils.getSelectedElement(window), "Selection exists");
     }
@@ -272,7 +272,7 @@ add_task(async function fallback_searchRestrictionToken() {
       await withEngine({ makeDefault: true }, async () => {
         // Do a search with `?` and check the hidden heuristic result.
         let heuristic = await search({
-          value: UrlbarTokenizer.RESTRICT.SEARCH + " foo",
+          value: UrlbarShared.RESTRICT_TOKENS.SEARCH + " foo",
           expectedGroup: UrlbarUtils.RESULT_GROUP.HEURISTIC_FALLBACK,
         });
         Assert.equal(
@@ -448,12 +448,12 @@ async function checkVisitResults(expectedURLs) {
     let result = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.equal(
       result.type,
-      UrlbarUtils.RESULT_TYPE.URL,
+      UrlbarShared.RESULT_TYPE.URL,
       "Other result type is correct at index " + i
     );
     Assert.equal(
       result.source,
-      UrlbarUtils.RESULT_SOURCE.HISTORY,
+      UrlbarShared.RESULT_SOURCE.HISTORY,
       "Other result source is correct at index " + i
     );
     Assert.equal(

@@ -9,7 +9,9 @@ const kDefaultDictionaryContent = 'This is a test dictionary.\n';
 const kDefaultDictionaryHashBase64 =
     ':U5abz16WDg7b8KS93msLPpOB4Vbef1uRzoORYkJw9BY=:';
 const kRegisterDictionaryPath = './resources/register-dictionary.py';
+const kRegisterDictionaryHttp2Path = './resources/register-dictionary.h2.py';
 const kCompressedDataPath = './resources/compressed-data.py';
+const kCompressedDataHttp2Path = './resources/compressed-data.h2.py';
 const kExpectedCompressedData =
     `This is compressed test data using a test dictionary`;
 const kCheckHeaderMaxRetry = 10;
@@ -142,4 +144,15 @@ function compression_dictionary_promise_test(func, name, properties) {
     test.add_cleanup(clearSiteData);
     await func(test);
   }, name, properties);
+}
+
+// Registers an alternative dictionary and waits for its registration to
+// complete. This is used in tests to confirm that another dictionary's
+// registration process has fully finished.
+async function registerAltDictionaryAndWait(t) {
+  const pattern = "%2Ffetch%2Fcompression-dictionary%2Fresources%2Fecho-headers2.py";
+  await fetch(`${kRegisterDictionaryPath}?id=id2&match=${pattern}`);
+  assert_equals(
+      await waitUntilAvailableDictionaryHeader(t, {use_alt_path: true}),
+      kDefaultDictionaryHashBase64);
 }

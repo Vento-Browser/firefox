@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +6,6 @@
 
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/FlowMarkers.h"
-#include "mozilla/FOGIPC.h"
 #include "mozilla/ProfilerMarkers.h"
 #include "js/AllocationRecording.h"
 #include "js/ProfilingStack.h"
@@ -16,6 +13,9 @@
 #if defined(XP_WIN)
 #  include <windows.h>
 #elif defined(XP_DARWIN)
+#  include <pthread.h>
+#elif defined(XP_LINUX) && !defined(ANDROID)
+#  include "mozilla/ScopeExit.h"
 #  include <pthread.h>
 #endif
 
@@ -56,6 +56,27 @@ struct ThreadCpuUseMarker {
 
 namespace mozilla::profiler {
 
+#if defined(XP_LINUX) && !defined(ANDROID)
+static const void* pthread_get_stacktop_linux(const void* aStackTop) {
+  pthread_attr_t attr;
+  if (pthread_getattr_np(pthread_self(), &attr) != 0) {
+    return aStackTop;
+  }
+  auto attrGuard = MakeScopeExit([&]() { pthread_attr_destroy(&attr); });
+  void* stackBase = nullptr;
+  size_t stackSize = 0;
+  if (pthread_attr_getstack(&attr, &stackBase, &stackSize) != 0 ||
+      !(stackBase && stackSize > 0)) {
+    return aStackTop;
+  }
+  // > The base (lowest addressable byte) of the storage shall be
+  // > stackaddr, and the size of the storage shall be stacksize
+  // > bytes.
+  // <https://www.man7.org/linux/man-pages/man3/pthread_attr_getstack.3p.html>
+  return static_cast<const char*>(stackBase) + stackSize;
+}
+#endif
+
 ThreadRegistrationData::ThreadRegistrationData(const char* aName,
                                                const void* aStackTop)
     : mInfo(aName),
@@ -69,6 +90,9 @@ ThreadRegistrationData::ThreadRegistrationData(const char* aName,
           // We don't have to guess on Mac/Darwin.
           reinterpret_cast<const void*>(
               pthread_get_stackaddr_np(pthread_self()))
+#elif defined(XP_LINUX) && !defined(ANDROID)
+          // We don't have to guess on non-Android Linux.
+          pthread_get_stacktop_linux(aStackTop)
 #else
           // Otherwise use the given guess.
           aStackTop
@@ -81,32 +105,27 @@ ThreadRegistrationData::ThreadRegistrationData(const char* aName,
 static void profiler_add_js_marker(mozilla::MarkerCategory aCategory,
                                    const char* aMarkerName,
                                    const char* aMarkerText) {
-#ifdef MOZ_GECKO_PROFILER
   AUTO_PROFILER_STATS(js_marker);
   profiler_add_marker(
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerName),
       aCategory, {}, ::geckoprofiler::markers::TextMarker{},
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerText));
-#endif
 }
 
 static void profiler_add_js_interval(mozilla::MarkerCategory aCategory,
                                      const char* aMarkerName,
                                      mozilla::TimeStamp aStartTime,
                                      const char* aMarkerText) {
-#ifdef MOZ_GECKO_PROFILER
   AUTO_PROFILER_STATS(js_interval);
   profiler_add_marker(
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerName),
       aCategory, mozilla::MarkerTiming::IntervalUntilNowFrom(aStartTime),
       ::geckoprofiler::markers::TextMarker{},
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerText));
-#endif
 }
 
 static void profiler_add_js_flow(mozilla::MarkerCategory aCategory,
                                  const char* aMarkerName, uint64_t aFlowId) {
-#ifdef MOZ_GECKO_PROFILER
   if (!profiler_feature_active(ProfilerFeature::Flows)) {
     return;
   }
@@ -115,13 +134,11 @@ static void profiler_add_js_flow(mozilla::MarkerCategory aCategory,
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerName),
       aCategory, {}, ::geckoprofiler::markers::FlowMarker{},
       Flow::ProcessScoped(aFlowId));
-#endif
 }
 
 static void profiler_add_js_terminating_flow(mozilla::MarkerCategory aCategory,
                                              const char* aMarkerName,
                                              uint64_t aFlowId) {
-#ifdef MOZ_GECKO_PROFILER
   if (!profiler_feature_active(ProfilerFeature::Flows)) {
     return;
   }
@@ -130,7 +147,6 @@ static void profiler_add_js_terminating_flow(mozilla::MarkerCategory aCategory,
       mozilla::ProfilerString8View::WrapNullTerminatedString(aMarkerName),
       aCategory, {}, ::geckoprofiler::markers::TerminatingFlowMarker{},
       Flow::ProcessScoped(aFlowId));
-#endif
 }
 
 static void profiler_add_js_allocation_marker(JS::RecordAllocationInfo&& info) {
@@ -308,16 +324,17 @@ void ThreadRegistrationLockedRWOnThread::PollJSSampling() {
 }
 
 #ifdef NIGHTLY_BUILD
-void ThreadRegistrationUnlockedConstReaderAndAtomicRW::RecordWakeCount() const {
+bool ThreadRegistrationUnlockedConstReaderAndAtomicRW::RecordWakeCount(
+    nsACString& aThreadName, uint64_t& aCpuTimeMs, uint64_t& aWakeCount) const {
   baseprofiler::detail::BaseProfilerAutoLock lock(mRecordWakeCountMutex);
 
-  uint64_t newWakeCount = mWakeCount - mAlreadyRecordedWakeCount;
-  if (newWakeCount == 0 && mSleep != AWAKE) {
+  aWakeCount = mWakeCount - mAlreadyRecordedWakeCount;
+  if (aWakeCount == 0 && mSleep != AWAKE) {
     // If no new wake-up was counted, and the thread is not marked awake,
     // we can be pretty sure there is no CPU activity to record.
     // Threads that are never annotated as asleep/awake (typically rust threads)
     // start as awake.
-    return;
+    return false;
   }
 
   uint64_t cpuTimeNs;
@@ -328,37 +345,37 @@ void ThreadRegistrationUnlockedConstReaderAndAtomicRW::RecordWakeCount() const {
   constexpr uint64_t NS_PER_MS = 1'000'000;
   uint64_t cpuTimeMs = cpuTimeNs / NS_PER_MS;
 
-  uint64_t newCpuTimeMs = MOZ_LIKELY(cpuTimeMs > mAlreadyRecordedCpuTimeInMs)
-                              ? cpuTimeMs - mAlreadyRecordedCpuTimeInMs
-                              : 0;
+  aCpuTimeMs = MOZ_LIKELY(cpuTimeMs > mAlreadyRecordedCpuTimeInMs)
+                   ? cpuTimeMs - mAlreadyRecordedCpuTimeInMs
+                   : 0;
 
-  if (!newWakeCount && !newCpuTimeMs) {
+  if (!aWakeCount && !aCpuTimeMs) {
     // Nothing to report, avoid computing the Glean friendly thread name.
-    return;
+    return false;
   }
 
-  nsAutoCString threadName(mInfo.Name());
+  aThreadName.Assign(mInfo.Name());
   // Trim the trailing number of threads that are part of a thread pool.
-  for (size_t length = threadName.Length(); length > 0; --length) {
-    const char c = threadName.CharAt(length - 1);
+  for (size_t length = aThreadName.Length(); length > 0; --length) {
+    const char c = aThreadName.CharAt(length - 1);
     if ((c < '0' || c > '9') && c != '#' && c != ' ') {
-      if (length != threadName.Length()) {
-        threadName.SetLength(length);
+      if (length != aThreadName.Length()) {
+        aThreadName.SetLength(length);
       }
       break;
     }
   }
-
-  mozilla::glean::RecordThreadCpuUse(threadName, newCpuTimeMs, newWakeCount);
 
   // The thread id is provided as part of the payload because this call is
   // inside a ThreadRegistration data function, which could be invoked with
   // the ThreadRegistry locked. We cannot call any function/option that could
   // attempt to lock the ThreadRegistry again, like MarkerThreadId.
   PROFILER_MARKER("Thread CPU use", OTHER, {}, ThreadCpuUseMarker,
-                  mInfo.ThreadId(), newCpuTimeMs, newWakeCount, threadName);
+                  mInfo.ThreadId(), aCpuTimeMs, aWakeCount, aThreadName);
   mAlreadyRecordedCpuTimeInMs = cpuTimeMs;
-  mAlreadyRecordedWakeCount += newWakeCount;
+  mAlreadyRecordedWakeCount += aWakeCount;
+
+  return true;
 }
 #endif
 

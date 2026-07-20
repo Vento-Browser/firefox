@@ -117,7 +117,7 @@ add_task(async function test_edit_profile_custom_avatar() {
         await new Promise(resolve => content.requestAnimationFrame(resolve));
 
         EventUtils.synthesizeMouseAtCenter(
-          editProfileCard.avatarSelectorLink,
+          editProfileCard.avatarSelectorButton,
           {},
           content
         );
@@ -150,7 +150,7 @@ add_task(async function test_edit_profile_custom_avatar_upload() {
   const mockAvatarFile = await createAvatarFile(avatarWidth, avatarHeight);
 
   const MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window.browsingContext);
+  MockFilePicker.init();
   MockFilePicker.setFiles([mockAvatarFile]);
   MockFilePicker.returnValue = MockFilePicker.returnOK;
 
@@ -183,7 +183,7 @@ add_task(async function test_edit_profile_custom_avatar_upload() {
           await new Promise(resolve => content.requestAnimationFrame(resolve));
 
           EventUtils.synthesizeMouseAtCenter(
-            editProfileCard.avatarSelectorLink,
+            editProfileCard.avatarSelectorButton,
             {},
             content
           );
@@ -304,7 +304,7 @@ add_task(async function test_avatar_selector_tabs() {
         await new Promise(resolve => content.requestAnimationFrame(resolve));
 
         EventUtils.synthesizeMouseAtCenter(
-          editProfileCard.avatarSelectorLink,
+          editProfileCard.avatarSelectorButton,
           {},
           content
         );
@@ -346,7 +346,7 @@ add_task(async function test_avatar_selector_tabs() {
         );
         Assert.equal(
           avatarSelector.customTabButton.type,
-          "default",
+          "ghost",
           "Custom tab should be inactive by default"
         );
 
@@ -366,7 +366,7 @@ add_task(async function test_avatar_selector_tabs() {
         );
         Assert.equal(
           avatarSelector.iconTabButton.type,
-          "default",
+          "ghost",
           "Icon tab should be inactive"
         );
 
@@ -386,7 +386,7 @@ add_task(async function test_avatar_selector_tabs() {
         );
         Assert.equal(
           avatarSelector.customTabButton.type,
-          "default",
+          "ghost",
           "Custom tab should be inactive"
         );
       });
@@ -409,7 +409,7 @@ add_task(async function test_edit_profile_custom_avatar_crop() {
   const mockAvatarFile = await createAvatarFile(avatarWidth, avatarHeight);
 
   const MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window.browsingContext);
+  MockFilePicker.init();
   MockFilePicker.setFiles([mockAvatarFile]);
   MockFilePicker.returnValue = MockFilePicker.returnOK;
 
@@ -443,7 +443,7 @@ add_task(async function test_edit_profile_custom_avatar_crop() {
           const avatarSelector = editProfileCard.avatarSelector;
 
           EventUtils.synthesizeMouseAtCenter(
-            editProfileCard.avatarSelectorLink,
+            editProfileCard.avatarSelectorButton,
             {},
             content
           );
@@ -638,7 +638,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
   const mockAvatarFile = await createAvatarFile(avatarWidth, avatarHeight);
 
   const MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window.browsingContext);
+  MockFilePicker.init();
   MockFilePicker.setFiles([mockAvatarFile]);
   MockFilePicker.returnValue = MockFilePicker.returnOK;
 
@@ -698,7 +698,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
           const avatarSelector = editProfileCard.avatarSelector;
 
           EventUtils.synthesizeMouseAtCenter(
-            editProfileCard.avatarSelectorLink,
+            editProfileCard.avatarSelectorButton,
             {},
             content
           );
@@ -895,7 +895,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
   const mockAvatarFile = await createAvatarFile(avatarWidth, avatarHeight);
 
   const MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window.browsingContext);
+  MockFilePicker.init();
   MockFilePicker.setFiles([mockAvatarFile]);
   MockFilePicker.returnValue = MockFilePicker.returnOK;
 
@@ -926,7 +926,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
         const avatarSelector = editProfileCard.avatarSelector;
 
         EventUtils.synthesizeMouseAtCenter(
-          editProfileCard.avatarSelectorLink,
+          editProfileCard.avatarSelectorButton,
           {},
           content
         );
@@ -948,7 +948,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
         );
 
         EventUtils.synthesizeMouseAtCenter(
-          editProfileCard.avatarSelectorLink,
+          editProfileCard.avatarSelectorButton,
           {},
           content
         );
@@ -986,7 +986,7 @@ add_task(async function test_edit_profile_custom_avatar_keyboard_crop() {
         );
 
         EventUtils.synthesizeMouseAtCenter(
-          editProfileCard.avatarSelectorLink,
+          editProfileCard.avatarSelectorButton,
           {},
           content
         );

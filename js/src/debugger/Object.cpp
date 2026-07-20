@@ -1,10 +1,6 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-#include "debugger/Object-inl.h"
 
 #include "mozilla/Maybe.h"   // for Maybe, Nothing, Some
 #include "mozilla/Range.h"   // for Range
@@ -25,6 +21,7 @@
 #include "debugger/Script.h"     // for DebuggerScript
 #include "debugger/Source.h"     // for DebuggerSource
 #include "gc/Tracer.h"        // for TraceManuallyBarrieredCrossCompartmentEdge
+#include "jit/JitOptions.h"   // for jit::HasJitBackend, fuzzingSafe
 #include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
 #include "js/CompilationAndEvaluation.h"  //  for Compile
 #include "js/Conversions.h"               // for ToObject
@@ -70,6 +67,7 @@
 #include "vm/StringType.h"               // for JSAtom, PropertyName
 #include "vm/WrapperObject.h"            // for JSObject::is, WrapperObject
 
+#include "debugger/Object-inl.h"
 #include "gc/StableCellHasher-inl.h"
 #include "vm/Compartment-inl.h"  // for Compartment::wrap
 #include "vm/JSObject-inl.h"  // for GetObjectClassName, InitClass, NewObjectWithGivenProtoAndKind, ToPropertyKey
@@ -85,16 +83,7 @@ using mozilla::Nothing;
 using mozilla::Some;
 
 const JSClassOps DebuggerObject::classOps_ = {
-    nullptr,                          // addProperty
-    nullptr,                          // delProperty
-    nullptr,                          // enumerate
-    nullptr,                          // newEnumerate
-    nullptr,                          // resolve
-    nullptr,                          // mayResolve
-    nullptr,                          // finalize
-    nullptr,                          // call
-    nullptr,                          // construct
-    CallTraceMethod<DebuggerObject>,  // trace
+    .trace = CallTraceMethod<DebuggerObject>,
 };
 
 const JSClass DebuggerObject::class_ = {
@@ -819,18 +808,45 @@ bool DebuggerObject::CallData::getOwnPrivatePropertiesMethod() {
     return false;
   }
 
-  JSObject* obj = IdVectorToArray(cx, ids);
-  if (!obj) {
+  // Wrap each private name symbol in an opaque Debugger.PrivateName object so
+  // the raw symbol is never exposed to script (see bug 1917308).
+  Debugger* dbg = object->owner();
+  Rooted<NativeObject*> debugger(cx, dbg->toJSObject());
+  RootedObject proto(
+      cx, &debugger->getReservedSlot(Debugger::JSSLOT_DEBUG_PRIVATE_NAME_PROTO)
+               .toObject());
+
+  Rooted<ArrayObject*> arr(cx, NewDenseFullyAllocatedArray(cx, ids.length()));
+  if (!arr) {
     return false;
   }
+  arr->ensureDenseInitializedLength(0, ids.length());
 
-  args.rval().setObject(*obj);
+  Rooted<JS::Symbol*> privateName(cx);
+  for (size_t i = 0; i < ids.length(); i++) {
+    privateName = ids[i].toSymbol();
+    DebuggerPrivateName* wrapper =
+        DebuggerPrivateName::create(cx, proto, privateName, debugger);
+    if (!wrapper) {
+      return false;
+    }
+    arr->initDenseElement(i, ObjectValue(*wrapper));
+  }
+
+  args.rval().setObject(*arr);
   return true;
 }
 
 bool DebuggerObject::CallData::getOwnPropertyDescriptorMethod() {
   RootedId id(cx);
-  if (!ToPropertyKey(cx, args.get(0), &id)) {
+  RootedValue arg(cx, args.get(0));
+  if (arg.isObject() && arg.toObject().is<DebuggerPrivateName>()) {
+    // Unwrap a Debugger.PrivateName to its internal private name symbol, so
+    // callers can query private fields without ever handling the raw symbol
+    // (see bug 1917308).
+    id = PropertyKey::Symbol(
+        arg.toObject().as<DebuggerPrivateName>().privateName());
+  } else if (!ToPropertyKey(cx, arg, &id)) {
     return false;
   }
 
@@ -1277,12 +1293,6 @@ bool DebuggerObject::CallData::createSource() {
 
   bool isScriptElement = ToBoolean(v);
 
-  if (!JS_GetProperty(cx, options, "forceEnableAsmJS", &v)) {
-    return false;
-  }
-
-  bool forceEnableAsmJS = ToBoolean(v);
-
   RootedScript script(cx);
   {
     AutoRealm ar(cx, referent);
@@ -1290,9 +1300,6 @@ bool DebuggerObject::CallData::createSource() {
     JS::CompileOptions compileOptions(cx);
     compileOptions.lineno = startLine;
     compileOptions.column = JS::ColumnNumberOneOrigin(startColumn);
-    if (forceEnableAsmJS) {
-      compileOptions.setAsmJSOption(JS::AsmJSOption::Enabled);
-    }
 
     if (!JS::StringHasLatin1Chars(url)) {
       JS_ReportErrorASCII(cx, "URL must be a narrow string");
@@ -1575,9 +1582,13 @@ const JSFunctionSpec DebuggerObject::methods_[] = {
     JS_DEBUG_FN("isSameNative", isSameNativeMethod, 1),
     JS_DEBUG_FN("isSameNativeWithJitInfo", isSameNativeWithJitInfoMethod, 1),
     JS_DEBUG_FN("isNativeGetterWithJitInfo", isNativeGetterWithJitInfo, 1),
-    JS_DEBUG_FN("unsafeDereference", unsafeDereferenceMethod, 0),
     JS_DEBUG_FN("unwrap", unwrapMethod, 0),
     JS_DEBUG_FN("getPromiseReactions", getPromiseReactionsMethod, 0),
+    JS_FS_END,
+};
+
+const JSFunctionSpec DebuggerObject::fuzzing_unsafe_methods_[] = {
+    JS_DEBUG_FN("unsafeDereference", unsafeDereferenceMethod, 0),
     JS_FS_END,
 };
 
@@ -1598,6 +1609,13 @@ NativeObject* DebuggerObject::initClass(JSContext* cx,
     return nullptr;
   }
 
+  if (!fuzzingSafe) {
+    if (!DefinePropertiesAndFunctions(cx, objectProto, nullptr,
+                                      fuzzing_unsafe_methods_)) {
+      return nullptr;
+    }
+  }
+
   return objectProto;
 }
 
@@ -1605,15 +1623,105 @@ NativeObject* DebuggerObject::initClass(JSContext* cx,
 DebuggerObject* DebuggerObject::create(JSContext* cx, HandleObject proto,
                                        HandleObject referent,
                                        Handle<NativeObject*> debugger) {
+  NewObjectKind newKind = GetNewObjectKind(referent);
   DebuggerObject* obj =
-      IsInsideNursery(referent)
-          ? NewObjectWithGivenProto<DebuggerObject>(cx, proto)
-          : NewTenuredObjectWithGivenProto<DebuggerObject>(cx, proto);
+      NewObjectWithGivenProto<DebuggerObject>(cx, proto, {.newKind = newKind});
   if (!obj) {
     return nullptr;
   }
 
   obj->setReservedSlotGCThingAsPrivate(OBJECT_SLOT, referent);
+  obj->setReservedSlot(OWNER_SLOT, ObjectValue(*debugger));
+
+  return obj;
+}
+
+const JSClass DebuggerPrivateName::class_ = {
+    "PrivateName",
+    JSCLASS_HAS_RESERVED_SLOTS(RESERVED_SLOTS),
+};
+
+/* static */
+bool DebuggerPrivateName::construct(JSContext* cx, unsigned argc, Value* vp) {
+  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_NO_CONSTRUCTOR,
+                            "Debugger.PrivateName");
+  return false;
+}
+
+/* static */
+bool DebuggerPrivateName::descriptionGetter(JSContext* cx, unsigned argc,
+                                            Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  JSObject* thisobj = RequireObject(cx, args.thisv());
+  if (!thisobj) {
+    return false;
+  }
+  if (!thisobj->is<DebuggerPrivateName>()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_INCOMPATIBLE_PROTO, "Debugger.PrivateName",
+                              "description", thisobj->getClass()->name);
+    return false;
+  }
+
+  // The description atom already includes the leading '#'.
+  args.rval().setString(
+      thisobj->as<DebuggerPrivateName>().privateName()->description());
+  return true;
+}
+
+/* static */
+bool DebuggerPrivateName::toStringMethod(JSContext* cx, unsigned argc,
+                                         Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  JSObject* thisobj = RequireObject(cx, args.thisv());
+  if (!thisobj) {
+    return false;
+  }
+  if (!thisobj->is<DebuggerPrivateName>()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_INCOMPATIBLE_PROTO, "Debugger.PrivateName",
+                              "toString", thisobj->getClass()->name);
+    return false;
+  }
+
+  // The description atom already includes the leading '#', so consumers can
+  // treat the wrapper as its display name (e.g. use it as a watchpoint key).
+  args.rval().setString(
+      thisobj->as<DebuggerPrivateName>().privateName()->description());
+  return true;
+}
+
+const JSPropertySpec DebuggerPrivateName::properties_[] = {
+    JS_PSG("description", descriptionGetter, 0),
+    JS_PS_END,
+};
+
+const JSFunctionSpec DebuggerPrivateName::methods_[] = {
+    JS_FN("toString", toStringMethod, 0, 0),
+    JS_FS_END,
+};
+
+/* static */
+NativeObject* DebuggerPrivateName::initClass(JSContext* cx,
+                                             Handle<GlobalObject*> global,
+                                             HandleObject debugCtor) {
+  return InitClass(cx, debugCtor, nullptr, nullptr, "PrivateName", construct, 0,
+                   properties_, methods_, nullptr, nullptr);
+}
+
+/* static */
+DebuggerPrivateName* DebuggerPrivateName::create(
+    JSContext* cx, HandleObject proto, Handle<JS::Symbol*> privateName,
+    Handle<NativeObject*> debugger) {
+  DebuggerPrivateName* obj = NewObjectWithGivenProto<DebuggerPrivateName>(
+      cx, proto, {.newKind = TenuredObject});
+  if (!obj) {
+    return nullptr;
+  }
+
+  obj->setReservedSlot(SYMBOL_SLOT, SymbolValue(privateName));
   obj->setReservedSlot(OWNER_SLOT, ObjectValue(*debugger));
 
   return obj;

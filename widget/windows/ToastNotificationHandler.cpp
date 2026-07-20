@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sts=2 sw=2 et cin: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,8 +6,8 @@
 
 #include <windows.foundation.h>
 
-#include "gfxUtils.h"
 #include "gfxPlatform.h"
+#include "gfxUtils.h"
 #include "imgIContainer.h"
 #include "imgIRequest.h"
 #include "json/json.h"
@@ -17,9 +15,13 @@
 #ifdef MOZ_BACKGROUNDTASKS
 #  include "mozilla/BackgroundTasks.h"
 #endif
+#include "ToastNotification.h"
+#include "ToastNotificationHeaderOnlyUtils.h"
+#include "WidgetUtils.h"
+#include "WinUtils.h"
 #include "mozilla/JSONStringWriteFuncs.h"
-#include "mozilla/Result.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Result.h"
 #include "mozilla/Tokenizer.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/intl/Localization.h"
@@ -38,11 +40,6 @@
 #include "nsPIDOMWindow.h"
 #include "nsProxyRelease.h"
 #include "nsXREDirProvider.h"
-#include "ToastNotificationHeaderOnlyUtils.h"
-#include "WidgetUtils.h"
-#include "WinUtils.h"
-
-#include "ToastNotification.h"
 
 namespace mozilla {
 namespace widget {
@@ -186,16 +183,17 @@ Result<nsString, nsresult> ToastNotificationHandler::GetLaunchArgument() {
   nsString launchArg;
 
   // When the preference is false, the COM notification server will be invoked,
-  // discover that there is no `program`, and exit (successfully), after which
-  // Windows will invoke the in-product Windows 8-style callbacks.  When true,
-  // the COM notification server will launch Firefox with sufficient arguments
-  // for Firefox to handle the notification.
+  // notice that this is a request that it should ignore, and exit
+  // (successfully), after which Windows will invoke the in-product Windows
+  // 8-style callbacks.  When true, the COM notification server will launch
+  // Firefox with sufficient arguments for Firefox to handle the notification.
   if (!Preferences::GetBool(
           "alerts.useSystemBackend.windows.notificationserver.enabled",
           false)) {
-    // Include dummy key/value so that newline appended arguments aren't off by
-    // one line.
-    launchArg += u"invalid key\ninvalid value"_ns;
+    // The COM notification server will look for this specific key and value to
+    // trigger the behavior mentioned above, of exiting and allowing Windows
+    // 8-style callbacks to run.
+    launchArg += u"skipNotificationServer\ntrue"_ns;
     return launchArg;
   }
 
@@ -297,23 +295,29 @@ void ToastNotificationHandler::HandleCloseFromBrowser() {
 nsresult ToastNotificationHandler::InitAlertAsync() {
   MOZ_TRY(mAlertNotification->GetId(mWindowsTag));
 
+  // The image file might already have been set by system principal APIs.
+  if (mImageUri.IsEmpty()) {
 #ifdef MOZ_BACKGROUNDTASKS
-  nsAutoString imageUrl;
-  if (BackgroundTasks::IsBackgroundTaskMode() &&
-      NS_SUCCEEDED(mAlertNotification->GetImageURL(imageUrl)) &&
-      !imageUrl.IsEmpty()) {
-    // Bug 1870750: Image decoding relies on gfx and runs on a thread pool,
-    // which expects to have been initialized early and on the main thread.
-    // Since background tasks run headless this never occurs. In this case we
-    // force gfx initialization.
-    (void)NS_WARN_IF(!gfxPlatform::GetPlatform());
-  }
+    nsAutoString imageUrl;
+    if (BackgroundTasks::IsBackgroundTaskMode() &&
+        NS_SUCCEEDED(mAlertNotification->GetImageURL(imageUrl)) &&
+        !imageUrl.IsEmpty()) {
+      // Bug 1870750: Image decoding relies on gfx and runs on a thread pool,
+      // which expects to have been initialized early and on the main thread.
+      // Since background tasks run headless this never occurs. In this case we
+      // force gfx initialization.
+      (void)NS_WARN_IF(!gfxPlatform::GetPlatform());
+    }
 #endif
 
-  nsCOMPtr<imgIContainer> image;
-  MOZ_TRY(mAlertNotification->GetImage(getter_AddRefs(image)));
+    nsCOMPtr<imgIContainer> image;
+    MOZ_TRY(mAlertNotification->GetImage(getter_AddRefs(image)));
 
-  return image ? AsyncSaveImage(image) : TryShowAlert();
+    // Defer showing alert until image has saved to disk.
+    return image ? AsyncSaveImage(image) : TryShowAlert();
+  }
+
+  return TryShowAlert();
 }
 
 nsString ToastNotificationHandler::ActionArgsJSONString(
@@ -860,6 +864,19 @@ ToastNotificationHandler::OnActivate(
       }
     }
 
+    Json::Value jsonData;
+    Json::Reader jsonReader;
+    Maybe<nsString> actionValue;
+
+    if (jsonReader.parse(NS_ConvertUTF16toUTF8(actionString).get(), jsonData,
+                         false)) {
+      char actionKey[] = "action";
+      if (jsonData.isMember(actionKey) && jsonData[actionKey].isString()) {
+        actionValue.emplace(
+            NS_ConvertUTF8toUTF16(jsonData[actionKey].asCString()));
+      }
+    }
+
     if (argumentsString.EqualsLiteral("dismiss")) {
       // XXX: Somehow Windows still fires OnActivate instead of OnDismiss for
       // supposedly system managed dismiss button (with activationType=system
@@ -867,9 +884,9 @@ ToastNotificationHandler::OnActivate(
       // dismiss action. For this case `arguments` only includes a keyword so we
       // don't need to compare with a parsed result.
       SendFinished();
-    } else if (actionString == kAlertActionSettings) {
+    } else if (actionValue && *actionValue == kAlertActionSettings) {
       mAlertListener->Observe(nullptr, "alertsettingscallback", mCookie.get());
-    } else if (actionString == kAlertActionDisable) {
+    } else if (actionValue && *actionValue == kAlertActionDisable) {
       mAlertListener->Observe(nullptr, "alertdisablecallback", mCookie.get());
     } else if (mClickable) {
       // When clicking toast, focus moves to another process, but we want to set
@@ -889,20 +906,7 @@ ToastNotificationHandler::OnActivate(
         }
       }
 
-      Json::Value jsonData;
-      Json::Reader jsonReader;
-      Maybe<nsString> actionValue;
       nsCOMPtr<nsIAlertAction> alertAction;
-
-      if (jsonReader.parse(NS_ConvertUTF16toUTF8(actionString).get(), jsonData,
-                           false)) {
-        char actionKey[] = "action";
-        if (jsonData.isMember(actionKey) && jsonData[actionKey].isString()) {
-          actionValue.emplace(
-              NS_ConvertUTF8toUTF16(jsonData[actionKey].asCString()));
-        }
-      }
-
       if (actionValue) {
         mAlertNotification->GetAction(*actionValue,
                                       getter_AddRefs(alertAction));

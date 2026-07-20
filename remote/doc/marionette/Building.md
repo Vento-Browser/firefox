@@ -49,7 +49,6 @@ If you compile Firefox frequently you will also want to enable
 
 ```
 mk_add_options 'export RUSTC_WRAPPER=sccache'
-mk_add_options 'export CCACHE_CPP2=yes'
 ac_add_options --with-ccache
 ```
 
@@ -61,7 +60,7 @@ ac_add_options --disable-webdriver
 ```
 
 [mozilla-unified]: https://mozilla-version-control-tools.readthedocs.io/en/latest/hgmozilla/unifiedrepo.html
-[artifact builds]: /contributing/build/artifact_builds.rst
+[artifact builds]: /contributing/build/artifact_builds.md
 [mozconfig]: /build/buildsystem/mozconfigs.rst
 [ccache]: https://ccache.samba.org/
 [sccache]: https://github.com/mozilla/sccache

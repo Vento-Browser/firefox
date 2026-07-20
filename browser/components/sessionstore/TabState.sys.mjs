@@ -89,7 +89,20 @@ class _TabState {
       tabData.splitViewId = tab.splitview.splitViewId;
     }
 
-    tabData.searchMode = tab.ownerGlobal.gURLBar.getSearchMode(browser, true);
+    if (tab.canonicalUrl) {
+      let canonicalUrl = tab.canonicalUrl;
+      if (!options.includePrivateData) {
+        canonicalUrl = lazy.PrivacyFilter.filterCanonicalUrl(canonicalUrl);
+      }
+      if (canonicalUrl) {
+        tabData.canonicalUrl = canonicalUrl;
+      }
+    }
+
+    tabData.searchMode = tab.documentGlobal.gURLBar.getSearchMode(
+      browser,
+      true
+    );
 
     tabData.userContextId = tab.userContextId || 0;
 
@@ -111,7 +124,7 @@ class _TabState {
 
     // Store the tab icon.
     if (!("image" in tabData)) {
-      let tabbrowser = tab.ownerGlobal.gBrowser;
+      let tabbrowser = tab.documentGlobal.gBrowser;
       tabData.image = tabbrowser.getIcon(tab);
     }
 

@@ -67,6 +67,9 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 
 const EMBED_TEXT_KEY = "combined_text";
+// Cap the items compared when scoring cluster cohesion so the O(n^2) pairwise
+// cost stays bounded for unexpectedly large clusters (20 items => 190 pairs).
+const MAX_COHESION_ITEMS = 20;
 export const CLUSTER_METHODS = {
   KMEANS: "KMEANS",
 };
@@ -120,8 +123,7 @@ export const SMART_TAB_GROUPING_CONFIG = {
     taskName: ML_TASK_FEATURE_EXTRACTION,
     featureId: STG_EMBEDDING_FEATURE_ID,
     engineId: FEATURES[STG_EMBEDDING_FEATURE_ID].engineId,
-    backend: "onnx-native",
-    fallbackBackend: "onnx",
+    backend: "best-onnx",
   },
   topicGeneration: {
     dtype: "q8",
@@ -129,8 +131,7 @@ export const SMART_TAB_GROUPING_CONFIG = {
     taskName: ML_TASK_TEXT2TEXT,
     featureId: STG_TOPIC_FEATURE_ID,
     engineId: FEATURES[STG_TOPIC_FEATURE_ID].engineId,
-    backend: "onnx-native",
-    fallbackBackend: "onnx",
+    backend: "best-onnx",
   },
   dataConfig: {
     titleKey: "label",
@@ -248,16 +249,41 @@ export class SmartTabGroupingManager extends AIFeature {
   }
 
   /**
-   * Returns id associated with Smart tab grouping
+   * Returns the feature identifier for Smart Tab Grouping.
    *
-   * @return {string}
+   * @returns {string}
    */
   static get id() {
     return STG_FEATURE_ID;
   }
 
   /**
-   * Re-enables prefs for stg
+   * Returns whether Smart Tab Grouping exposes a distinct "Enabled" AI
+   * Controls state.
+   *
+   * @returns {boolean}
+   */
+  static get hasDistinctEnabledState() {
+    // Smart Tab Grouping has a distinct opt-in flow in the tab group UI.
+    // It is not immediately enabled when the feature is "Available" and must
+    // still be manually enabled by the user.
+    return true;
+  }
+
+  /**
+   * Returns whether the current device can run Smart Tab Grouping.
+   *
+   * @returns {boolean}
+   */
+  static get canRunOnDevice() {
+    // Smart Tab Grouping has no known restrictions based on device hardware.
+    return true;
+  }
+
+  /**
+   * Enables Smart Tab Grouping.
+   *
+   * @returns {Promise<void>}
    */
   static async enable() {
     Services.prefs.setBoolPref("browser.tabs.groups.smart.enabled", true);
@@ -266,11 +292,11 @@ export class SmartTabGroupingManager extends AIFeature {
   }
 
   /**
-   * Disables user prefs for smart tab grouping and deletes local models
+   * Blocks Smart Tab Grouping and deletes its model artifacts.
    *
-   * @return {Promise<void>}
+   * @returns {Promise<void>}
    */
-  static async disable() {
+  static async block() {
     // disable prefs associated with stg
     // opt-in flow is kept as in unless we decide to disable and re-enable later
     // which would make the user have to go through the flow twice
@@ -283,10 +309,9 @@ export class SmartTabGroupingManager extends AIFeature {
   }
 
   /**
-   * Checks if STG feature is enabled based on various prefs
-   * that it depends on
+   * Returns whether Smart Tab Grouping is enabled.
    *
-   * @return {boolean}
+   * @returns {boolean}
    */
   static get isEnabled() {
     // note that both `browser.tabs.groups.smart.enabled` and
@@ -301,32 +326,34 @@ export class SmartTabGroupingManager extends AIFeature {
   }
 
   /**
-   * Checks for other conditions for smart tab grouping to be turned on,
-   * e.g. locale.
+   * Returns whether Smart Tab Grouping is allowed.
    *
-   * @return {boolean}
+   * @returns {boolean}
    */
   static get isAllowed() {
     return Services.locale.appLocaleAsBCP47.startsWith("en");
   }
 
   /**
-   * Resets smart tab grouping to its default state where UI is visible
-   * and user opt-in is required
+   * Makes Smart Tab Grouping available and removes artifacts.
+   *
+   * @returns {Promise<void>}
    */
-  static async reset() {
-    Services.prefs.clearUserPref("browser.tabs.groups.smart.enabled");
-    Services.prefs.clearUserPref("browser.tabs.groups.smart.userEnabled");
-    Services.prefs.clearUserPref("browser.tabs.groups.smart.optin");
+  static async makeAvailable() {
+    // Set explicitly rather than clearing, so that a non-locked policy default
+    // of "blocked" does not prevent the user from switching back to "available".
+    Services.prefs.setBoolPref("browser.tabs.groups.smart.enabled", true);
+    Services.prefs.setBoolPref("browser.tabs.groups.smart.userEnabled", true);
+    Services.prefs.setBoolPref("browser.tabs.groups.smart.optin", false);
 
     // remove local models
     await SmartTabGroupingManager.deleteSmartTabModels();
   }
 
   /**
-   * Checks if UI is hidden
+   * Returns whether Smart Tab Grouping is blocked.
    *
-   * @return {boolean}
+   * @returns {boolean}
    */
   static get isBlocked() {
     return (
@@ -338,16 +365,16 @@ export class SmartTabGroupingManager extends AIFeature {
   /**
    * Checks if the feature is managed by enterprise policy.
    *
-   * @return {boolean}
+   * @returns {boolean}
    */
   static get isManagedByPolicy() {
     return Services.prefs.prefIsLocked("browser.tabs.groups.smart.userEnabled");
   }
 
   /**
-   * Deletes model artifacts associated with Smart Tab Grouping
+   * Deletes model artifacts associated with Smart Tab Grouping.
    *
-   * @return {Promise<void>}
+   * @returns {Promise<void>}
    */
   static async deleteSmartTabModels() {
     const engineIds = [
@@ -1036,7 +1063,6 @@ export class SmartTabGroupingManager extends AIFeature {
       modelId,
       modelRevision,
       backend,
-      fallbackBackend,
     } = engineConfig;
     let initData = {
       featureId,
@@ -1050,20 +1076,13 @@ export class SmartTabGroupingManager extends AIFeature {
     };
 
     initData = SmartTabGroupingManager.getUpdatedInitData(initData, featureId);
-    let engine;
-    try {
-      engine = await createEngine(initData, progressCallback);
-      this.backend = backend;
-    } catch (e) {
-      engine = await createEngine(
-        {
-          ...initData,
-          backend: fallbackBackend,
-        },
-        progressCallback
-      );
-      this.backend = fallbackBackend;
-    }
+    const engine = await createEngine(initData, progressCallback);
+    // For "best-onnx" (and similar) the actual backend is decided in the
+    // inference child and reported back via EnginePort:EngineReady, so
+    // read it off the engine. We deliberately don't fall back to the
+    // requested backend here: telemetry consumers only care about which
+    // concrete backend ran, never the "best-*" sentinel.
+    this.backend = engine.pipelineOptions?.backend;
     return engine;
   }
 
@@ -1296,6 +1315,11 @@ export class SmartTabGroupingManager extends AIFeature {
         bestResultCluster = curResult;
       }
     }
+    // Attach a per-group quality score (average pairwise cosine similarity) so
+    // callers can rank/threshold the suggested groups by confidence.
+    bestResultCluster?.clusterRepresentations.forEach(rep => {
+      rep.cohesion = rep.getCohesion();
+    });
     return bestResultCluster;
   }
 
@@ -1891,6 +1915,45 @@ class EmbeddingCluster {
       totalDistance += euclideanDistance(this.centroid, embedding, true);
     });
     return totalDistance;
+  }
+
+  /**
+   * Cohesion of the cluster: the average pairwise cosine similarity between its
+   * items' embeddings. Ranges from ~0 (unrelated) to 1 (near-identical). Used as
+   * a quality/confidence score for the group. Returns 0 for clusters with fewer
+   * than two items (no pair to compare).
+   *
+   * The pairwise comparison is O(n^2). Clusters larger than MAX_COHESION_ITEMS
+   * are first reduced to that many items, sampled evenly across the cluster, and
+   * those are compared exhaustively, so an unexpectedly large cluster can't cause
+   * a quadratic blow-up and no pair is measured twice.
+   *
+   * @returns {number}
+   */
+  getCohesion() {
+    const all = this.embeddings;
+    const total = all ? all.length : 0;
+    if (total < 2) {
+      return 0;
+    }
+    let embeddings = all;
+    if (total > MAX_COHESION_ITEMS) {
+      embeddings = [];
+      const step = total / MAX_COHESION_ITEMS;
+      for (let i = 0; i < MAX_COHESION_ITEMS; i++) {
+        embeddings.push(all[Math.floor(i * step)]);
+      }
+    }
+    const n = embeddings.length;
+    let sum = 0;
+    let pairs = 0;
+    for (let a = 0; a < n; a++) {
+      for (let b = a + 1; b < n; b++) {
+        sum += cosSim(embeddings[a], embeddings[b]);
+        pairs++;
+      }
+    }
+    return sum / pairs;
   }
 
   /**

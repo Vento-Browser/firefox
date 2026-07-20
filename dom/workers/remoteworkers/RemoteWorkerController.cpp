@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -289,6 +287,21 @@ void RemoteWorkerController::Thaw() {
   MaybeStartSharedWorkerOp(PendingSharedWorkerOp::eThaw);
 }
 
+void RemoteWorkerController::SetLocaleOverride(
+    const nsACString& aLanguageOverride, const nsTArray<nsString>& aLanguages) {
+  AssertIsOnBackgroundThread();
+
+  MaybeStartSharedWorkerOp(aLanguageOverride, aLanguages);
+}
+
+void RemoteWorkerController::UpdateTimezoneOverride(
+    const nsAString& aTimezoneOverride) {
+  AssertIsOnBackgroundThread();
+
+  MaybeStartSharedWorkerOp(PendingSharedWorkerOp::eUpdateTimezoneOverride,
+                           aTimezoneOverride);
+}
+
 RefPtr<ServiceWorkerOpPromise> RemoteWorkerController::ExecServiceWorkerOp(
     ServiceWorkerOpArgs&& aArgs) {
   AssertIsOnBackgroundThread();
@@ -332,6 +345,10 @@ RefPtr<GenericPromise> RemoteWorkerController::SetServiceWorkerSkipWaitingFlag()
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(mObserver);
 
+  if (!mIsServiceWorker) {
+    return GenericPromise::CreateAndResolve(false, __func__);
+  }
+
   RefPtr<GenericPromise::Private> promise =
       new GenericPromise::Private(__func__);
 
@@ -356,6 +373,21 @@ RemoteWorkerController::PendingSharedWorkerOp::PendingSharedWorkerOp(
     const MessagePortIdentifier& aPortIdentifier)
     : mType(ePortIdentifier), mPortIdentifier(aPortIdentifier) {
   AssertIsOnBackgroundThread();
+}
+
+RemoteWorkerController::PendingSharedWorkerOp::PendingSharedWorkerOp(
+    const nsACString& aLanguageOverride, const nsTArray<nsString>& aLanguages)
+    : mType(eSetLocaleOverride),
+      mLanguageOverride(aLanguageOverride),
+      mLanguages(aLanguages) {
+  AssertIsOnBackgroundThread();
+}
+
+RemoteWorkerController::PendingSharedWorkerOp::PendingSharedWorkerOp(
+    Type aType, const nsAString& aTimezoneOverride)
+    : mType(aType), mTimezoneOverride(aTimezoneOverride) {
+  AssertIsOnBackgroundThread();
+  MOZ_ASSERT(aType == eUpdateTimezoneOverride);
 }
 
 RemoteWorkerController::PendingSharedWorkerOp::~PendingSharedWorkerOp() {
@@ -417,6 +449,14 @@ bool RemoteWorkerController::PendingSharedWorkerOp::MaybeStart(
     case eRemoveWindowID:
       (void)aOwner->mActor->SendExecOp(
           SharedWorkerRemoveWindowIDOpArgs(mWindowID));
+      break;
+    case eSetLocaleOverride:
+      (void)aOwner->mActor->SendExecOp(
+          SharedWorkerSetLocaleOverrideOpArgs(mLanguageOverride, mLanguages));
+      break;
+    case eUpdateTimezoneOverride:
+      (void)aOwner->mActor->SendExecOp(
+          SharedWorkerUpdateTimezoneOverrideOpArgs(mTimezoneOverride));
       break;
     default:
       MOZ_CRASH("Unknown op.");

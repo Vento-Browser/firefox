@@ -1,12 +1,12 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jit/loong64/CodeGenerator-loong64.h"
 
 #include "mozilla/MathAlgorithms.h"
+
+#include <bit>
 
 #include "builtin/Number.h"
 #include "jit/CodeGenerator.h"
@@ -795,7 +795,7 @@ void CodeGenerator::visitMulI(LMulI* ins) {
     }
 
     if (constant > 0) {
-      uint32_t shift = mozilla::FloorLog2(constant);
+      uint32_t shift = mozilla::FloorLog2(uint32_t(constant));
 
       if (!mul->canOverflow()) {
         // If it cannot overflow, we can do lots of optimizations.
@@ -896,8 +896,8 @@ void CodeGeneratorLOONG64::emitMulI64(Register lhs, int64_t rhs,
   }
 
   if (rhs > 0) {
-    if (mozilla::IsPowerOfTwo(static_cast<uint64_t>(rhs + 1))) {
-      int32_t shift = mozilla::FloorLog2(rhs + 1);
+    if (std::has_single_bit(static_cast<uint64_t>(rhs + 1))) {
+      int32_t shift = mozilla::FloorLog2(uint64_t(rhs + 1));
 
       UseScratchRegisterScope temps(masm);
       Register savedLhs = lhs;
@@ -910,8 +910,8 @@ void CodeGeneratorLOONG64::emitMulI64(Register lhs, int64_t rhs,
       return;
     }
 
-    if (mozilla::IsPowerOfTwo(static_cast<uint64_t>(rhs - 1))) {
-      int32_t shift = mozilla::FloorLog2(rhs - 1);
+    if (std::has_single_bit(static_cast<uint64_t>(rhs - 1))) {
+      int32_t shift = mozilla::FloorLog2(uint64_t(rhs - 1));
       if (shift < 5) {
         masm.as_alsl_d(dest, lhs, lhs, shift - 1);
       } else {
@@ -928,7 +928,7 @@ void CodeGeneratorLOONG64::emitMulI64(Register lhs, int64_t rhs,
     }
 
     // Use shift if constant is power of 2.
-    int32_t shift = mozilla::FloorLog2(rhs);
+    int32_t shift = mozilla::FloorLog2(uint64_t(rhs));
     if (int64_t(1) << shift == rhs) {
       masm.as_slli_d(dest, lhs, shift);
       return;
@@ -1673,125 +1673,6 @@ void CodeGenerator::visitWasmLoad(LWasmLoad* lir) { emitWasmLoad(lir); }
 
 void CodeGenerator::visitWasmStore(LWasmStore* lir) { emitWasmStore(lir); }
 
-void CodeGenerator::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins) {
-  const MAsmJSLoadHeap* mir = ins->mir();
-  MOZ_ASSERT(!mir->hasMemoryBase());
-
-  const LAllocation* ptr = ins->ptr();
-  const LDefinition* output = ins->output();
-  const LAllocation* boundsCheckLimit = ins->boundsCheckLimit();
-
-  Register ptrReg = ToRegister(ptr);
-  Scalar::Type accessType = mir->accessType();
-  bool isFloat = accessType == Scalar::Float32 || accessType == Scalar::Float64;
-  Label done;
-
-  if (mir->needsBoundsCheck()) {
-    Label boundsCheckPassed;
-    Register boundsCheckLimitReg = ToRegister(boundsCheckLimit);
-    masm.wasmBoundsCheck32(Assembler::Below, ptrReg, boundsCheckLimitReg,
-                           &boundsCheckPassed);
-    // Return a default value in case of a bounds-check failure.
-    if (isFloat) {
-      if (accessType == Scalar::Float32) {
-        masm.loadConstantFloat32(GenericNaN(), ToFloatRegister(output));
-      } else {
-        masm.loadConstantDouble(GenericNaN(), ToFloatRegister(output));
-      }
-    } else {
-      masm.mov(zero, ToRegister(output));
-    }
-    masm.jump(&done);
-    masm.bind(&boundsCheckPassed);
-  }
-
-  // TODO(loong64): zero-extend index in asm.js?
-  UseScratchRegisterScope temps(masm);
-  Register scratch = temps.Acquire();
-  masm.move32To64ZeroExtend(ptrReg, Register64(scratch));
-
-  switch (accessType) {
-    case Scalar::Int8:
-      masm.as_ldx_b(ToRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Uint8:
-      masm.as_ldx_bu(ToRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Int16:
-      masm.as_ldx_h(ToRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Uint16:
-      masm.as_ldx_hu(ToRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Int32:
-    case Scalar::Uint32:
-      masm.as_ldx_w(ToRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Float64:
-      masm.as_fldx_d(ToFloatRegister(output), HeapReg, scratch);
-      break;
-    case Scalar::Float32:
-      masm.as_fldx_s(ToFloatRegister(output), HeapReg, scratch);
-      break;
-    default:
-      MOZ_CRASH("unexpected array type");
-  }
-
-  if (done.used()) {
-    masm.bind(&done);
-  }
-}
-
-void CodeGenerator::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins) {
-  const MAsmJSStoreHeap* mir = ins->mir();
-  MOZ_ASSERT(!mir->hasMemoryBase());
-
-  const LAllocation* value = ins->value();
-  const LAllocation* ptr = ins->ptr();
-  const LAllocation* boundsCheckLimit = ins->boundsCheckLimit();
-
-  Register ptrReg = ToRegister(ptr);
-
-  Label done;
-  if (mir->needsBoundsCheck()) {
-    Register boundsCheckLimitReg = ToRegister(boundsCheckLimit);
-    masm.wasmBoundsCheck32(Assembler::AboveOrEqual, ptrReg, boundsCheckLimitReg,
-                           &done);
-  }
-
-  // TODO(loong64): zero-extend index in asm.js?
-  UseScratchRegisterScope temps(masm);
-  Register scratch = temps.Acquire();
-  masm.move32To64ZeroExtend(ptrReg, Register64(scratch));
-
-  switch (mir->accessType()) {
-    case Scalar::Int8:
-    case Scalar::Uint8:
-      masm.as_stx_b(ToRegister(value), HeapReg, scratch);
-      break;
-    case Scalar::Int16:
-    case Scalar::Uint16:
-      masm.as_stx_h(ToRegister(value), HeapReg, scratch);
-      break;
-    case Scalar::Int32:
-    case Scalar::Uint32:
-      masm.as_stx_w(ToRegister(value), HeapReg, scratch);
-      break;
-    case Scalar::Float64:
-      masm.as_fstx_d(ToFloatRegister(value), HeapReg, scratch);
-      break;
-    case Scalar::Float32:
-      masm.as_fstx_s(ToFloatRegister(value), HeapReg, scratch);
-      break;
-    default:
-      MOZ_CRASH("unexpected array type");
-  }
-
-  if (done.used()) {
-    masm.bind(&done);
-  }
-}
-
 void CodeGenerator::visitWasmCompareExchangeHeap(
     LWasmCompareExchangeHeap* ins) {
   MWasmCompareExchangeHeap* mir = ins->mir();
@@ -2372,4 +2253,13 @@ void CodeGenerator::visitWasmLoadLaneSimd128(LWasmLoadLaneSimd128* ins) {
 
 void CodeGenerator::visitWasmStoreLaneSimd128(LWasmStoreLaneSimd128* ins) {
   MOZ_CRASH("No SIMD");
+}
+
+void CodeGenerator::visitWasmMulI64WideHI64(LWasmMulI64WideHI64* ins) {
+  Register lhs = ToRegister(ins->lhs());
+  Register rhs = ToRegister(ins->rhs());
+  Register output = ToRegister(ins->output());
+  // This holds because both operands are non-AtStart variants.
+  MOZ_ASSERT(output != lhs && output != rhs);
+  masm.wasmMulI64WideHI64(lhs, rhs, output, ins->isSigned());
 }

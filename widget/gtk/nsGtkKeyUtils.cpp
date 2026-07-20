@@ -1,43 +1,41 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=4:tabstop=4:
- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/Logging.h"
-
 #include "nsGtkKeyUtils.h"
 
-#include <gdk/gdkkeysyms.h>
-#include <algorithm>
-#include <gdk/gdk.h>
 #include <dlfcn.h>
+#include <gdk/gdk.h>
 #include <gdk/gdkkeysyms-compat.h>
+#include <gdk/gdkkeysyms.h>
+
+#include <algorithm>
+
+#include "mozilla/Logging.h"
 #ifdef MOZ_X11
-#  include <gdk/gdkx.h>
 #  include <X11/XKBlib.h>
+#  include <gdk/gdkx.h>
+
 #  include "X11UndefineNone.h"
 #endif
 #include "IMContextWrapper.h"
 #include "WidgetUtils.h"
 #include "WidgetUtilsGtk.h"
-#include "x11/keysym2ucs.h"
+#include "mozilla/MouseEvents.h"
+#include "mozilla/TextEventDispatcher.h"
+#include "mozilla/TextEvents.h"
+#include "mozilla/Utf16.h"
+#include "nsCRT.h"
 #include "nsContentUtils.h"
-#include "nsGtkUtils.h"
 #include "nsIBidiKeyboard.h"
 #include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
-#include "nsServiceManagerUtils.h"
 #include "nsWindow.h"
-
-#include "mozilla/MouseEvents.h"
-#include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/TextEventDispatcher.h"
-#include "mozilla/TextEvents.h"
+#include "x11/keysym2ucs.h"
 
 #ifdef MOZ_WAYLAND
 #  include <sys/mman.h>
+
 #  include "nsWaylandDisplay.h"
 #endif
 
@@ -47,8 +45,7 @@
 // Therefore you shouldn't use `LogLevel::Verbose` for logging usual behavior.
 mozilla::LazyLogModule gKeyLog("KeyboardHandler");
 
-namespace mozilla {
-namespace widget {
+namespace mozilla::widget {
 
 #define IS_ASCII_ALPHABETICAL(key) \
   ((('a' <= key) && (key <= 'z')) || (('A' <= key) && (key <= 'Z')))
@@ -185,10 +182,10 @@ static const nsCString GetCharacterCodeName(char16_t aChar) {
       if (aChar < ' ' || (aChar >= 0x80 && aChar < 0xA0)) {
         return nsPrintfCString("control (0x%04X)", aChar);
       }
-      if (NS_IS_HIGH_SURROGATE(aChar)) {
+      if (IsHighSurrogate(aChar)) {
         return nsPrintfCString("high surrogate (0x%04X)", aChar);
       }
-      if (NS_IS_LOW_SURROGATE(aChar)) {
+      if (IsLowSurrogate(aChar)) {
         return nsPrintfCString("low surrogate (0x%04X)", aChar);
       }
       return nsPrintfCString("'%s' (0x%04X)",
@@ -723,7 +720,7 @@ void KeymapWrapper::HandleKeymap(uint32_t format, int fd, uint32_t size) {
     return;
   }
 
-  char* mapString = (char*)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  char* mapString = (char*)mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (mapString == MAP_FAILED) {
     MOZ_LOG(gKeyLog, LogLevel::Info,
             ("KeymapWrapper::HandleKeymap(): failed to allocate shm!"));
@@ -1111,33 +1108,34 @@ uint32_t KeymapWrapper::ComputeKeyModifiers(guint aGdkModifierState) {
 
 /* static */
 guint KeymapWrapper::ConvertWidgetModifierToGdkState(
-    nsIWidget::Modifiers aNativeModifiers) {
-  if (!aNativeModifiers) {
+    nsIWidget::NativeModifiers aNativeModifiers) {
+  if (aNativeModifiers == nsIWidget::NativeModifiers::NO_MODIFIERS) {
     return 0;
   }
   struct ModifierMapEntry {
-    nsIWidget::Modifiers mWidgetModifier;
+    nsIWidget::NativeModifiers mWidgetModifier;
     MappedModifier mModifier;
   };
   // TODO: Currently, we don't treat L/R of each modifier on Linux.
   // TODO: No proper native modifier for Level5.
   static constexpr ModifierMapEntry sModifierMap[] = {
-      {nsIWidget::CAPS_LOCK, MappedModifier::CAPS_LOCK},
-      {nsIWidget::NUM_LOCK, MappedModifier::NUM_LOCK},
-      {nsIWidget::SHIFT_L, MappedModifier::SHIFT},
-      {nsIWidget::SHIFT_R, MappedModifier::SHIFT},
-      {nsIWidget::CTRL_L, MappedModifier::CTRL},
-      {nsIWidget::CTRL_R, MappedModifier::CTRL},
-      {nsIWidget::ALT_L, MappedModifier::ALT},
-      {nsIWidget::ALT_R, MappedModifier::ALT},
-      {nsIWidget::ALTGRAPH, MappedModifier::LEVEL3},
-      {nsIWidget::COMMAND_L, MappedModifier::SUPER},
-      {nsIWidget::COMMAND_R, MappedModifier::SUPER}};
+      {nsIWidget::NativeModifiers::CAPS_LOCK, MappedModifier::CAPS_LOCK},
+      {nsIWidget::NativeModifiers::NUM_LOCK, MappedModifier::NUM_LOCK},
+      {nsIWidget::NativeModifiers::SHIFT_L, MappedModifier::SHIFT},
+      {nsIWidget::NativeModifiers::SHIFT_R, MappedModifier::SHIFT},
+      {nsIWidget::NativeModifiers::CTRL_L, MappedModifier::CTRL},
+      {nsIWidget::NativeModifiers::CTRL_R, MappedModifier::CTRL},
+      {nsIWidget::NativeModifiers::ALT_L, MappedModifier::ALT},
+      {nsIWidget::NativeModifiers::ALT_R, MappedModifier::ALT},
+      {nsIWidget::NativeModifiers::ALTGRAPH, MappedModifier::LEVEL3},
+      {nsIWidget::NativeModifiers::COMMAND_L, MappedModifier::SUPER},
+      {nsIWidget::NativeModifiers::COMMAND_R, MappedModifier::SUPER}};
 
   guint state = 0;
   KeymapWrapper* instance = GetInstance();
   for (const ModifierMapEntry& entry : sModifierMap) {
-    if (aNativeModifiers & entry.mWidgetModifier) {
+    if ((aNativeModifiers & entry.mWidgetModifier) !=
+        nsIWidget::NativeModifiers::NO_MODIFIERS) {
       state |= instance->GetGdkModifierMask(entry.mModifier);
     }
   }
@@ -2254,6 +2252,7 @@ struct KeyCodeData {
 static struct KeyCodeData gKeyCodes[] = {
 #define NS_DEFINE_VK(aDOMKeyName, aDOMKeyCode) \
   {#aDOMKeyName, sizeof(#aDOMKeyName) - 1, aDOMKeyCode},
+#include "mozilla/Utf16.h"
 #include "mozilla/VirtualKeyCodeList.inc"
 #undef NS_DEFINE_VK
     {nullptr, 0, 0}};
@@ -2817,5 +2816,4 @@ void KeymapWrapper::ClearKeymap() {
 }
 #endif
 
-}  // namespace widget
-}  // namespace mozilla
+}  // namespace mozilla::widget

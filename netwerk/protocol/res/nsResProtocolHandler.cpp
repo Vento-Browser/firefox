@@ -1,19 +1,17 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsResProtocolHandler.h"
+
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/Omnijar.h"
 #include "mozilla/chrome/RegistryMessageUtils.h"
 #include "mozilla/dom/ContentParent.h"
-#include "mozilla/ClearOnShutdown.h"
-
-#include "nsResProtocolHandler.h"
+#include "nsEscape.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsURLHelper.h"
-#include "nsEscape.h"
-
-#include "mozilla/Omnijar.h"
 
 using mozilla::LogLevel;
 using mozilla::dom::ContentParent;
@@ -25,6 +23,7 @@ using mozilla::dom::ContentParent;
 mozilla::StaticRefPtr<nsResProtocolHandler> nsResProtocolHandler::sSingleton;
 
 already_AddRefed<nsResProtocolHandler> nsResProtocolHandler::GetSingleton() {
+  MOZ_ASSERT(NS_IsMainThread() || sSingleton);
   if (!sSingleton) {
     RefPtr<nsResProtocolHandler> handler = new nsResProtocolHandler();
     if (NS_WARN_IF(NS_FAILED(handler->Init()))) {

@@ -115,15 +115,26 @@ let gGeneratedPasswordObserver = {
       const updatedLogin = subject.GetElementAt(1);
 
       if (originalLogin && !originalLogin.username && updatedLogin?.username) {
-        const generatedPassword = gGeneratedPasswordsByPrincipalOrigin.get(
-          originalLogin.origin
-        );
+        // The cache key is a principal origin which may include ^userContextId
+        // when using containers or when in private mode, while the stored login
+        // uses the base origin.
+        let cacheKey;
+        let generatedPassword;
+        const guid = originalLogin.QueryInterface(Ci.nsILoginMetaInfo).guid;
+        for (const [key, pw] of gGeneratedPasswordsByPrincipalOrigin) {
+          if (pw.storageGUID === guid) {
+            cacheKey = key;
+            generatedPassword = pw;
+            break;
+          }
+        }
 
         if (
+          generatedPassword &&
           originalLogin.password == generatedPassword.value &&
           updatedLogin.password == generatedPassword.value
         ) {
-          gGeneratedPasswordsByPrincipalOrigin.delete(originalLogin.origin);
+          gGeneratedPasswordsByPrincipalOrigin.delete(cacheKey);
         }
       }
     }
@@ -279,13 +290,30 @@ export class LoginManagerParent extends JSWindowActorParent {
       "scheme",
       "timePasswordChanged",
     ];
-    return lazy.LoginHelper.dedupeLogins(
+    const deduped = lazy.LoginHelper.dedupeLogins(
       logins,
       ["username", "password"],
       resolveBy,
       formOrigin,
       formActionOrigin
     );
+
+    // Sort so logins whose origin scheme matches the form origin come first,
+    // regardless of the order returned by the storage backend.
+    if (formOrigin) {
+      try {
+        const formScheme = new URL(formOrigin).protocol;
+        deduped.sort(
+          (a, b) =>
+            (a.origin.startsWith(formScheme) ? 0 : 1) -
+            (b.origin.startsWith(formScheme) ? 0 : 1)
+        );
+      } catch {
+        // Ignore invalid formOrigin.
+      }
+    }
+
+    return deduped;
   }
 
   async receiveMessage(msg) {
@@ -411,7 +439,7 @@ export class LoginManagerParent extends JSWindowActorParent {
   }
 
   #onOpenImportableLearnMore() {
-    const window = this.getRootBrowser().ownerGlobal;
+    const window = this.getRootBrowser().documentGlobal;
     window.openTrustedLinkIn(
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
         "password-import",
@@ -452,7 +480,7 @@ export class LoginManagerParent extends JSWindowActorParent {
     } else {
       // Open the migration wizard pre-selecting the appropriate browser.
       lazy.MigrationUtils.showMigrationWizard(
-        this.getRootBrowser().ownerGlobal,
+        this.getRootBrowser().documentGlobal,
         {
           entrypoint: lazy.MigrationUtils.MIGRATION_ENTRYPOINTS.PASSWORDS,
           migratorKey: browserId,
@@ -461,11 +489,12 @@ export class LoginManagerParent extends JSWindowActorParent {
     }
   }
 
-  #onOpenPreferences(hostname, entryPoint) {
-    const window = this.getRootBrowser().ownerGlobal;
+  #onOpenPreferences(hostname, entryPoint, loginGuid) {
+    const window = this.getRootBrowser().documentGlobal;
     lazy.LoginHelper.openPasswordManager(window, {
       filterString: hostname,
       entryPoint,
+      loginGuid,
     });
   }
 
@@ -1020,6 +1049,10 @@ export class LoginManagerParent extends JSWindowActorParent {
     // we don't auto-save logins on form submit
     let notifySaved = false;
 
+    // Resolve the browser to anchor the doorhanger on before any async storage
+    // call.
+    const promptBrowser = lazy.LoginHelper.getBrowserForPrompt(browser);
+
     if (autoFilledLoginGuid) {
       let loginsForGuid = await Services.logins.searchLoginsAsync({
         guid: autoFilledLoginGuid,
@@ -1080,7 +1113,6 @@ export class LoginManagerParent extends JSWindowActorParent {
       existingLogin = this.#findSameLogin(logins, formLogin);
     }
 
-    const promptBrowser = lazy.LoginHelper.getBrowserForPrompt(browser);
     const prompter = this._getPrompter(browser);
 
     if (!canMatchExistingLogin) {
@@ -1211,6 +1243,13 @@ export class LoginManagerParent extends JSWindowActorParent {
       return;
     }
 
+    // Stop-gap until bug 2055772 (a systemic AbortController-based solution):
+    // use a local counter to serialize subsequent calls so that only the most
+    // recent edit updates the doorhanger. Every keystroke triggers its own
+    // async run and these can finish out of order.
+    this._editSeq = (this._editSeq ?? 0) + 1;
+    const seq = this._editSeq;
+
     let framePrincipalOrigin =
       browsingContext.currentWindowGlobal.documentPrincipal.origin;
 
@@ -1252,6 +1291,11 @@ export class LoginManagerParent extends JSWindowActorParent {
 
     let generatedPW =
       gGeneratedPasswordsByPrincipalOrigin.get(framePrincipalOrigin);
+
+    if (triggeredByFillingGenerated && !generatedPW) {
+      // The cache entry has already been cleared before, so nothing to auto-save.
+      shouldAutoSaveLogin = false;
+    }
 
     // Below here we have one login per hostPort + action + username with the
     // matching scheme being preferred.
@@ -1407,6 +1451,13 @@ export class LoginManagerParent extends JSWindowActorParent {
       lazy.log("Not auto-saving this login.");
     }
 
+    if (seq !== this._editSeq) {
+      lazy.log(
+        "A newer password edit superseded this one; skipping doorhanger."
+      );
+      return;
+    }
+
     const prompter = this._getPrompter(browser);
     const promptBrowser = lazy.LoginHelper.getBrowserForPrompt(browser);
 
@@ -1455,7 +1506,8 @@ export class LoginManagerParent extends JSWindowActorParent {
       } else {
         lazy.log("No change to existing login.");
         // is there a doorhanger we should update?
-        let popupNotifications = promptBrowser.ownerGlobal.PopupNotifications;
+        let popupNotifications =
+          promptBrowser.documentGlobal.PopupNotifications;
         let notif = popupNotifications.getNotification("password", browser);
         lazy.log(
           `_onPasswordEditedOrGenerated: Has doorhanger? ${
@@ -1502,7 +1554,7 @@ export class LoginManagerParent extends JSWindowActorParent {
   }
 
   async searchAutoCompleteEntries(searchString, data) {
-    return this.doAutocompleteSearch(data.formOrigin, data);
+    return this.doAutocompleteSearch(this.origin, data);
   }
 
   onAutoCompleteEntryHovered(_message, _data) {
@@ -1513,12 +1565,23 @@ export class LoginManagerParent extends JSWindowActorParent {
     switch (message) {
       // Called when clicking the open preference entry in the autocomplete
       case "PasswordManager:OpenPreferences": {
-        this.#onOpenPreferences(data.hostname, data.entryPoint);
+        this.#onOpenPreferences(data.hostname, data.entryPoint, data.loginGuid);
         break;
       }
 
       case "PasswordManager:OpenImportableLearnMore": {
         this.#onOpenImportableLearnMore();
+        break;
+      }
+
+      case "PasswordManager:OpenInsecureFieldWarningLearnMore": {
+        const window = this.getRootBrowser().documentGlobal;
+        const baseURL = Services.urlFormatter.formatURLPref(
+          "app.support.baseURL"
+        );
+        window.openTrustedLinkIn(baseURL + "insecure-password", "tab", {
+          relatedToCurrent: true,
+        });
         break;
       }
 

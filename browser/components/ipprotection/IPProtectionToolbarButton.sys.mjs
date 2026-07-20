@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ERRORS } from "chrome://browser/content/ipprotection/ipprotection-constants.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
@@ -11,16 +10,22 @@ ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI:
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   IPPExceptionsManager:
-    "moz-src:///browser/components/ipprotection/IPPExceptionsManager.sys.mjs",
-  IPPNetworkUtils:
-    "moz-src:///browser/components/ipprotection/IPPNetworkUtils.sys.mjs",
+    "moz-src:///toolkit/components/ipprotection/IPPExceptionsManager.sys.mjs",
+  IPPPrincipalRules:
+    "moz-src:///toolkit/components/ipprotection/IPPExceptionsManager.sys.mjs",
   IPPProxyManager:
-    "moz-src:///browser/components/ipprotection/IPPProxyManager.sys.mjs",
+    "moz-src:///toolkit/components/ipprotection/IPPProxyManager.sys.mjs",
   IPProtectionService:
-    "moz-src:///browser/components/ipprotection/IPProtectionService.sys.mjs",
+    "moz-src:///toolkit/components/ipprotection/IPProtectionService.sys.mjs",
   IPPProxyStates:
-    "moz-src:///browser/components/ipprotection/IPPProxyManager.sys.mjs",
+    "moz-src:///toolkit/components/ipprotection/IPPProxyManager.sys.mjs",
+  ERRORS: "moz-src:///toolkit/components/ipprotection/IPPProxyManager.sys.mjs",
 });
+
+import { getSitePrincipal } from "chrome://browser/content/ipprotection/ipprotection-utils.mjs";
+
+const OPENED_WITH_LOCATION_PREF =
+  "browser.ipProtection.openedPanelWithLocation";
 
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
@@ -51,9 +56,22 @@ export class IPProtectionToolbarButton {
   #progressListener = null;
   #widgetId = null;
   #previousIsExcluded = null;
+  #prefObserver = null;
+  #visitedExcludedSites = new Set();
 
   static CONFIRMATION_HINT_MESSAGE_ID =
     "confirmation-hint-ipprotection-navigated-to-excluded-site";
+
+  // Non-default icon states rendered as always-painted overlay layers in the
+  // toolbar so switching states never triggers a fresh image decode
+  // (bug 2034698). The default "off" state is the base .toolbarbutton-icon.
+  static ICON_LAYER_STATES = [
+    "on",
+    "network-error",
+    "error",
+    "excluded",
+    "paused",
+  ];
 
   /**
    * Gets the gBrowser from the weak reference to the window.
@@ -65,6 +83,7 @@ export class IPProtectionToolbarButton {
     const win = this.#window.get();
     return win?.gBrowser;
   }
+
   /**
    * Gets the value of the pref
    * browser.ipProtection.features.siteExceptions.
@@ -106,7 +125,6 @@ export class IPProtectionToolbarButton {
     this.#window = Cu.getWeakReference(window);
     this.#widgetId = widgetId;
     this.handleEvent = this.#handleEvent.bind(this);
-    this.observeOfflineStatus = this.#observeOfflineStatus.bind(this);
 
     this.#addProgressListener();
     lazy.IPProtectionService.addEventListener(
@@ -122,14 +140,12 @@ export class IPProtectionToolbarButton {
       this.handleEvent
     );
 
-    Services.obs.addObserver(
-      this.observeOfflineStatus,
-      "network:offline-status-changed"
-    );
-
     if (this.gBrowser?.tabContainer) {
       this.gBrowser.tabContainer.addEventListener("TabSelect", this);
     }
+
+    this.#prefObserver = { observe: () => this.#updateBadge() };
+    Services.prefs.addObserver(OPENED_WITH_LOCATION_PREF, this.#prefObserver);
 
     if (toolbaritem) {
       toolbaritem.classList.add("subviewbutton-nav"); // adds the right arrow in overflow menu
@@ -184,28 +200,25 @@ export class IPProtectionToolbarButton {
    */
   #handleEvent(event) {
     if (
-      event.type === "IPProtectionService:StateChanged" ||
-      event.type === "IPPProxyManager:StateChanged" ||
-      event.type === "IPPExceptionsManager:ExclusionChanged"
+      event.type !== "IPProtectionService:StateChanged" &&
+      event.type !== "IPPProxyManager:StateChanged" &&
+      event.type !== "IPPExceptionsManager:ExclusionChanged" &&
+      event.type !== "TabSelect"
     ) {
-      this.updateState();
-    } else if (event.type === "TabSelect") {
-      this.updateState();
+      return;
     }
-  }
 
-  /**
-   * Observer for network offline status changes.
-   * Updates the state for every change in case we need to show a different icon.
-   *
-   * @param {nsISupports} _subject
-   * @param {string} topic
-   * @param {string} _data
-   */
-  #observeOfflineStatus(_subject, topic, _data) {
-    if (topic === "network:offline-status-changed") {
-      this.updateState();
+    let exclusionChanged =
+      event.type === "IPPExceptionsManager:ExclusionChanged";
+
+    if (
+      event.type === "IPPProxyManager:StateChanged" &&
+      lazy.IPPProxyManager.state !== lazy.IPPProxyStates.ACTIVE
+    ) {
+      this.#visitedExcludedSites.clear();
     }
+
+    this.updateState(null, { showConfirmationHint: !exclusionChanged });
   }
 
   /**
@@ -218,7 +231,8 @@ export class IPProtectionToolbarButton {
    *    exclusion state for a site has changed in ipp-vpn
    * 4. After a location change / page navigation
    * 5. After tab switching
-   * 6. After offline network status changes
+   * 7. After an IPPProxyManager error event occurs
+   * 8. The panel opens or closes.
    *
    * @param {XULElement|null} [toolbaritem]
    *  Optional toolbaritem to update directly.
@@ -228,8 +242,13 @@ export class IPProtectionToolbarButton {
    *  Optional options object
    * @param {boolean} [options.showConfirmationHint=true]
    *  Whether to show confirmation hints for navigation to excluded sites
+   * @param {string} [options.error=undefined]
+   *  Error type to show.
    */
-  updateState(toolbaritem = null, options = { showConfirmationHint: true }) {
+  updateState(
+    toolbaritem = null,
+    options = { showConfirmationHint: true, error: undefined }
+  ) {
     const win = this.#window.get();
     if (!win) {
       return;
@@ -241,19 +260,28 @@ export class IPProtectionToolbarButton {
       return;
     }
 
-    // Check the ipp-vpn permission using IPPExceptionsManager.
-    let principal = this.gBrowser?.contentPrincipal;
-    let isExcluded = this.#isExcludedSite(principal);
+    let principal = getSitePrincipal(this.gBrowser);
+    // Only surface an exclusion for pages the user can manage (normal content
+    // pages), matching the panel: about:/chrome:/system pages are never shown
+    // excluded.
+    let isExcluded =
+      !!principal &&
+      lazy.IPPExceptionsManager.canManage(principal) &&
+      lazy.IPPExceptionsManager.getPrincipalRule(principal) ===
+        lazy.IPPPrincipalRules.EXCLUDED;
 
     let isActive = lazy.IPPProxyManager.state === lazy.IPPProxyStates.ACTIVE;
+    let isPaused = lazy.IPPProxyManager.state === lazy.IPPProxyStates.PAUSED;
 
-    // Show error icon when proxy manager is in ERROR state or when offline
+    // Show error icon when proxy manager is in ERROR state.
     let hasProxyError =
-      lazy.IPPProxyManager.state === lazy.IPPProxyStates.ERROR &&
-      (lazy.IPPProxyManager.errors.includes(ERRORS.GENERIC) ||
-        lazy.IPPProxyManager.errors.includes(ERRORS.NETWORK));
-    let isOffline = lazy.IPPNetworkUtils.isOffline;
-    let isError = hasProxyError || isOffline;
+      lazy.IPPProxyManager.state === lazy.IPPProxyStates.ERROR;
+
+    let isNetworkError =
+      options?.error === lazy.ERRORS.NETWORK ||
+      (hasProxyError && lazy.IPPProxyManager.errorType === lazy.ERRORS.NETWORK);
+
+    let isError = hasProxyError || !!options.error;
 
     const showConfirmationHint = options.showConfirmationHint ?? true;
     if (showConfirmationHint) {
@@ -274,14 +302,52 @@ export class IPProtectionToolbarButton {
     this.updateIconStatus(toolbaritem, {
       isActive,
       isError,
+      isNetworkError,
       isExcluded,
+      isPaused,
     });
+
+    this.#updateBadge(toolbaritem);
+  }
+
+  /**
+   * Updates the badge on the toolbar button based on whether the user has
+   * opened the panel since location controls were introduced.
+   * The badge is not shown when the button is in the customize toolbar palette.
+   *
+   * @param {XULElement|null} [toolbaritem]
+   */
+  #updateBadge(toolbaritem = null) {
+    toolbaritem ??= this.toolbaritem;
+
+    if (!toolbaritem) {
+      return;
+    }
+
+    let everOpenedPanel = Services.prefs.getBoolPref(
+      OPENED_WITH_LOCATION_PREF,
+      false
+    );
+
+    let inPalette = !lazy.CustomizableUI.getPlacementOfWidget(this.#widgetId);
+
+    let badge = toolbaritem.querySelector(".toolbarbutton-badge");
+
+    if (everOpenedPanel || inPalette) {
+      toolbaritem.removeAttribute("badged");
+      badge?.classList.remove("feature-callout");
+    } else {
+      toolbaritem.setAttribute("badged", "true");
+      badge?.classList.add("feature-callout");
+    }
   }
 
   /**
    * Shows a confirmation hint after navigating from a
    * protected site to an excluded site while the VPN is on.
-   * Ignore the message if there is an error or the VPN is off.
+   * Ignore the message if there is an error, if the VPN is off,
+   * or if we already showed the message for a site during the
+   * VPN session.
    *
    * @param {object} confirmationHint
    *  The current window's confirmation hint instance
@@ -313,11 +379,18 @@ export class IPProtectionToolbarButton {
       return;
     }
 
+    let siteOrigin = getSitePrincipal(this.gBrowser)?.origin;
+    if (!siteOrigin || this.#visitedExcludedSites.has(siteOrigin)) {
+      return;
+    }
+
+    this.#visitedExcludedSites.add(siteOrigin);
     confirmationHint.show(
       toolbaritem,
       IPProtectionToolbarButton.CONFIRMATION_HINT_MESSAGE_ID,
       {
         position: "bottomright topright", // panel anchor, message anchor
+        hideCheckmark: true,
       }
     );
   }
@@ -332,25 +405,44 @@ export class IPProtectionToolbarButton {
    */
   updateIconStatus(
     toolbaritem,
-    status = { isActive: false, isError: false, isExcluded: false }
+    status = {
+      isActive: false,
+      isError: false,
+      isExcluded: false,
+      isPaused: false,
+      isNetworkError: false,
+    }
   ) {
     if (!toolbaritem) {
       return;
     }
 
+    this.#buildIconLayers(toolbaritem);
+
     let isActive = status.isActive;
-    let isError = status.isError;
+    let isNetworkError = status.isNetworkError;
+    let isError = status.isError && !isNetworkError;
     let isExcluded = status.isExcluded && this.isExceptionsFeatureEnabled;
-    let l10nId = isError ? "ipprotection-button-error" : "ipprotection-button";
+    let isPaused = status.isPaused;
+    let l10nId =
+      isError || isNetworkError
+        ? "ipprotection-button-error"
+        : "ipprotection-button";
 
     toolbaritem.classList.remove(
       "ipprotection-on",
+      "ipprotection-network-error",
       "ipprotection-error",
-      "ipprotection-excluded"
+      "ipprotection-excluded",
+      "ipprotection-paused"
     );
 
-    if (isError) {
+    if (isNetworkError) {
+      toolbaritem.classList.add("ipprotection-network-error");
+    } else if (isError) {
       toolbaritem.classList.add("ipprotection-error");
+    } else if (isPaused) {
+      toolbaritem.classList.add("ipprotection-paused");
     } else if (isExcluded && isActive) {
       toolbaritem.classList.add("ipprotection-excluded");
     } else if (isActive) {
@@ -361,19 +453,42 @@ export class IPProtectionToolbarButton {
   }
 
   /**
-   * Checks if the given principal is excluded from IP Protection.
+   * Wraps the toolbar button's icon in a <stack> and renders one overlay
+   * <image> layer per non-default icon state on top of it. Keeps every
+   * state's artwork painted and updates opacity via CSS.
+   * This approach prevents flickers between initial state changes since
+   * there is no fresh image decode - Bug 2034698.
    *
-   * @param {nsIPrincipal} principal
-   *  The principal to check.
-   * @returns {boolean}
-   *  True if the site is excluded, false otherwise.
+   * @param {XULElement} toolbaritem
+   *  The toolbaritem to add the icon layers to.
    */
-  #isExcludedSite(principal) {
-    if (!principal || principal.isNullPrincipal) {
-      return false;
+  #buildIconLayers(toolbaritem) {
+    if (toolbaritem.querySelector(".ipprotection-icon-stack")) {
+      return;
     }
 
-    return lazy.IPPExceptionsManager.hasExclusion(principal);
+    let icon = toolbaritem.querySelector(".toolbarbutton-icon");
+    if (!icon) {
+      // The button hasn't rendered its DOM yet; try again on the next update.
+      return;
+    }
+
+    let doc = toolbaritem.ownerDocument;
+    let stack = doc.createXULElement("stack");
+    stack.classList.add("ipprotection-icon-stack", "toolbarbutton-badge-stack");
+
+    // Move the existing icon into the stack as the base (off) layer, then
+    // stack the remaining states on top of it.
+    icon.replaceWith(stack);
+    stack.appendChild(icon);
+    for (let state of IPProtectionToolbarButton.ICON_LAYER_STATES) {
+      let layer = doc.createXULElement("image");
+      layer.classList.add("ipprotection-icon-layer");
+      layer.setAttribute("data-state", state);
+      // Purely presentational; the button itself carries the accessible name.
+      layer.setAttribute("aria-hidden", "true");
+      stack.appendChild(layer);
+    }
   }
 
   /**
@@ -384,6 +499,12 @@ export class IPProtectionToolbarButton {
       this.gBrowser.removeTabsProgressListener(this.#progressListener);
     }
     this.#progressListener = null;
+
+    Services.prefs.removeObserver(
+      OPENED_WITH_LOCATION_PREF,
+      this.#prefObserver
+    );
+    this.#prefObserver = null;
 
     if (this.gBrowser?.tabContainer) {
       this.gBrowser.tabContainer.removeEventListener("TabSelect", this);
@@ -400,11 +521,6 @@ export class IPProtectionToolbarButton {
     lazy.IPPExceptionsManager.removeEventListener(
       "IPPExceptionsManager:ExclusionChanged",
       this.handleEvent
-    );
-
-    Services.obs.removeObserver(
-      this.observeOfflineStatus,
-      "network:offline-status-changed"
     );
   }
 }

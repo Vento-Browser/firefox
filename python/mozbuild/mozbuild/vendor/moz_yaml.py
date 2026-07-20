@@ -37,8 +37,10 @@ VALID_LICENSES = [
     "BSD-3-Clause-Clear",
     "BSL-1.0",
     "CC0-1.0",
-    "ISC",
+    "FTL",
     "ICU",
+    "IJG",
+    "ISC",
     "LGPL-2.1",
     "LGPL-3.0",
     "MIT",
@@ -197,6 +199,7 @@ def _schema_1():
                         ),
                         "source-extensions": Unique([str]),
                         "blocking": Match(r"^[0-9]+$"),
+                        "options": [str],
                         "frequency": Match(
                             r"^(every|release|[1-9][0-9]* weeks?|[1-9][0-9]* commits?|"
                             + r"[1-9][0-9]* weeks?, ?[1-9][0-9]* commits?)$"

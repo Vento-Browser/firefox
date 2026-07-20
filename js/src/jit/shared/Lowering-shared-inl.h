@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -502,6 +500,13 @@ LAllocation LIRGeneratorShared::useAnyOrInt32Constant(MDefinition* mir) {
   return useAny(mir);
 }
 
+LAllocation LIRGeneratorShared::useAnyOrInt32ConstantAtStart(MDefinition* mir) {
+  if (CanUseInt32Constant(mir)) {
+    return LAllocation(mir->toConstant());
+  }
+  return useAnyAtStart(mir);
+}
+
 LAllocation LIRGeneratorShared::useRegisterOrZero(MDefinition* mir) {
   if (mir->isConstant() &&
       (mir->toConstant()->isInt32(0) || mir->toConstant()->isInt64(0))) {
@@ -889,6 +894,19 @@ LInt64Allocation LIRGeneratorShared::useInt64RegisterAtStart(MDefinition* mir) {
 LInt64Allocation LIRGeneratorShared::useInt64RegisterOrConstantAtStart(
     MDefinition* mir) {
   return useInt64RegisterOrConstant(mir, /* useAtStart = */ true);
+}
+
+LInt64Allocation LIRGeneratorShared::useInt64RegisterOrZeroAtStart(
+    MDefinition* mir) {
+  if (mir->isConstant() &&
+      (mir->toConstant()->isInt32(0) || mir->toConstant()->isInt64(0))) {
+#if defined(JS_NUNBOX32)
+    return LInt64Allocation(LAllocation(), LAllocation());
+#else
+    return LInt64Allocation(LAllocation());
+#endif
+  }
+  return useInt64Register(mir, /* useAtStart = */ true);
 }
 
 LInt64Allocation LIRGeneratorShared::useInt64OrConstantAtStart(

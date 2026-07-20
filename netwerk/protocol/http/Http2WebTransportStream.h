@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,10 +7,10 @@
 
 #include <functional>
 
-#include "mozilla/CheckedInt.h"
-#include "mozilla/Queue.h"
 #include "WebTransportFlowControl.h"
 #include "WebTransportStreamBase.h"
+#include "mozilla/CheckedInt.h"
+#include "mozilla/Queue.h"
 
 namespace mozilla::net {
 
@@ -72,7 +71,7 @@ class Http2WebTransportStream final : public WebTransportStreamBase {
   void TakeOutputCapsule(mozilla::Queue<UniquePtr<CapsuleEncoder>>& aOutput);
 
   void OnStopSending();
-  void OnReset(uint64_t aSize);
+  nsresult OnReset(uint64_t aSize);
   void OnStreamDataSent(size_t aCount);
 
  private:

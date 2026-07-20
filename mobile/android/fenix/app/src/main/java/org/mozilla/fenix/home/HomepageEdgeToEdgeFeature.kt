@@ -5,6 +5,7 @@
 package org.mozilla.fenix.home
 
 import android.app.Activity
+import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -27,9 +28,11 @@ import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.support.base.feature.LifecycleAwareFeature
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.wallpapers.Wallpaper
+import com.google.android.material.R as materialR
 
 /**
  * Feature responsible for managing window insets, background styling, and toolbar visibility
@@ -38,6 +41,7 @@ import org.mozilla.fenix.wallpapers.Wallpaper
  * @param appStore [AppStore] used for querying and updating application state.
  * @param activity The activity containing the window to manage.
  * @param settings The [Settings] used to determine the current position of the toolbar.
+ * @param browsingModeManager The [BrowsingModeManager] used to determine the current browsing mode.
  * @param toolbarStore The [BrowserToolbarStore] which state is observed to manage status bar background in edit mode.
  * @param mainDispatcher The [CoroutineDispatcher] used for main thread operations.
  */
@@ -45,16 +49,22 @@ class HomepageEdgeToEdgeFeature(
     private val appStore: AppStore,
     private val activity: Activity,
     private val settings: Settings,
+    private val browsingModeManager: BrowsingModeManager,
     private val toolbarStore: BrowserToolbarStore,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) : LifecycleAwareFeature {
 
     private var backgroundView: View? = null
     private var statusBarHeight: Int = 0
+    private var shouldApplyEdgeToEdgeBackgroundOnNextInsets = false
     private var toolbarScope: CoroutineScope? = null
     private var wallpaperScope: CoroutineScope? = null
 
     override fun start() {
+        if (!settings.enableHomepageEdgeToEdgeBackgroundFeature) {
+            return
+        }
+
         observeWallpaperUpdates()
     }
 
@@ -74,17 +84,11 @@ class HomepageEdgeToEdgeFeature(
         wallpaperScope = null
     }
 
-    private fun setBackground(background: Background) {
-        val isPrivateMode = appStore.state.mode == BrowsingMode.Private
-        activity.window?.setBackgroundDrawableResource(
-            if (isPrivateMode) R.color.fx_mobile_private_surface else background.resourceId,
-        )
-    }
-
     private fun setWallpaper(wallpaper: Wallpaper) {
         if (wallpaper == Wallpaper.EdgeToEdge) {
-            setBackground(Background.HomeEdgeToEdge)
-            setupStatusBarBackground()
+            if (setupStatusBarBackground()) {
+                setBackground(Background.HomeEdgeToEdge)
+            }
         } else {
             removeEdgeToEdgeComponents()
         }
@@ -99,9 +103,17 @@ class HomepageEdgeToEdgeFeature(
                 }
             }
         }
+        shouldApplyEdgeToEdgeBackgroundOnNextInsets = false
         toolbarScope?.cancel()
         toolbarScope = null
         backgroundView = null
+    }
+
+    private fun setBackground(background: Background) {
+        val isPrivateMode = browsingModeManager.mode == BrowsingMode.Private
+        activity.window?.setBackgroundDrawableResource(
+            if (isPrivateMode) R.color.fx_mobile_private_surface else background.resourceId,
+        )
     }
 
     /**
@@ -109,12 +121,26 @@ class HomepageEdgeToEdgeFeature(
      *
      * This view is added directly to the DecorView (the root view of the activity window) to ensure
      * it sits behind all other content but can still receive window insets.
+     *
+     * @return true if the status bar height is already known and the edge-to-edge background
+     * can be applied immediately, false if it must be deferred until window insets are received.
      */
-    private fun setupStatusBarBackground() {
-        val rootView = activity.window?.decorView as? ViewGroup ?: return
+    private fun setupStatusBarBackground(): Boolean {
+        val rootView = activity.window?.decorView as? ViewGroup ?: return false
+
+        val rootInsetsTop = ViewCompat.getRootWindowInsets(rootView)
+            ?.getInsets(WindowInsetsCompat.Type.statusBars())
+            ?.top
+        if (rootInsetsTop != null) {
+            statusBarHeight = rootInsetsTop
+        }
+
+        val shouldApplyBackgroundImmediately = statusBarHeight > 0
+        shouldApplyEdgeToEdgeBackgroundOnNextInsets = !shouldApplyBackgroundImmediately
 
         backgroundView = View(activity).apply {
             id = View.generateViewId()
+            setBackgroundColor(getStatusBarColor(settings, toolbarStore.state))
 
             val params = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
                 gravity = Gravity.TOP
@@ -123,10 +149,12 @@ class HomepageEdgeToEdgeFeature(
             rootView.addView(this, params)
 
             ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-                statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-                layoutParams.height = statusBarHeight
+                applyStatusBarInsetsAndBackground(this, insets)
                 insets
             }
+        }
+        if (shouldApplyEdgeToEdgeBackgroundOnNextInsets) {
+            backgroundView?.let(ViewCompat::requestApplyInsets)
         }
 
         if (toolbarScope == null) {
@@ -136,19 +164,35 @@ class HomepageEdgeToEdgeFeature(
                 }
             }
         }
+        return shouldApplyBackgroundImmediately
+    }
+
+    private fun applyStatusBarInsetsAndBackground(view: View, insets: WindowInsetsCompat) {
+        statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+        view.layoutParams.height = statusBarHeight
+        view.requestLayout()
+        if (shouldApplyEdgeToEdgeBackgroundOnNextInsets && statusBarHeight > 0) {
+            setBackground(Background.HomeEdgeToEdge)
+            shouldApplyEdgeToEdgeBackgroundOnNextInsets = false
+        }
     }
 
     private fun getStatusBarColor(settings: Settings, toolbarState: BrowserToolbarState): Int {
         val shouldShow = !settings.shouldUseBottomToolbar || toolbarState.isShowingResultsScreen
-        val isPrivateMode = appStore.state.mode == BrowsingMode.Private
+        val isPrivateMode = browsingModeManager.mode == BrowsingMode.Private
 
         return when {
-            !shouldShow -> android.R.color.transparent
+            !shouldShow -> Color.TRANSPARENT
             isPrivateMode -> ContextCompat.getColor(activity, R.color.fx_mobile_private_surface)
-            toolbarState.isShowingResultsScreen && appStore.state.mode == BrowsingMode.Normal ->
+            !settings.isTabStripEnabled &&
+                toolbarState.isShowingResultsScreen && browsingModeManager.mode == BrowsingMode.Normal &&
+                (
+                    toolbarState.editState.query.current.isNotEmpty() ||
+                    toolbarState.editState.queryWasPrefilled
+                ) ->
                 MaterialColors.getColor(
                     activity,
-                    com.google.android.material.R.attr.colorSurface,
+                    materialR.attr.colorSurface,
                     "Could not resolve color",
                 )
             else -> ContextCompat.getColor(activity, R.color.homepage_tab_edge_to_edge_toolbar_background)
@@ -156,7 +200,7 @@ class HomepageEdgeToEdgeFeature(
     }
 
     private val BrowserToolbarState.isShowingResultsScreen: Boolean
-        get() = isEditMode() && editState.query.current.isNotEmpty()
+        get() = isEditMode()
 
     /**
      * Enum representing the available background drawable resources.

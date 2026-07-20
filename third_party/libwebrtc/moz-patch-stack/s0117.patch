@@ -1,26 +1,47 @@
 From: Michael Froman <mfroman@mozilla.com>
-Date: Wed, 16 Jul 2025 21:08:00 +0300
-Subject: Bug 1974813 - turn off rust in libwebrtc since we don't use any
- libwebrtc rust code. r=ng?
+Date: Wed, 8 Oct 2025 17:49:00 +0000
+Subject: Bug 1980501 - use forward class decl rather than include
+ audio_state.h r?ng!
 
-Note: no moz.build changes are caused by this change.
+This avoids code outside of libwebrtc inadvertently including
+rtc_base/containers/flat_set.h which uses c++20 features.  Once
+the rest of the Mozilla tree is compiling with c++20, we can
+remove this modification (see Bug 1768116).
 
-Differential Revision: https://phabricator.services.mozilla.com/D257316
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/14ee98c4832a55bf32116c925540ab0f53e46cd3
+Differential Revision: https://phabricator.services.mozilla.com/D267993
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/9c487a574d218cc1c261b646c501db4d159754f0
 ---
- .gn | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ audio/audio_receive_stream.h | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
-diff --git a/.gn b/.gn
-index 269ca2f5a7..e30bfefddf 100644
---- a/.gn
-+++ b/.gn
-@@ -89,7 +89,7 @@ default_args = {
-   use_fuzztest_wrapper = false
+diff --git a/audio/audio_receive_stream.h b/audio/audio_receive_stream.h
+index 452380030d..ed8a33e502 100644
+--- a/audio/audio_receive_stream.h
++++ b/audio/audio_receive_stream.h
+@@ -35,7 +35,11 @@
+ #include "api/transport/rtp/rtp_source.h"
+ #include "api/units/time_delta.h"
+ #include "api/units/timestamp.h"
++// This can be removed after Bug 1768116 enables
++// c++20 builds across the entire Mozilla tree.
++#if !defined(WEBRTC_MOZILLA_BUILD)
+ #include "audio/audio_state.h"
++#endif
+ #include "call/audio_receive_stream.h"
+ #include "call/audio_state.h"
+ #include "call/syncable.h"
+@@ -48,6 +52,14 @@ class PacketRouter;
+ class RtpStreamReceiverControllerInterface;
+ class RtpStreamReceiverInterface;
  
-   # Enable Rust in WebRTC
--  enable_rust = true
-+  enable_rust = false # Mozilla
-   enable_rust_cxx = true
-   enable_chromium_prelude = true
- 
++// This can be removed after Bug 1768116 enables
++// c++20 builds across the entire Mozilla tree.
++#if defined(WEBRTC_MOZILLA_BUILD)
++namespace internal {
++class AudioState;
++}
++#endif
++
+ namespace voe {
+ class ChannelReceiveInterface;
+ }  // namespace voe

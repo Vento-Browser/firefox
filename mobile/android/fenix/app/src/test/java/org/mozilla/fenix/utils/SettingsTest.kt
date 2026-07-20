@@ -8,6 +8,8 @@ import android.content.pm.PackageInfo
 import androidx.core.content.edit
 import io.mockk.every
 import io.mockk.spyk
+import io.mockk.verify
+import mozilla.components.browser.engine.gecko.cookiebanners.ReportSiteDomainsRepository.Companion.REPORT_SITE_DOMAINS_REPOSITORY_NAME
 import mozilla.components.concept.engine.Engine.HttpsOnlyMode.DISABLED
 import mozilla.components.concept.engine.Engine.HttpsOnlyMode.ENABLED
 import mozilla.components.concept.engine.Engine.HttpsOnlyMode.ENABLED_PRIVATE_ONLY
@@ -28,10 +30,14 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.nimbus.DefaultBrowserPrompt
 import org.mozilla.fenix.nimbus.FakeNimbusEventStore
+import org.mozilla.fenix.nimbus.FxNimbus
+import org.mozilla.fenix.nimbus.HomescreenEdgeToEdgeBackground
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.ShortcutType
 import org.mozilla.fenix.settings.deletebrowsingdata.DeleteBrowsingDataOnQuitType
+import org.mozilla.fenix.wallpapers.Wallpaper
 import org.robolectric.RobolectricTestRunner
+import java.io.File
 import java.util.Calendar
 
 private const val TOU_VERSION = 5
@@ -142,6 +148,28 @@ class SettingsTest {
 
         // Then
         assertEquals("Mozilla", settings.defaultSearchEngineName)
+    }
+
+    @Test
+    fun defaultWallpaperIsEdgeToEdgeWhenEdgeToEdgeFeatureEnabled() {
+        FxNimbus.features.homescreenEdgeToEdgeBackground.withCachedValue(
+            HomescreenEdgeToEdgeBackground(enabled = true),
+        )
+        val settings = Settings(testContext)
+
+        // Then
+        assertEquals(Wallpaper.EdgeToEdge.name, settings.currentWallpaperName)
+    }
+
+    @Test
+    fun defaultWallpaperIsDefaultWhenEdgeToEdgeDisabled() {
+        FxNimbus.features.homescreenEdgeToEdgeBackground.withCachedValue(
+            HomescreenEdgeToEdgeBackground(enabled = false),
+        )
+        val settings = Settings(testContext)
+
+        // Then
+        assertEquals(Wallpaper.Default.name, settings.currentWallpaperName)
     }
 
     @Test
@@ -326,13 +354,6 @@ class SettingsTest {
     }
 
     @Test
-    fun shouldShowSearchShortcuts() {
-        // When just created
-        // Then
-        assertFalse(settings.shouldShowSearchShortcuts)
-    }
-
-    @Test
     fun shouldShowHistorySuggestions() {
         // When just created
         // Then
@@ -377,19 +398,6 @@ class SettingsTest {
 
         // Then
         assertFalse(settings.shouldUseTrackingProtection)
-    }
-
-    @Test
-    fun shouldShowCollectionsPlaceholderOnHome() {
-        // When
-        // Then
-        assertTrue(settings.showCollectionsPlaceholderOnHome)
-
-        // When
-        settings.showCollectionsPlaceholderOnHome = false
-
-        // Then
-        assertFalse(settings.showCollectionsPlaceholderOnHome)
     }
 
     @Test
@@ -785,46 +793,6 @@ class SettingsTest {
     }
 
     @Test
-    fun `GIVEN re-engagement notification shown and number of app launch THEN should set re-engagement notification returns correct value`() {
-        val localSetting = spyk(settings)
-
-        localSetting.reEngagementNotificationShown = false
-        localSetting.numberOfAppLaunches = 0
-        assert(localSetting.shouldSetReEngagementNotification())
-
-        localSetting.numberOfAppLaunches = 1
-        assert(localSetting.shouldSetReEngagementNotification())
-
-        localSetting.numberOfAppLaunches = 2
-        assertFalse(localSetting.shouldSetReEngagementNotification())
-
-        localSetting.reEngagementNotificationShown = true
-        localSetting.numberOfAppLaunches = 0
-        assertFalse(localSetting.shouldSetReEngagementNotification())
-    }
-
-    @Test
-    fun `GIVEN re-engagement notification shown and is default browser THEN should show re-engagement notification returns correct value`() {
-        val localSetting = spyk(settings)
-
-        every { localSetting.isDefaultBrowserBlocking() } returns false
-
-        localSetting.reEngagementNotificationShown = false
-        assert(localSetting.shouldShowReEngagementNotification())
-
-        localSetting.reEngagementNotificationShown = true
-        assertFalse(localSetting.shouldShowReEngagementNotification())
-
-        every { localSetting.isDefaultBrowserBlocking() } returns true
-
-        localSetting.reEngagementNotificationShown = false
-        assertFalse(localSetting.shouldShowReEngagementNotification())
-
-        localSetting.reEngagementNotificationShown = true
-        assertFalse(localSetting.shouldShowReEngagementNotification())
-    }
-
-    @Test
     fun inactiveTabsAreEnabled() {
         // When just created
         // Then
@@ -862,26 +830,12 @@ class SettingsTest {
     }
 
     @Test
-    fun `GIVEN feature is disabled, hasUserBeenOnboarded is true and isLauncherIntent is true THEN shouldShowOnboarding returns false`() {
+    fun `GIVEN feature is disabled, hasUserBeenOnboarded is true THEN shouldShowOnboarding returns false`() {
         val settings = spyk(settings)
 
         val actual = settings.shouldShowOnboarding(
             featureEnabled = false,
             hasUserBeenOnboarded = true,
-            isLauncherIntent = true,
-        )
-
-        assertFalse(actual)
-    }
-
-    @Test
-    fun `GIVEN feature is enabled, hasUserBeenOnboarded is false and isLauncherIntent is false THEN shouldShowOnboarding returns false`() {
-        val settings = spyk(settings)
-
-        val actual = settings.shouldShowOnboarding(
-            featureEnabled = true,
-            hasUserBeenOnboarded = false,
-            isLauncherIntent = false,
         )
 
         assertFalse(actual)
@@ -894,20 +848,18 @@ class SettingsTest {
         val actual = settings.shouldShowOnboarding(
             featureEnabled = true,
             hasUserBeenOnboarded = true,
-            isLauncherIntent = true,
         )
 
         assertFalse(actual)
     }
 
     @Test
-    fun `GIVEN feature is enabled, hasUserBeenOnboarded is false and isLauncherIntent is true THEN shouldShowOnboarding returns true`() {
+    fun `GIVEN feature is enabled, hasUserBeenOnboarded is false THEN shouldShowOnboarding returns true`() {
         val settings = spyk(settings)
 
         val actual = settings.shouldShowOnboarding(
             featureEnabled = true,
             hasUserBeenOnboarded = false,
-            isLauncherIntent = true,
         )
 
         assertTrue(actual)
@@ -921,7 +873,6 @@ class SettingsTest {
         val actual = settings.shouldShowOnboarding(
             featureEnabled = false,
             hasUserBeenOnboarded = true,
-            isLauncherIntent = false,
         )
 
         assertTrue(actual)
@@ -1061,9 +1012,57 @@ class SettingsTest {
     }
 
     @Test
+    fun `GIVEN the legacy pocket database has not been deleted WHEN deleteLegacyPocketDatabaseIfNeeded is called THEN the database is deleted`() {
+        val context = spyk(testContext)
+        val settings = Settings(context)
+
+        settings.deletePocketDatabaseIfNeeded()
+
+        verify { context.deleteDatabase("pocket_recommendations") }
+    }
+
+    @Test
+    fun `GIVEN the legacy pocket database was already deleted WHEN deleteLegacyPocketDatabaseIfNeeded is called again THEN the database is not deleted a second time`() {
+        val context = spyk(testContext)
+        val settings = Settings(context)
+
+        settings.deletePocketDatabaseIfNeeded()
+        settings.deletePocketDatabaseIfNeeded()
+
+        verify(exactly = 1) { context.deleteDatabase("pocket_recommendations") }
+    }
+
+    @Test
+    fun `GIVEN an existing report site domains datastore WHEN deleteReportSiteDomainsDataStoreIfNeeded is called THEN the datastore is deleted`() {
+        val settings = Settings(testContext)
+        val dataStoreFile = File(testContext.filesDir, "datastore/$REPORT_SITE_DOMAINS_REPOSITORY_NAME.preferences_pb")
+        dataStoreFile.parentFile?.mkdirs()
+        dataStoreFile.createNewFile()
+        assertTrue(dataStoreFile.exists())
+
+        settings.deleteReportSiteDomainsDataStoreIfNeeded()
+
+        assertFalse(dataStoreFile.exists())
+    }
+
+    @Test
+    fun `GIVEN the report site domains datastore was already deleted WHEN deleteReportSiteDomainsDataStoreIfNeeded is called again THEN the datastore is not deleted a second time`() {
+        val settings = Settings(testContext)
+        val dataStoreFile = File(testContext.filesDir, "datastore/$REPORT_SITE_DOMAINS_REPOSITORY_NAME.preferences_pb")
+        dataStoreFile.parentFile?.mkdirs()
+        dataStoreFile.createNewFile()
+
+        settings.deleteReportSiteDomainsDataStoreIfNeeded()
+        assertFalse(dataStoreFile.exists())
+
+        dataStoreFile.createNewFile()
+        settings.deleteReportSiteDomainsDataStoreIfNeeded()
+        assertTrue(dataStoreFile.exists())
+    }
+
+    @Test
     fun `GIVEN top composable toolbar is enabled WHEN querying the toolbar height THEN get the height of the composable toolbar`() {
         val settings = spyk(settings)
-        every { settings.shouldUseComposableToolbar } returns true
         every { settings.toolbarPosition } returns ToolbarPosition.TOP
 
         assertEquals(64, settings.browserToolbarHeight)
@@ -1072,7 +1071,6 @@ class SettingsTest {
     @Test
     fun `GIVEN bottom composable toolbar is enabled and navigation bar is disabled WHEN querying the toolbar height THEN get the height of the composable toolbar`() {
         val settings = spyk(settings)
-        every { settings.shouldUseComposableToolbar } returns true
         every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
         every { settings.shouldUseExpandedToolbar } returns false
 
@@ -1085,7 +1083,6 @@ class SettingsTest {
             screenWidthDp = 599
         }
         val settings = spyk(settings)
-        every { settings.shouldUseComposableToolbar } returns true
         every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
         every { settings.shouldUseExpandedToolbar } returns true
 
@@ -1100,7 +1097,6 @@ class SettingsTest {
         }
         val settings = spyk(settings)
 
-        every { settings.shouldUseComposableToolbar } returns true
         every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
         every { settings.shouldUseExpandedToolbar } returns true
 
@@ -1115,19 +1111,10 @@ class SettingsTest {
         }
         val settings = spyk(settings)
 
-        every { settings.shouldUseComposableToolbar } returns true
         every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
         every { settings.shouldUseExpandedToolbar } returns true
 
         assertEquals(64, settings.browserToolbarHeight)
-    }
-
-    @Test
-    fun `GIVEN composable toolbar is not enabled WHEN querying the toolbar heigh THEN get the height of the toolbar view`() {
-        val settings = spyk(settings)
-        every { settings.shouldUseComposableToolbar } returns false
-
-        assertEquals(56, settings.browserToolbarHeight)
     }
 
     @Test
@@ -1321,6 +1308,42 @@ class SettingsTest {
     }
 
     @Test
+    fun `WHEN this is a benchmark build and screen capture and screenshots are not allowed in private mode THEN shouldSecureModeBeOverridden is true`() {
+        val settings = Settings(appContext = testContext, isBenchmarkBuild = true)
+        settings.allowScreenshotsInPrivateMode = false
+        settings.allowScreenCaptureInSecureScreens = false
+
+        assertTrue(settings.shouldSecureModeBeOverridden)
+    }
+
+    @Test
+    fun `WHEN this is not a benchmark build and screen capture and screenshots are not allowed in private mode THEN shouldSecureModeBeOverridden is false`() {
+        val settings = Settings(appContext = testContext, isBenchmarkBuild = false)
+        settings.allowScreenshotsInPrivateMode = false
+        settings.allowScreenCaptureInSecureScreens = false
+
+        assertFalse(settings.shouldSecureModeBeOverridden)
+    }
+
+    @Test
+    fun `WHEN this is not a benchmark build and screenshots in private mode are allowed and screen capture in private mode is not allowed THEN shouldSecureModeBeOverridden is true`() {
+        val settings = Settings(appContext = testContext, isBenchmarkBuild = false)
+        settings.allowScreenshotsInPrivateMode = true
+        settings.allowScreenCaptureInSecureScreens = false
+
+        assertTrue(settings.shouldSecureModeBeOverridden)
+    }
+
+    @Test
+    fun `WHEN this is not a benchmark build and screenshots in private mode is not allowed and screen capture in private mode is allowed THEN shouldSecureModeBeOverridden is true`() {
+        val settings = Settings(appContext = testContext, isBenchmarkBuild = false)
+        settings.allowScreenCaptureInSecureScreens = true
+        settings.allowScreenshotsInPrivateMode = false
+
+        assertTrue(settings.shouldSecureModeBeOverridden)
+    }
+
+    @Test
     fun `WHEN user has accepted the ToU THEN termsOfUseAcceptedVersion returns the ToU version`() {
         settings.hasAcceptedTermsOfService = true
 
@@ -1337,38 +1360,81 @@ class SettingsTest {
     }
 
     @Test
-    fun `GIVEN toolbar customization is disabled WHEN reading toolbarSimpleShortcut THEN NEW_TAB is returned regardless of stored key`() {
-        settings.shouldShowToolbarCustomization = false
-        settings.toolbarSimpleShortcutKey = ShortcutType.SHARE.value
+    fun `WHEN no preference is stored THEN delete download behavior should be ASK_WHEN_DELETING`() {
+        settings.preferences.edit {
+            remove("pref_key_downloads_delete_behavior_v2")
+        }
 
-        val result = settings.toolbarSimpleShortcut
-        assertEquals(ShortcutType.NEW_TAB.value, result)
+        val result = settings.deleteDownloadBehavior
+        assertEquals(Settings.DeleteDownloadBehavior.ASK_WHEN_DELETING, result)
     }
 
     @Test
-    fun `GIVEN toolbar customization is enabled WHEN reading toolbarSimpleShortcut THEN stored key is returned`() {
-        settings.shouldShowToolbarCustomization = true
-        settings.toolbarSimpleShortcutKey = ShortcutType.SHARE.value
+    fun `WHEN old cleanup file preference is DELETE_FROM_DEVICE THEN delete behavior should be ASK_WHEN_DELETING`() {
+        // Bug 2002334 introduced a new key for the download deletion behavior.
+        // We want to make sure that the settings is ASK_WHEN_DELETING after the migration from version using the old preference.
+        settings.preferences.edit {
+            putBoolean("pref_key_downloads_clean_up_files_automatically", true)
+        }
 
-        val result = settings.toolbarSimpleShortcut
-        assertEquals(ShortcutType.SHARE.value, result)
+        val result = settings.deleteDownloadBehavior
+        assertEquals(Settings.DeleteDownloadBehavior.ASK_WHEN_DELETING, result)
     }
 
     @Test
-    fun `GIVEN toolbar customization is disabled WHEN reading toolbarExpandedShortcut THEN BOOKMARK is returned regardless of stored key`() {
-        settings.shouldShowToolbarCustomization = false
-        settings.toolbarExpandedShortcutKey = ShortcutType.NEW_TAB.value
+    fun `WHEN old download delete behavior preference is DELETE_FROM_DEVICE THEN delete behavior should be ASK_WHEN_DELETING`() {
+        // Bug 2041355 rotated the preference key for the deletion behavior. The settings should be ASK_WHEN_DELETING if
+        // the new key doesn't exist in the preference, no matter what was the value stored with the old key
+        settings.preferences.edit {
+            putInt("pref_key_downloads_delete_behavior", Settings.DeleteDownloadBehavior.DELETE_FROM_DEVICE.value)
+            remove("pref_key_downloads_delete_behavior_v2")
+        }
 
-        val result = settings.toolbarExpandedShortcut
-        assertEquals(ShortcutType.BOOKMARK.value, result)
+        val result = settings.deleteDownloadBehavior
+        assertEquals(Settings.DeleteDownloadBehavior.ASK_WHEN_DELETING, result)
     }
 
     @Test
-    fun `GIVEN toolbar customization is enabled WHEN reading toolbarExpandedShortcut THEN stored key is returned`() {
-        settings.shouldShowToolbarCustomization = true
-        settings.toolbarExpandedShortcutKey = ShortcutType.TRANSLATE.value
+    fun `WHEN old download delete behavior preference is REMOVE_FROM_HISTORY THEN delete behavior should be ASK_WHEN_DELETING`() {
+        // Bug 2041355 rotated the preference key for the deletion behavior. The settings should be ASK_WHEN_DELETING if
+        // the new key doesn't exist in the preference, no matter what was the value stored with the old key
+        settings.preferences.edit {
+            putInt("pref_key_downloads_delete_behavior", Settings.DeleteDownloadBehavior.REMOVE_FROM_HISTORY.value)
+            remove("pref_key_downloads_delete_behavior_v2")
+        }
 
-        val result = settings.toolbarExpandedShortcut
-        assertEquals(ShortcutType.TRANSLATE.value, result)
+        val result = settings.deleteDownloadBehavior
+        assertEquals(Settings.DeleteDownloadBehavior.ASK_WHEN_DELETING, result)
+    }
+
+    @Test
+    fun `WHEN tab strip is disabled THEN activeSimpleToolbarShortcutKey reads the simple toolbar key`() {
+        settings.isTabStripEnabled = false
+        settings.toolbarSimpleShortcutKey = ShortcutType.NEW_TAB.value
+        settings.toolbarTabStripShortcutKey = ShortcutType.BOOKMARK.value
+
+        assertEquals(ShortcutType.NEW_TAB.value, settings.activeSimpleToolbarShortcutKey)
+    }
+
+    @Test
+    fun `WHEN tab strip is enabled THEN activeSimpleToolbarShortcutKey reads the tab strip key`() {
+        settings.isTabStripEnabled = true
+        settings.toolbarSimpleShortcutKey = ShortcutType.NEW_TAB.value
+        settings.toolbarTabStripShortcutKey = ShortcutType.BOOKMARK.value
+
+        assertEquals(ShortcutType.BOOKMARK.value, settings.activeSimpleToolbarShortcutKey)
+    }
+
+    @Test
+    fun `WHEN download deletion behavior preference is read THEN it should read from the new preference`() {
+        // Bug 2041355 rotated the preference key for the deletion behavior.
+        // We want to make sure we are getting the value from the right preference.
+        settings.preferences.edit {
+            putInt("pref_key_downloads_delete_behavior", Settings.DeleteDownloadBehavior.DELETE_FROM_DEVICE.value)
+            putInt("pref_key_downloads_delete_behavior_v2", Settings.DeleteDownloadBehavior.REMOVE_FROM_HISTORY.value)
+        }
+
+        val result = settings.deleteDownloadBehavior
+        assertEquals(Settings.DeleteDownloadBehavior.REMOVE_FROM_HISTORY, result)
     }
 }

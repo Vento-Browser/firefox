@@ -1,4 +1,3 @@
-// -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -157,7 +156,7 @@ pref("editor.htmleditor.inputevent.hack.no_dispatch_before_compositionend.addl",
 // Blocklist of domains of web apps which we should not dispatch `input` event
 // immediately after `compositionend`.
 pref("editor.texteditor.inputevent.hack.no_dispatch_after_compositionend", "");
-pref("editor.htmleditor.inputevent.hack.no_dispatch_after_compositionend", "");
+pref("editor.htmleditor.inputevent.hack.no_dispatch_after_compositionend", "www.icloud.com");
 // Pref for end-users and policy to add additional values.
 pref("editor.texteditor.inputevent.hack.no_dispatch_after_compositionend.addl", "");
 pref("editor.htmleditor.inputevent.hack.no_dispatch_after_compositionend.addl", "");
@@ -179,9 +178,6 @@ pref("browser.triple_click_selects_paragraph", true);
 
 // Disable support for MathML
 pref("mathml.disabled",    false);
-
-// Enable scale transform for stretchy MathML operators. See bug 414277.
-pref("mathml.scale_stretchy_operators.enabled", true);
 
 // We'll throttle the download if the download rate is throttle-factor times
 // the estimated playback rate, AND we satisfy the cache readahead_limit
@@ -243,25 +239,17 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
   // to allow for gradually gaining support and test coverage.
   pref("media.navigator.video.resize_mode.enabled", true);
   pref("media.navigator.video.default_resize_mode", 1); // 0=none, 1=crop-and-scale
-  pref("media.navigator.video.use_remb", true);
-  pref("media.navigator.video.use_transport_cc", true);
-  pref("media.peerconnection.video.use_rtx", true);
-  pref("media.peerconnection.video.use_rtx.blocklist", "doxy.me,*.doxy.me");
   pref("media.peerconnection.sdp.quirk.duplicate_fingerprint.allowlist", "");
-  pref("media.navigator.video.use_tmmbr", false);
-  pref("media.navigator.audio.use_fec", true);
   pref("media.navigator.video.offer_rtcp_rsize", true);
 
   #ifdef NIGHTLY_BUILD
     pref("media.peerconnection.sdp.parser", "sipcc");
     pref("media.peerconnection.sdp.alternate_parse_mode", "parallel");
     pref("media.peerconnection.sdp.strict_success", false);
-    pref("media.navigator.video.red_ulpfec_enabled", true);
   #else
     pref("media.peerconnection.sdp.parser", "sipcc");
     pref("media.peerconnection.sdp.alternate_parse_mode", "never");
     pref("media.peerconnection.sdp.strict_success", false);
-    pref("media.navigator.video.red_ulpfec_enabled", true);
   #endif
 
   pref("media.peerconnection.sctp.use_dcsctp", true);
@@ -270,14 +258,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 
   pref("media.navigator.video.default_width",0);  // adaptive default
   pref("media.navigator.video.default_height",0); // adaptive default
-  pref("media.navigator.video.max_fs", 12288); // Enough for 2048x1536
-  pref("media.navigator.video.max_fr", 60);
-  pref("media.navigator.video.disable_h264_baseline", false);
-  pref("media.navigator.video.h264.level", 31); // 0x42E01f - level 3.1
-  pref("media.navigator.video.h264.max_br", 0);
-  pref("media.navigator.video.h264.max_mbps", 0);
-  pref("media.peerconnection.video.vp9_enabled", true);
-  pref("media.peerconnection.video.vp9_preferred", false);
   pref("media.getusermedia.audio.max_channels", 0);
   #if defined(ANDROID)
     pref("media.getusermedia.camera.off_while_disabled.enabled", false);
@@ -299,7 +279,12 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
   pref("media.navigator.permission.disabled", false);
   pref("media.navigator.streams.fake", false);
   pref("media.peerconnection.default_iceservers", "[]");
-  pref("media.peerconnection.allow_old_setParameters", true);
+  #ifdef NIGHTLY_BUILD
+    pref("media.peerconnection.allow_old_setParameters", false);
+    pref("media.peerconnection.allow_old_setParameters.allowlist", "*.google.com");
+  #else
+    pref("media.peerconnection.allow_old_setParameters", true);
+  #endif
   pref("media.peerconnection.ice.loopback", false); // Set only for testing in offline environments.
   pref("media.peerconnection.ice.tcp", true);
   pref("media.peerconnection.ice.tcp_so_sock_count", 0); // Disable SO gathering
@@ -341,7 +326,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
   // third_party/libwebrtc/modules/audio_processing/include/audio_processing.h
   pref("media.getusermedia.audio.processing.aec.enabled", true);
   pref("media.getusermedia.audio.processing.aec", 1); // kModerateSuppression
-  pref("media.getusermedia.audio.processing.aec.mobile", false);
   pref("media.getusermedia.audio.processing.noise.enabled", true);
   pref("media.getusermedia.audio.processing.noise", 2); // kHigh
   pref("media.getusermedia.audio.processing.agc.enabled", true);
@@ -656,9 +640,11 @@ pref("devtools.performance.recording.child.timeout_s", 15);
   // Use a more advanced preset on Nightly and local builds.
   pref("devtools.performance.recording.preset", "firefox-platform");
   pref("devtools.performance.recording.preset.remote", "firefox-platform");
+  pref("devtools.performance.recording.preset.aboutlogging", "firefox-platform");
 #else
   pref("devtools.performance.recording.preset", "web-developer");
   pref("devtools.performance.recording.preset.remote", "web-developer");
+  pref("devtools.performance.recording.preset.aboutlogging", "web-developer");
 #endif
 // The profiler's active tab view has a few issues. Disable it until the issues
 // are ironed out.
@@ -667,23 +653,28 @@ pref("devtools.performance.recording.active-tab-view.enabled", false);
 // profiler's buffer. 10000000 is ~80mb.
 pref("devtools.performance.recording.entries", 10000000);
 pref("devtools.performance.recording.entries.remote", 10000000);
+pref("devtools.performance.recording.entries.aboutlogging", 10000000);
 // Profiler interval in microseconds. 1000µs is 1ms
 pref("devtools.performance.recording.interval", 1000);
 pref("devtools.performance.recording.interval.remote", 1000);
+pref("devtools.performance.recording.interval.aboutlogging", 1000);
 // Profiler duration of entries in the profiler's buffer in seconds.
 // `0` means no time limit for the markers, they roll off naturally from the
 // circular buffer.
 pref("devtools.performance.recording.duration", 0);
 pref("devtools.performance.recording.duration.remote", 0);
+pref("devtools.performance.recording.duration.aboutlogging", 0);
 // Profiler feature set. See tools/profiler/core/platform.cpp for features and
 // explanations. Remote profiling also includes the java feature by default.
 // If the remote debuggee isn't an Android phone, then this feature will
 // be ignored.
 pref("devtools.performance.recording.features", "[\"js\",\"stackwalk\",\"cpu\",\"screenshots\",\"memory\"]");
 pref("devtools.performance.recording.features.remote", "[\"js\",\"stackwalk\",\"cpu\",\"screenshots\",\"memory\",\"java\"]");
+pref("devtools.performance.recording.features.aboutlogging", "[\"js\",\"stackwalk\",\"cpu\",\"screenshots\",\"memory\"]");
 // Threads to be captured by the profiler.
 pref("devtools.performance.recording.threads", "[\"GeckoMain\",\"Compositor\",\"Renderer\"]");
 pref("devtools.performance.recording.threads.remote", "[\"GeckoMain\",\"Compositor\",\"Renderer\"]");
+pref("devtools.performance.recording.threads.aboutlogging", "[\"GeckoMain\",\"Compositor\",\"Renderer\"]");
 // A JSON array of strings, where each string is a file path to an objdir on
 // the host machine. This is used in order to look up symbol information from
 // build artifacts of local builds.
@@ -799,8 +790,8 @@ pref("dom.storage.snapshot_gradual_prefill", 4096);
 pref("dom.storage.snapshot_reusing", true);
 pref("dom.storage.client_validation", true);
 
-// Enable time picker UI. By default, disabled.
-pref("dom.forms.datetime.timepicker", false);
+// Enable time picker UI.
+pref("dom.forms.datetime.timepicker", true);
 
 // Enable search in <select> dropdowns (more than 40 options)
 pref("dom.forms.selectSearch", false);
@@ -875,6 +866,9 @@ pref("privacy.purge_trackers.max_purge_count", 100);
 // user interaction (even if they don't have user
 // interaction directly).
 pref("privacy.purge_trackers.consider_entity_list", false);
+
+// What custom schemes to treat as accessing digital wallets, comma separated.
+pref("privacy.wallet_schemes", "openid4vp,mdoc,mdoc-openid4vp,haip,eudi-wallet,eudi-openid4vp,openid-credential-offer");
 
 pref("dom.event.contextmenu.enabled",       true);
 
@@ -1266,7 +1260,6 @@ pref("network.http.http3.alt-svc-mapping-for-testing", "");
 // alt-svc allows separation of transport routing from
 // the origin host without using a proxy.
 pref("network.http.altsvc.enabled", true);
-pref("network.http.altsvc.oe", false);
 
 pref("network.http.diagnostics", false);
 
@@ -1482,6 +1475,10 @@ pref("network.proxy.autoconfig_url.include_path", false);
 pref("network.proxy.autoconfig_retry_interval_min", 5);    // 5 seconds
 pref("network.proxy.autoconfig_retry_interval_max", 300);  // 5 minutes
 pref("network.proxy.enable_wpad_over_dhcp", true);
+
+// When true, a warning banner will be displayed on error pages when
+// SSLKEYLOGFILE is set
+pref("network.sslkeylog_warning", true);
 
 pref("converter.html2txt.structs",          true); // Output structured phrases (strong, em, code, sub, sup, b, i, u)
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
@@ -1749,9 +1746,8 @@ pref("font.blacklist.underline_offset", "FangSong,Gulim,GulimChe,MingLiU,MingLiU
 
 // security-sensitive dialogs should delay button enabling. In milliseconds.
 pref("security.dialog_enable_delay", 1000);
-pref("security.notification_enable_delay", 500);
 
-#ifdef EARLY_BETA_OR_EARLIER
+#ifdef NIGHTLY_BUILD
   // Disallow web documents loaded with the SystemPrincipal
   pref("security.disallow_non_local_systemprincipal_in_tests", false);
 #endif
@@ -2892,7 +2888,7 @@ pref("font.size.monospace.x-math", 13);
 #if defined(ANDROID)
   // We use the bundled Charis SIL Compact as serif font for Firefox for Android
 
-  pref("font.name-list.emoji", "SamsungColorEmoji, Noto Color Emoji");
+  pref("font.name-list.emoji", "SamsungColorEmoji, Noto Color Emoji, Noto Color Emoji Flags");
 
   pref("font.name-list.serif.ar", "Noto Naskh Arabic, Noto Serif, Droid Serif");
   pref("font.name-list.sans-serif.ar", "Noto Naskh Arabic, Roboto, Google Sans, Droid Sans");
@@ -3029,11 +3025,11 @@ pref("signon.firefoxRelay.terms_of_service_url", "https://www.mozilla.org/%LOCAL
 pref("signon.firefoxRelay.privacy_policy_url", "https://www.mozilla.org/%LOCALE%/privacy/subscription-services/");
 pref("signon.signupDetection.confidenceThreshold",     "0.75");
 
-#ifdef NIGHTLY_BUILD
-  pref("signon.rustMirror.enabled", true);
-#else
-  pref("signon.rustMirror.enabled", false);
-#endif
+// Logins Rust storage backend is enabled by default
+pref("signon.storage.rust.enabled", true);
+// The following two prefs are managed by Fx internally:
+pref("signon.storage.rust.active", false);
+pref("signon.storage.rust.migrationAttempts", 0);
 
 // Satchel (Form Manager) prefs
 pref("browser.formfill.debug",            false);
@@ -3048,7 +3044,7 @@ pref("browser.formfill.prefixWeight",     5);
 
 // Zoom prefs
 pref("browser.zoom.full", false);
-pref("toolkit.zoomManager.zoomValues", ".3,.5,.67,.8,.9,1,1.1,1.2,1.33,1.5,1.7,2,2.4,3,4,5");
+pref("toolkit.zoomManager.zoomValues", ".2,.3,.4,.5,.6,.7,.8,.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2,2.2,2.4,2.6,2.8,3,4,5");
 
 //
 // Image-related prefs
@@ -3087,7 +3083,7 @@ pref("network.tcp.keepalive.idle_time", 600); // seconds; 10 mins
 
 // All the Geolocation preferences are here.
 //
-#ifndef ANDROID
+#if !defined(ANDROID) && !defined(XP_WIN)
   pref("geo.provider.network.url", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%&solution_channel=%OS%");
 
   // Timeout to wait before sending the location request.
@@ -3198,6 +3194,7 @@ pref("dom.webnotifications.requireinteraction.count", 3);
 pref("full-screen-api.transition.timeout", 1000);
 // time for the warning box stays on the screen before sliding out, unit: ms
 pref("full-screen-api.warning.timeout", 3000);
+pref("full-screen-api.keyboardlock-warning.timeout", 4000);
 // delay for the warning box to show when pointer stays on the top, unit: ms
 pref("full-screen-api.warning.delay", 500);
 
@@ -3488,28 +3485,6 @@ pref("media.gmp-manager.allowLocalSources", true);
 // Update service URL for GMP install/updates:
 pref("media.gmp-manager.url", "https://aus5.mozilla.org/update/3/GMP/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
 
-// The |media.gmp-manager.certs.| preference branch contains branches that are
-// sequentially numbered starting at 1 that contain attribute name / value
-// pairs for the certificate used by the server that hosts the update xml file
-// as specified in the |media.gmp-manager.url| preference. When these preferences are
-// present the following conditions apply for a successful update check:
-// 1. the uri scheme must be https
-// 2. the preference name must exist as an attribute name on the certificate and
-//    the value for the name must be the same as the value for the attribute name
-//    on the certificate.
-// If these conditions aren't met it will be treated the same as when there is
-// no update available. This validation will not be performed when the
-// |media.gmp-manager.url.override| user preference has been set for testing updates or
-// when the |media.gmp-manager.cert.checkAttributes| preference is set to false.
-// Also, the |media.gmp-manager.url.override| preference should ONLY be used for testing.
-// IMPORTANT! app.update.certs.* prefs should also be updated if these
-// are updated.
-pref("media.gmp-manager.cert.checkAttributes", true);
-pref("media.gmp-manager.certs.1.issuerName", "CN=DigiCert SHA2 Secure Server CA,O=DigiCert Inc,C=US");
-pref("media.gmp-manager.certs.1.commonName", "aus5.mozilla.org");
-pref("media.gmp-manager.certs.2.issuerName", "CN=thawte SSL CA - G2,O=\"thawte, Inc.\",C=US");
-pref("media.gmp-manager.certs.2.commonName", "aus5.mozilla.org");
-
 // Whether or not to perform reader mode article parsing on page load.
 // If this pref is disabled, we will never show a reader mode icon in the toolbar.
 pref("reader.parse-on-load.enabled", true);
@@ -3675,6 +3650,7 @@ pref("browser.ai.control.pdfjsAltText", "default");
 pref("browser.ai.control.smartTabGroups", "default");
 pref("browser.ai.control.linkPreviewKeyPoints", "default");
 pref("browser.ai.control.sidebarChatbot", "default");
+pref("browser.ai.control.smartWindow", "default");
 
 // Enable the experimental machine learning inference engine.
 pref("browser.ml.enable", true);
@@ -3875,6 +3851,10 @@ pref("services.common.log.logger.tokenserverclient", "Debug");
   // The URL of the Firefox Accounts auth server backend
   pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");
 
+  // Authenticate FxA token requests with the auth-server's typed Bearer scheme
+  // instead of Hawk. Kill-switch for the Hawk-to-Bearer migration.
+  pref("identity.fxaccounts.auth.useBearer", true);
+
   // Percentage chance we skip an extension storage sync (kinto life support).
   pref("services.sync.extension-storage.skipPercentageChance", 50);
 #endif // MOZ_SERVICES_SYNC
@@ -3971,7 +3951,6 @@ pref("devtools.debugger.features.windowless-service-workers", true);
 
 // Disable remote debugging protocol logging.
 pref("devtools.debugger.log", false);
-pref("devtools.debugger.log.verbose", false);
 
 pref("devtools.debugger.remote-port", 6000);
 pref("devtools.debugger.remote-websocket", false);
@@ -3982,8 +3961,7 @@ pref("devtools.debugger.force-local", true);
 // Possible values:
 // 0 => the response body has no limit
 // n => represents max number of bytes stored
-pref("devtools.netmonitor.responseBodyLimit", 1048576);
-pref("devtools.netmonitor.requestBodyLimit", 1048576);
+pref("devtools.netmonitor.bodyLimit", 1048576);
 
 // Limit for WebSocket/EventSource messages (100 KB).
 pref("devtools.netmonitor.msg.messageDataLimit", 100000);
@@ -4014,6 +3992,13 @@ pref("dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled", false
 pref("dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled", false, locked);
 #endif
 
+// Locked so end users cannot toggle SQLite encryption from about:config or
+// user.js. Enterprise policies (Preferences allowlist) and our keystore
+// auto-recovery use the unlock/setDefault/relock dance to override.
+// Defined in StaticPrefList.yaml; locked here because the YAML has no
+// "locked" attribute.
+pref("security.storage.encryption.sqlite.enabled", false, locked);
+
 // Preferences for the form autofill toolkit component.
 // The truthy values of "extensions.formautofill.addresses.available"
 // is "on" and "detect",
@@ -4022,7 +4007,15 @@ pref("dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled", false
 // Note: "extensions.formautofill.available"
 // is not being used in form autofill, but need to exist for migration purposes.
 pref("extensions.formautofill.available", "detect");
+
+#if !defined(ANDROID)
+pref("extensions.formautofill.addresses.supported", "on");
+// Use ML for address form field detection.
+pref("extensions.formautofill.useml", true);
+#else
 pref("extensions.formautofill.addresses.supported", "detect");
+pref("extensions.formautofill.useml", false);
+#endif
 pref("extensions.formautofill.addresses.enabled", true);
 pref("extensions.formautofill.addresses.capture.enabled", true);
 #if defined(ANDROID)
@@ -4035,7 +4028,7 @@ pref("extensions.formautofill.addresses.capture.enabled", true);
 #endif
 pref("extensions.formautofill.addresses.ignoreAutocompleteOff", true);
 // Supported countries need to follow ISO 3166-1 to align with "browser.search.region"
-pref("extensions.formautofill.addresses.supportedCountries", "US,CA,GB,FR,DE,BR,ES,JP,AT,IN,IT,PL,AU");
+pref("extensions.formautofill.addresses.supportedCountries", "US,CA,GB,FR,DE,BR,ES,JP,AT,IN,IT,PL,AU,NL");
 pref("extensions.formautofill.creditCards.supported", "on");
 pref("extensions.formautofill.creditCards.enabled", true);
 pref("extensions.formautofill.creditCards.ignoreAutocompleteOff", true);
@@ -4140,3 +4133,8 @@ pref("captchadetection.actor.enabled", true);
 // Make general.smoothScroll sticky to avoid being clobbered by
 // preferes-reduced-motion system setting.
 pref("general.smoothScroll", true, sticky);
+
+// Trigger FOG's Artifact Build support on artifact builds.
+#ifdef MOZ_ARTIFACT_BUILDS
+  pref("telemetry.fog.artifact_build", true);
+#endif

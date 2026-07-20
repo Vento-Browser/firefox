@@ -41,7 +41,19 @@ add_task(async function showLessFrequentlyCapReached_manySearches() {
       },
     },
   ]);
+  try {
+    await doShowLessFrequentlyCapReachedManySearches();
+  } finally {
+    await UrlbarTestUtils.promisePopupClose(window);
+    await QuickSuggestTestUtils.setRemoteSettingsRecords([
+      QuickSuggestTestUtils.weatherRecord(),
+    ]);
+    UrlbarPrefs.clear("weather.minKeywordLength");
+    UrlbarPrefs.clear("weather.showLessFrequentlyCount");
+  }
+});
 
+async function doShowLessFrequentlyCapReachedManySearches() {
   // Trigger the suggestion.
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
@@ -105,15 +117,8 @@ add_task(async function showLessFrequentlyCapReached_manySearches() {
     `menuitem[data-command=${command}]`
   );
   Assert.ok(!menuitem, "Menuitem should be absent");
-  gURLBar.view.resultMenu.hidePopup(true);
-
-  await UrlbarTestUtils.promisePopupClose(window);
-  await QuickSuggestTestUtils.setRemoteSettingsRecords([
-    QuickSuggestTestUtils.weatherRecord(),
-  ]);
-  UrlbarPrefs.clear("weather.minKeywordLength");
-  UrlbarPrefs.clear("weather.showLessFrequentlyCount");
-});
+  gURLBar.view.resultMenu.removeAttribute("open");
+}
 
 // Tests the "Don't show weather suggestions" result menu dismissal command.
 add_task(async function dontShow() {
@@ -157,7 +162,7 @@ async function doDismissTest(command) {
   );
   Assert.equal(
     details.type,
-    UrlbarUtils.RESULT_TYPE.TIP,
+    UrlbarShared.RESULT_TYPE.TIP,
     "Row should be a tip after dismissal"
   );
   Assert.equal(
@@ -193,7 +198,7 @@ async function doDismissTest(command) {
     details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.notEqual(
       details.type,
-      UrlbarUtils.RESULT_TYPE.TIP,
+      UrlbarShared.RESULT_TYPE.TIP,
       "Tip result should not be present"
     );
     info("Weather result should not be present");

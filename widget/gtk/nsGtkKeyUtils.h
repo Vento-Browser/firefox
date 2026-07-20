@@ -1,6 +1,3 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=4:tabstop=4:
- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,11 +5,11 @@
 #ifndef _nsGdkKeyUtils_h_
 #define _nsGdkKeyUtils_h_
 
+#include <gdk/gdk.h>
+
 #include "mozilla/EventForwards.h"
 #include "nsIWidget.h"
 #include "nsTArray.h"
-
-#include <gdk/gdk.h>
 #ifdef MOZ_X11
 #  include <X11/XKBlib.h>
 #endif
@@ -134,7 +131,7 @@ class KeymapWrapper {
    * GDK's state.
    */
   static guint ConvertWidgetModifierToGdkState(
-      nsIWidget::Modifiers aNativeModifiers);
+      nsIWidget::NativeModifiers aNativeModifiers);
 
   /**
    * InitInputEvent() initializes the aInputEvent with aModifierState.
@@ -319,7 +316,7 @@ class KeymapWrapper {
     INDEX_LEVEL5,
     COUNT_OF_MODIFIER_INDEX
   };
-  guint mModifierMasks[COUNT_OF_MODIFIER_INDEX];
+  guint mModifierMasks[COUNT_OF_MODIFIER_INDEX] = {};
 
   guint GetGdkModifierMask(MappedModifier aModifier) const;
 

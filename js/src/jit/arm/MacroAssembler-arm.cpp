@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -11,7 +9,6 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
 
-#include "jit/arm/Simulator-arm.h"
 #include "jit/AtomicOp.h"
 #include "jit/AtomicOperations.h"
 #include "jit/Bailouts.h"
@@ -1729,8 +1726,8 @@ void MacroAssemblerARMCompat::movePtr(ImmPtr imm, Register dest) {
 
 void MacroAssemblerARMCompat::movePtr(wasm::SymbolicAddress imm,
                                       Register dest) {
-  append(wasm::SymbolicAccess(CodeOffset(currentOffset()), imm));
-  ma_movPatchable(Imm32(-1), dest, Always);
+  BufferOffset offset = ma_movPatchable(Imm32(-1), dest, Always);
+  append(wasm::SymbolicAccess(CodeOffset(offset.getOffset()), imm));
 }
 
 FaultingCodeOffset MacroAssemblerARMCompat::load8ZeroExtend(
@@ -2090,14 +2087,16 @@ FaultingCodeOffset MacroAssemblerARMCompat::store32(Register src,
   return storePtr(src, address);
 }
 
-void MacroAssemblerARMCompat::store32(Imm32 src, const Address& address) {
+FaultingCodeOffset MacroAssemblerARMCompat::store32(Imm32 src,
+                                                    const Address& address) {
   ScratchRegisterScope scratch(asMasm());
   SecondScratchRegisterScope scratch2(asMasm());
   move32(src, scratch);
-  ma_str(scratch, address, scratch2);
+  return ma_str(scratch, address, scratch2);
 }
 
-void MacroAssemblerARMCompat::store32(Imm32 imm, const BaseIndex& dest) {
+FaultingCodeOffset MacroAssemblerARMCompat::store32(Imm32 imm,
+                                                    const BaseIndex& dest) {
   Register base = dest.base;
   uint32_t scale = Imm32::ShiftOf(dest.scale).value;
 
@@ -2107,10 +2106,12 @@ void MacroAssemblerARMCompat::store32(Imm32 imm, const BaseIndex& dest) {
   if (dest.offset != 0) {
     ma_add(base, Imm32(dest.offset), scratch, scratch2);
     ma_mov(imm, scratch2);
-    ma_str(scratch2, DTRAddr(scratch, DtrRegImmShift(dest.index, LSL, scale)));
+    return ma_str(scratch2,
+                  DTRAddr(scratch, DtrRegImmShift(dest.index, LSL, scale)));
   } else {
     ma_mov(imm, scratch);
-    ma_str(scratch, DTRAddr(base, DtrRegImmShift(dest.index, LSL, scale)));
+    return ma_str(scratch,
+                  DTRAddr(base, DtrRegImmShift(dest.index, LSL, scale)));
   }
 }
 
@@ -2132,12 +2133,14 @@ FaultingCodeOffset MacroAssemblerARMCompat::store32(Register src,
   return fco;
 }
 
-void MacroAssemblerARMCompat::storePtr(ImmWord imm, const Address& address) {
-  store32(Imm32(imm.value), address);
+FaultingCodeOffset MacroAssemblerARMCompat::storePtr(ImmWord imm,
+                                                     const Address& address) {
+  return store32(Imm32(imm.value), address);
 }
 
-void MacroAssemblerARMCompat::storePtr(ImmWord imm, const BaseIndex& address) {
-  store32(Imm32(imm.value), address);
+FaultingCodeOffset MacroAssemblerARMCompat::storePtr(ImmWord imm,
+                                                     const BaseIndex& address) {
+  return store32(Imm32(imm.value), address);
 }
 
 void MacroAssemblerARMCompat::storePtr(ImmPtr imm, const Address& address) {
@@ -2978,14 +2981,12 @@ void MacroAssemblerARMCompat::boxNonDouble(Register type, Register src,
   breakpoint();
   {
     bind(&isNullOrUndefined);
-    as_cmp(src, Imm8(0));
-    ma_b(&ok, Assembler::Zero);
+    asMasm().branchTest32(Assembler::Zero, src, src, &ok);
     breakpoint();
   }
   {
     bind(&isBoolean);
-    as_cmp(src, Imm8(1));
-    ma_b(&ok, Assembler::BelowOrEqual);
+    asMasm().branch32(Assembler::BelowOrEqual, src, Imm32(1), &ok);
     breakpoint();
   }
   bind(&ok);
@@ -3573,7 +3574,7 @@ void MacroAssemblerARMCompat::handleFailureWithHandlerTail(
 
   // Found a wasm catch handler, restore state and jump to it.
   bind(&wasmCatch);
-  wasm::GenerateJumpToCatchHandler(asMasm(), sp, r0, r1);
+  wasm::GenerateJumpToCatchHandler(asMasm(), sp, r0, r1, r2);
 }
 
 Assembler::Condition MacroAssemblerARMCompat::testStringTruthy(
@@ -6629,8 +6630,7 @@ void MacroAssemblerARM::wasmStoreImpl(const wasm::MemoryAccessDesc& access,
         }
       }
     } else {
-      bool isSigned = type == Scalar::Uint32 ||
-                      type == Scalar::Int32;  // see AsmJSStoreHeap;
+      bool isSigned = type == Scalar::Uint32 || type == Scalar::Int32;
       Register val = value.gpr();
 
       store = ma_dataTransferN(IsStore, 8 * byteSize /* bits */, isSigned,

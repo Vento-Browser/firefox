@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -432,7 +430,7 @@ class SharedArrayBufferObject : public ArrayBufferObjectMaybeShared {
  * SharedArrayBuffer object with a fixed length. The JS exposed length is
  * unmodifiable, but the underlying memory can still grow for WebAssembly.
  *
- * Fixed-length SharedArrayBuffers can be used for asm.js and WebAssembly.
+ * Fixed-length SharedArrayBuffers can be used for WebAssembly.
  */
 class FixedLengthSharedArrayBufferObject : public SharedArrayBufferObject {
  public:
@@ -447,7 +445,7 @@ class FixedLengthSharedArrayBufferObject : public SharedArrayBufferObject {
  * SharedArrayBuffer object which can grow in size. The maximum byte length it
  * can grow to is set when creating the object.
  *
- * Growable SharedArrayBuffers can neither be used for asm.js nor WebAssembly.
+ * Growable SharedArrayBuffers cannot be used for WebAssembly.
  */
 class GrowableSharedArrayBufferObject : public SharedArrayBufferObject {
  public:

@@ -11,7 +11,6 @@
 
 #include "seccomon.h"
 #include "secmod.h"
-#include "nssilock.h"
 #include "secmodi.h"
 #include "secmodti.h"
 #include "pkcs11.h"
@@ -47,7 +46,7 @@ pk11_getKeyFromList(PK11SlotInfo *slot, PRBool needSession)
 {
     PK11SymKey *symKey = NULL;
 
-    PZ_Lock(slot->freeListLock);
+    PR_Lock(slot->freeListLock);
     /* own session list are symkeys with sessions that the symkey owns.
      * 'most' symkeys will own their own session. */
     if (needSession) {
@@ -66,7 +65,7 @@ pk11_getKeyFromList(PK11SlotInfo *slot, PRBool needSession)
             slot->keyCount--;
         }
     }
-    PZ_Unlock(slot->freeListLock);
+    PR_Unlock(slot->freeListLock);
     if (symKey) {
         symKey->next = NULL;
         if (!needSession) {
@@ -207,7 +206,7 @@ PK11_FreeSymKey(PK11SymKey *symKey)
             (*symKey->freeFunc)(symKey->userData);
         }
         slot = symKey->slot;
-        PZ_Lock(slot->freeListLock);
+        PR_Lock(slot->freeListLock);
         if (slot->keyCount < slot->maxKeyCount) {
             /*
              * freeSymkeysWithSessionHead contain a list of reusable
@@ -233,7 +232,7 @@ PK11_FreeSymKey(PK11SymKey *symKey)
             symKey->slot = NULL;
             freeit = PR_FALSE;
         }
-        PZ_Unlock(slot->freeListLock);
+        PR_Unlock(slot->freeListLock);
         if (freeit) {
             pk11_CloseSession(symKey->slot, symKey->session,
                               symKey->sessionOwner);
@@ -372,7 +371,10 @@ PK11_GetWrapKey(PK11SlotInfo *slot, int wrap, CK_MECHANISM_TYPE type,
     CK_OBJECT_HANDLE keyHandle;
 
     PK11_EnterSlotMonitor(slot);
-    if (slot->series != series ||
+    /* refKeys is a fixed-size array; bounds-check wrap to match
+     * PK11_SetWrapKey. */
+    if (wrap < 0 || (size_t)wrap >= PR_ARRAY_SIZE(slot->refKeys) ||
+        slot->series != series ||
         slot->refKeys[wrap] == CK_INVALID_HANDLE) {
         PK11_ExitSlotMonitor(slot);
         return NULL;
@@ -1955,6 +1957,11 @@ pk11_ANSIX963Derive(PK11SymKey *sharedSecret,
     else
         SharedInfoLen = sharedData->len;
 
+    if (SharedInfoLen > PR_UINT32_MAX - 4) {
+        PORT_SetError(SEC_ERROR_INVALID_ARGS);
+        return NULL;
+    }
+
     bufferLen = SharedInfoLen + 4;
 
     /* Populate buffer with Counter || sharedData
@@ -2624,9 +2631,16 @@ pk11_HandUnwrap(PK11SlotInfo *slot, CK_OBJECT_HANDLE wrappingKey,
         templateCount--;
     }
 
+    if (key_size != 0 && (CK_ULONG)key_size > inKey->len) {
+        PORT_SetError(PK11_MapError(CKR_UNWRAPPING_KEY_SIZE_RANGE));
+        if (crvp)
+            *crvp = CKR_UNWRAPPING_KEY_SIZE_RANGE;
+        return NULL;
+    }
+
     /* keys are almost always aligned, but if we get this far,
      * we've gone above and beyond anyway... */
-    outKey.data = (unsigned char *)PORT_Alloc(inKey->len);
+    outKey.data = (unsigned char *)PORT_ZAlloc(inKey->len);
     if (outKey.data == NULL) {
         PORT_SetError(SEC_ERROR_NO_MEMORY);
         if (crvp)

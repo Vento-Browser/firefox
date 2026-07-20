@@ -10,7 +10,6 @@
 const DYNAMIC_TYPE_NAME = "test";
 
 const DYNAMIC_TYPE_VIEW_TEMPLATE = {
-  stylesheet: getRootDirectory(gTestPath) + "dynamicResult0.css",
   children: [
     {
       name: "selectable",
@@ -56,135 +55,6 @@ const DUMMY_PAGE =
   DEFAULT_URL_SCHEME +
   "example.com/browser/browser/base/content/test/general/dummy_page.html";
 
-// Tests the dynamic type registration functions and stylesheet loading.
-add_task(async function registration() {
-  // Get our test stylesheet URIs.
-  let stylesheetURIs = [];
-  for (let i = 0; i < 2; i++) {
-    stylesheetURIs.push(
-      Services.io.newURI(getRootDirectory(gTestPath) + `dynamicResult${i}.css`)
-    );
-  }
-
-  // Maps from dynamic type names to their type.
-  let viewTemplatesByName = {
-    foo: {
-      stylesheet: stylesheetURIs[0].spec,
-      children: [
-        {
-          name: "text",
-          tag: "span",
-        },
-      ],
-    },
-    bar: {
-      stylesheet: stylesheetURIs[1].spec,
-      children: [
-        {
-          name: "icon",
-          tag: "span",
-        },
-        {
-          name: "button",
-          tag: "span",
-          attributes: {
-            role: "button",
-          },
-        },
-      ],
-    },
-  };
-
-  // First, open another window so that multiple windows are open when we add
-  // the types so we can verify below that the stylesheets are added to all open
-  // windows.
-  let newWindows = [];
-  newWindows.push(await BrowserTestUtils.openNewBrowserWindow());
-
-  // Add the test dynamic types.
-  for (let [name, viewTemplate] of Object.entries(viewTemplatesByName)) {
-    UrlbarResult.addDynamicResultType(name);
-    UrlbarView.addDynamicViewTemplate(name, viewTemplate);
-  }
-
-  // Get them back to make sure they were added.
-  for (let name of Object.keys(viewTemplatesByName)) {
-    let actualType = UrlbarResult.getDynamicResultType(name);
-    // Types are currently just empty objects.
-    Assert.deepEqual(actualType, {}, "Types should match");
-  }
-
-  // Their stylesheets should have been applied to all open windows.  There's no
-  // good way to check this because:
-  //
-  // * nsIStyleSheetService has a function that returns whether a stylesheet has
-  //   been loaded, but it's global and not per window.
-  // * nsIDOMWindowUtils has functions to load stylesheets but not one to check
-  //   whether a stylesheet has been loaded.
-  // * document.stylesheets only contains stylesheets in the DOM.
-  //
-  // So instead we set a CSS variable on #urlbar in each of our stylesheets and
-  // check that it's present.
-  function getCSSVariables(windows) {
-    let valuesByWindow = new Map();
-    for (let win of windows) {
-      let values = [];
-      valuesByWindow.set(window, values);
-      for (let i = 0; i < stylesheetURIs.length; i++) {
-        let value = win
-          .getComputedStyle(gURLBar.panel)
-          .getPropertyValue(`--testDynamicResult${i}`);
-        values.push((value || "").trim());
-      }
-    }
-    return valuesByWindow;
-  }
-  function checkCSSVariables(windows) {
-    for (let values of getCSSVariables(windows).values()) {
-      for (let i = 0; i < stylesheetURIs.length; i++) {
-        if (values[i].trim() !== `ok${i}`) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  // The stylesheets are loaded asyncly, so we need to poll for it.
-  await TestUtils.waitForCondition(() =>
-    checkCSSVariables(BrowserWindowTracker.orderedWindows)
-  );
-  Assert.ok(true, "Stylesheets loaded in all open windows");
-
-  // Open another window to make sure the stylesheets are loaded in it after we
-  // added the new dynamic types.
-  let newWin = await BrowserTestUtils.openNewBrowserWindow();
-  newWindows.push(newWin);
-  await TestUtils.waitForCondition(() => checkCSSVariables([newWin]));
-  Assert.ok(true, "Stylesheets loaded in new window");
-
-  // Remove the dynamic types.
-  for (let name of Object.keys(viewTemplatesByName)) {
-    UrlbarView.removeDynamicViewTemplate(name);
-    UrlbarResult.removeDynamicResultType(name);
-    let actualType = UrlbarResult.getDynamicResultType(name);
-    Assert.equal(actualType, null, "Type should be unregistered");
-  }
-
-  // The stylesheets should be removed from all windows.
-  let valuesByWindow = getCSSVariables(BrowserWindowTracker.orderedWindows);
-  for (let values of valuesByWindow.values()) {
-    for (let i = 0; i < stylesheetURIs.length; i++) {
-      Assert.ok(!values[i], "Stylesheet should be removed");
-    }
-  }
-
-  // Close the new windows.
-  for (let win of newWindows) {
-    await BrowserTestUtils.closeWindow(win);
-  }
-});
-
 // Tests that the view is created correctly from the view template.
 add_task(async function viewCreated() {
   await withDynamicTypeProvider(async () => {
@@ -199,7 +69,7 @@ add_task(async function viewCreated() {
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "row.result.type"
     );
     Assert.equal(
@@ -285,35 +155,6 @@ add_task(async function checkViewUpdatedPlain() {
   await checkViewUpdated(new TestProvider());
 });
 
-add_task(async function checkViewUpdatedWDynamicViewTemplate() {
-  /**
-   * A dummy provider that provides the viewTemplate dynamically.
-   */
-  class TestShouldCallGetViewTemplateProvider extends TestProvider {
-    getViewTemplateWasCalled = false;
-
-    getViewTemplate() {
-      this.getViewTemplateWasCalled = true;
-      return DYNAMIC_TYPE_VIEW_TEMPLATE;
-    }
-  }
-
-  let provider = new TestShouldCallGetViewTemplateProvider();
-  Assert.ok(
-    !provider.getViewTemplateWasCalled,
-    "getViewTemplate has not yet been called for the provider"
-  );
-  Assert.ok(
-    !UrlbarView.dynamicViewTemplatesByName.get(DYNAMIC_TYPE_NAME),
-    "No template has been registered"
-  );
-  await checkViewUpdated(provider);
-  Assert.ok(
-    provider.getViewTemplateWasCalled,
-    "getViewTemplate was called for the provider"
-  );
-});
-
 // Tests that selection correctly moves through buttons and selectables in a
 // dynamic result.
 add_task(async function selection() {
@@ -333,7 +174,7 @@ add_task(async function selection() {
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "row.result.type"
     );
 
@@ -428,7 +269,7 @@ add_task(async function pick() {
       let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
       Assert.equal(
         row.result.type,
-        UrlbarUtils.RESULT_TYPE.DYNAMIC,
+        UrlbarShared.RESULT_TYPE.DYNAMIC,
         "row.result.type"
       );
 
@@ -471,8 +312,8 @@ add_task(async function shouldNavigate() {
       addCallback(
         this,
         new UrlbarResult({
-          type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-          source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+          type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+          source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
           suggestedIndex: 1,
           payload: {
             dynamicType: DYNAMIC_TYPE_NAME,
@@ -496,7 +337,7 @@ add_task(async function shouldNavigate() {
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "row.result.type"
     );
 
@@ -575,8 +416,8 @@ add_task(async function highlighting() {
     startQuery(context, addCallback) {
       this._tokens = context.tokens;
       let result = new UrlbarResult({
-        type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+        source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
         suggestedIndex: 1,
         payload: {
           dynamicType: DYNAMIC_TYPE_NAME,
@@ -611,7 +452,7 @@ add_task(async function highlighting() {
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "row.result.type"
     );
     let parentTextNode = row.querySelector(
@@ -640,7 +481,7 @@ add_task(async function highlighting() {
       row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
       Assert.equal(
         row.result.type,
-        UrlbarUtils.RESULT_TYPE.DYNAMIC,
+        UrlbarShared.RESULT_TYPE.DYNAMIC,
         "row.result.type"
       );
       parentTextNode = row.querySelector(
@@ -682,7 +523,7 @@ add_task(async function highlighting() {
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "row.result.type"
     );
     let parentTextNode = row.querySelector(
@@ -818,8 +659,8 @@ add_task(async function clear_dynamicType_attribute() {
       addCallback(
         this,
         new UrlbarResult({
-          type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-          source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+          type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+          source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
           suggestedIndex: 0,
           payload: {
             dynamicType: DYNAMIC_TYPE_NAME,
@@ -922,7 +763,7 @@ async function doAttributesTest({
     let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
     Assert.equal(
       row.result.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "Sanity check: The expected row is present"
     );
     for (let [name, expected] of Object.entries(expectedAttributes)) {
@@ -945,8 +786,8 @@ class TestProvider extends UrlbarTestUtils.TestProvider {
     addCallback(
       this,
       new UrlbarResult({
-        type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+        source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
         suggestedIndex: 1,
         payload: {
           dynamicType: DYNAMIC_TYPE_NAME,
@@ -954,6 +795,10 @@ class TestProvider extends UrlbarTestUtils.TestProvider {
         },
       })
     );
+  }
+
+  getViewTemplate(_result) {
+    return DYNAMIC_TYPE_VIEW_TEMPLATE;
   }
 
   getViewUpdate(result, idsByName) {
@@ -1017,15 +862,6 @@ async function withDynamicTypeProvider(
   callback,
   provider = new TestProvider()
 ) {
-  // Add a dynamic result type.
-  UrlbarResult.addDynamicResultType(DYNAMIC_TYPE_NAME);
-  if (!provider.getViewTemplate) {
-    UrlbarView.addDynamicViewTemplate(
-      DYNAMIC_TYPE_NAME,
-      DYNAMIC_TYPE_VIEW_TEMPLATE
-    );
-  }
-
   // Add a provider of the dynamic type.
   let providersManager = ProvidersManager.getInstanceForSap("urlbar");
   providersManager.registerProvider(provider);
@@ -1034,10 +870,6 @@ async function withDynamicTypeProvider(
 
   // Clean up.
   providersManager.unregisterProvider(provider);
-  if (!provider.getViewTemplate) {
-    UrlbarView.removeDynamicViewTemplate(DYNAMIC_TYPE_NAME);
-  }
-  UrlbarResult.removeDynamicResultType(DYNAMIC_TYPE_NAME);
 }
 
 function checkDOM(parentNode, expectedChildren) {

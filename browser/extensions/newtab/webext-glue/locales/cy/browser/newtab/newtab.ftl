@@ -8,9 +8,13 @@
 newtab-page-title = Tab Newydd
 newtab-settings-button =
     .title = Cyfaddasu eich tudalen Tab Newydd
+#  (developer note): @nova-cleanup(remove-string): Remove newtab-customize-panel-icon-button once Nova lands, will be using newtab-customize-panel-label instead
 newtab-customize-panel-icon-button =
     .title = Cyfaddasu’r dudalen hon
+#  (developer note): @nova-cleanup(remove-string): Remove newtab-customize-panel-icon-button-label once Nova lands, will be using newtab-customize-panel-label instead
 newtab-customize-panel-icon-button-label = Cyfaddasu
+newtab-customize-panel-label =
+    .label = Cyfaddasu
 newtab-personalize-settings-icon-label =
     .title = Personoli Tab Newydd
     .aria-label = Gosodiadau
@@ -26,6 +30,393 @@ newtab-logo-and-wordmark =
 newtab-card-dismiss-button =
     .title = Cau
     .aria-label = Cau
+
+## Strings for "Homepage" and "Firefox Home" sections of about:settings#home.
+## Homepage panel
+
+home-homepage-title =
+    .label = Tudalen Cartref
+home-homepage-new-windows =
+    .label = Ffenestri newydd
+home-homepage-new-tabs =
+    .label = Tabiau newydd
+# This option leads to the "Custom Homepage" subpage
+home-homepage-custom-homepage-button =
+    .label = Dewis safle penodol
+
+## Custom URLs subpage
+
+# Subheader on the Custom Homepage subpage. Followed by a form to enter URLs and a list of URLs already saved, if any.
+home-custom-homepage-card-header =
+    .label = Cyfeiriad(au) gwefan
+home-custom-homepage-address =
+    .placeholder = Rhowch gyfeiriad
+home-custom-homepage-address-button =
+    .label = Ychwanegu cyfeiriad
+# Shown when no custom websites/URLs to use as a homepage have been added yet
+home-custom-homepage-no-results =
+    .label = Dim gwefannau wedi'u hychwanegu eto.
+home-custom-homepage-delete-address-button =
+    .aria-label = Dileu cyfeiriad
+    .title = Dileu cyfeiriad
+# Further options to use when setting the home page. Two action buttons are placed in line with this prompt
+# to replace the current home page with a currently open page or bookmark.
+home-custom-homepage-replace-with-prompt =
+    .label = Amnewid gyda
+# Button that appears in-line after text "Replace with" (home-custom-homepage-replace-with-prompt)
+home-custom-homepage-current-pages-button =
+    .label = Tudalennau ar agor nawr
+# Button that appears in-line after text "Replace with" (home-custom-homepage-replace-with-prompt)
+home-custom-homepage-bookmarks-button =
+    .label = Nodau Tudalen…
+
+## Firefox Home content
+
+home-prefs-content-header =
+    .label = { -firefox-home-brand-name }
+home-prefs-search-header2 =
+    .label = Chwilio
+home-prefs-stories-header2 =
+    .label = Straeon
+    .description = Cynnwys eithriadol wedi'i gasglu gan deulu { -brand-product-name }
+home-prefs-widgets-header =
+    .label = Teclynnau
+# Lists is a widget on New Tab, similar to a to-do widget
+home-prefs-lists-header =
+    .label = Rhestrau
+# Timer is a widget on New Tab, similar to the Pomodoro timer.
+home-prefs-timer-header =
+    .label = Amserydd
+# Sports is a widget on New Tab showing sports scores and schedules.
+home-prefs-sports-widget-header =
+    .label = Chwaraeon
+# Clock is a widget on New Tab that displays time zones around the world.
+home-prefs-clocks-header =
+    .label = Cloc
+# Privacy is a widget on New Tab that shows tracking protection activity.
+home-prefs-privacy-header =
+    .label = Preifatrwydd
+# Stocks is a widget on New Tab that shows stock ticker prices.
+home-prefs-stocks-header =
+    .label = Stociau
+# Picture of the day is a widget on New Tab that shows a daily Wikimedia Commons image.
+home-prefs-picture-header =
+    .label = Darlun y dydd
+home-prefs-mission-message2 =
+    .message = Mae ein noddwyr yn cefnogi ein cenhadaeth i adeiladu gwe well
+home-prefs-manage-topics-link2 =
+    .label = Rheoli pynciau
+home-prefs-choose-wallpaper-link2 =
+    .label = Dewis Papur Wal
+home-prefs-firefox-logo-header =
+    .label = Logo { -brand-short-name }
+# Informational message bar that appears in the Firefox Home section when the options are disabled.
+# The user must select Firefox Home as their homepage for either new tabs or new windows to enable
+# the features in settings.
+home-prefs-firefox-home-disabled-notice =
+    .message = I ddefnyddio'r nodweddion hyn, gosodwch dabiau newydd neu ffenestri newydd i { -firefox-home-brand-name }.
+# Variables:
+#   $num (number) - Number of rows displayed
+home-prefs-sections-rows-option-srd =
+    .label =
+        { $num ->
+            [zero] { $num } rhesi
+            [one] { $num } rhes
+            [two] { $num } res
+            [few] { $num } rhes
+            [many] { $num } rhes
+           *[other] { $num } rhes
+        }
+# Dropdown option shown when an extension replaces the contents of new windows or tabs.
+# Variables:
+#   $extension (string) - Name of the extension
+home-prefs-homepage-extension-option =
+    .label = Estyniad ( { $extension } )
+home-restore-defaults-srd =
+    .label = Adfer y Rhagosodiadau
+    .accesskey = A
+home-mode-choice-default-fx-srd =
+    .label = { -firefox-home-brand-name } (Rhagosodedig)
+home-mode-choice-custom-srd =
+    .label = URLau Cyfaddas...
+home-mode-choice-blank-srd =
+    .label = Tudalen Wag
+home-prefs-shortcuts-header-srd =
+    .label = Llwybrau Byr
+home-prefs-shortcuts-select =
+    .aria-label = Llwybrau Byr
+home-prefs-shortcuts-by-option-sponsored-srd =
+    .label = Llwybrau byr wedi'u noddi
+home-prefs-recommended-by-option-sponsored-stories-srd =
+    .label = Straeon wedi’u noddi
+home-prefs-highlights-option-visited-pages-srd =
+    .label = Tudalennau Ymwelwyd â Nhw
+home-prefs-highlights-options-bookmarks-srd =
+    .label = Nodau Tudalen
+home-prefs-highlights-option-most-recent-download-srd =
+    .label = Y Llwytho i Lawr Diweddaraf
+home-prefs-recent-activity-header-srd =
+    .label = Gweithgaredd diweddar
+home-prefs-recent-activity-select =
+    .aria-label = Gweithgaredd diweddar
+home-prefs-weather-header-srd =
+    .label = Y Tywydd
+home-prefs-support-firefox-header-srd =
+    .label = Cefnogi { -brand-product-name }
+home-prefs-mission-message-learn-more-link-srd = Dyma sut
+
+## Strings for the Privacy widget
+
+# Context menu item linking to more information about the Privacy widget.
+newtab-privacy-menu-learn-more = Dysgu rhagor
+
+## Privacy widget — count readout
+
+# Label shown under the large tracker-count number, appearing like:
+# Line 1: 86
+# Line 2: Trackers blocked today
+# Translations can be adjusted to "Today's blocked trackers" or something
+# similar if this fixed order causes issues.
+# Variables:
+#   $count (number) - Number of trackers blocked today
+newtab-privacy-trackers-blocked-today =
+    { $count ->
+        [zero] Tracwyr wedi'u rhwystro heddiw
+        [one] Traciwr wedi'i rwystro heddiw
+        [two] Tracwyr wedi'u rhwystro heddiw
+        [few] Tracwyr wedi'u rhwystro heddiw
+        [many] Tracwyr wedi'u rhwystro heddiw
+       *[other] Tracwyr wedi'u rhwystro heddiw
+    }
+# Second line of the readout, under the large number and "Trackers blocked
+# today". Counts the sites those trackers were blocked on. The English is
+# shortened from "Blocked across { $count } sites" — translate it that fuller way
+# if the short fragment doesn't work in your language.
+# Variables:
+#   $count (number) - Number of sites where trackers were blocked
+newtab-privacy-across-sites =
+    { $count ->
+        [zero] Ar draws { $count } gwefannau
+        [one] Ar draws { $count } gwefan
+        [two] Ar draws { $count } wefan
+        [few] Ar draws { $count } gwefan
+        [many] Ar draws { $count } gwefan
+       *[other] Ar draws { $count } gwefan
+    }
+
+## Privacy widget — empty state
+
+# Shown when no trackers have been blocked yet today.
+newtab-privacy-empty = Mae { -brand-short-name } yn rhwystro tracwyr wrth i chi bori. Byddwch yn eu gweld nhw yma.
+
+## Privacy widget — informational messages
+##
+## Rotating "info" secondary messages. Each message has a body plus a matched
+## "-cta" button label sharing the same id stem (the CTA button isn't rendered
+## yet; the labels are authored so the pairing is ready).
+
+newtab-privacy-message-info-1 = Mae { -brand-short-name } yn rhwystro tracwyr yn awtomatig wrth i chi bori.
+newtab-privacy-message-info-1-cta = Dyma'r diogelwch
+newtab-privacy-message-info-2 = Mae rhwystro tracwyr yn helpu i atal cwmnïau rhag eich dilyn ar-lein.
+newtab-privacy-message-info-2-cta = Dyma'r diogelwch
+newtab-privacy-message-info-3 = Mae gan lawer o wefannau dracwyr felly gall cwmnïau dydych chi erioed wedi ymweld â nhw eich dilyn ar-lein.
+newtab-privacy-message-info-3-cta = Dyma'r diogelwch
+newtab-privacy-message-info-4 = Mae dewis { -brand-short-name } yn golygu dewis blaenori diogelwch.
+newtab-privacy-message-info-4-cta = Dyma'r diogelwch
+newtab-privacy-message-info-5 = Mae tracwyr sydd wedi'u rhwystro'n golygu y gall llai o gwmnïau eich dilyn ar draws gwefannau.
+newtab-privacy-message-info-5-cta = Dyma'r diogelwch
+newtab-privacy-message-info-6 = Cadwch eich data gyda { -brand-short-name }. Dydyn ni byth yn ei werthu, ond efallai y bydd porwyr eraill yn gwneud.
+newtab-privacy-message-info-6-cta = Dysgu rhagor
+newtab-privacy-message-info-7 = Gweld pa dracwyr mae { -brand-short-name } wedi'u rhwystro.
+newtab-privacy-message-info-7-cta = Dyma'r diogelwch
+newtab-privacy-message-info-8 = Mae pori gyda { -brand-short-name } yn cefnogi cenhadaeth { -vendor-short-name } i adeiladu gwe well.
+newtab-privacy-message-info-8-cta = Dysgu rhagor
+newtab-privacy-message-info-9 = Gwnewch { -brand-short-name } eich porwr chi ar gyfer preifatrwydd cynhenid.
+newtab-privacy-message-info-9-cta = Ei wneud yr arferol
+newtab-privacy-message-info-10 = Cadw cyfrineiriau yn { -brand-short-name } i ddefnyddio mewngofnodi cryf, unigryw ym mhobman.
+newtab-privacy-message-info-10-cta = Mynd i gyfrineiriau
+newtab-privacy-message-info-11 = Darganfod sut mae { -brand-short-name } yn helpu i gadw'ch pori'n fwy preifat.
+newtab-privacy-message-info-11-cta = Dysgu rhagor
+newtab-privacy-message-info-12 = Gall rhwystro tracwyr helpu i arbed lled band ar gynlluniau data cyfyngedig.
+newtab-privacy-message-info-12-cta = Dyma'r diogelwch
+newtab-privacy-message-info-13 = Mae { -brand-short-name } yn rhwystro tracwyr, gan ryddhau lled band ar gyfer ffrydio llyfnach.
+newtab-privacy-message-info-13-cta = Dyma'r diogelwch
+
+## Privacy widget — promotional messages
+##
+## Rotating "promo" secondary messages suggesting another Firefox feature. Each
+## has a body plus a matched "-cta" button label.
+
+newtab-privacy-message-promo-monitor-1 = Darganfod a yw'ch manylion personol yn ymddangos mewn tor-data.
+newtab-privacy-message-promo-monitor-1-cta = Dysgu rhagor
+newtab-privacy-message-promo-monitor-2 = Diogelu eich manylion gyda monitro tor-data am ddim, ar gyfer hyd at 20 e-bost.
+newtab-privacy-message-promo-monitor-2-cta = Dysgu rhagor
+newtab-privacy-message-promo-signin-1 = Cadw nodau tudalen, cyfrineiriau a thabiau wedi'u hamgryptio ar draws dyfeisiau gyda'ch cyfrif { -vendor-short-name }.
+newtab-privacy-message-promo-signin-1-cta = Mewngofnodi
+newtab-privacy-message-promo-vpn-1 = Yn siopa ar Wi-Fi cyhoeddus? Trowch y VPN cynhenid ymlaen i gael diogelwch ychwanegol.
+newtab-privacy-message-promo-vpn-1-cta = Agor y VPN
+newtab-privacy-message-promo-vpn-2 = Yn defnyddio Wi-Fi maes awyr? Diogelwch eich pori trwy droi'r VPN cynhenid ymlaen.
+newtab-privacy-message-promo-vpn-2-cta = Agor y VPN
+newtab-privacy-message-promo-vpn-3 = Trowch y VPN cynhenid ymlaen i helpu i gadw'ch lleoliad yn fwy preifat.
+newtab-privacy-message-promo-vpn-3-cta = Agor y VPN
+newtab-privacy-message-promo-private-window-1 = Rhowch gynnig ar ffenestr breifat i bori'n fwy preifat wrth ddefnyddio cyfrifiadur rydych yn ei rannu.
+newtab-privacy-message-promo-private-window-1-cta = Agor ffenestr breifat
+newtab-privacy-message-promo-relay-1 = Cadw eich e-bost go iawn ar gyfer pobl rydych chi'n ymddiried ynddyn nhw; defnyddio arall-enw e-bost ar gyfer cofrestru.
+newtab-privacy-message-promo-relay-1-cta = Cael arallenwau
+newtab-privacy-message-promo-relay-2 = Diogelu eich blwch derbyn rhag sbam gydag arallenwau e-bost am ddim.
+newtab-privacy-message-promo-relay-2-cta = Cael arallenwau
+newtab-privacy-message-promo-relay-3 = Cael 50 arallenw e-bost am ddim i helpu i gadw'ch e-bost go iawn yn breifat.
+newtab-privacy-message-promo-relay-3-cta = Cael arallenwau
+
+## Privacy widget — celebration messages
+##
+## Earned "celebration" moments (milestones, daily cap, streak, first
+## protection). Count-bearing ones interpolate { $count }.
+
+# Variables:
+#   $count (number) - Trackers blocked this week
+newtab-privacy-message-milestone-week =
+    { $count ->
+        [zero] Does { $count } traciwr wedi'u rhwystro yr wythnos hon. Dyma fydd { -brand-short-name } yn eu cadw allan o'ch ffordd
+        [one] Mae { $count } traciwr wedi'i rwystro yr wythnos hon. Dyma beth mae { -brand-short-name } yn ei cadw allan o'ch ffordd
+        [two] Mae { $count } draciwr wedi'u rhwystro yr wythnos hon. Dyma beth mae { -brand-short-name } yn eu cadw allan o'ch ffordd
+        [few] Mae { $count } traciwr wedi'u rhwystro yr wythnos hon. Dyma beth mae { -brand-short-name } yn eu cadw allan o'ch ffordd
+        [many] Mae { $count } thraciwr wedi'u rhwystro yr wythnos hon. Dyma beth mae { -brand-short-name } yn eu cadw allan o'ch ffordd
+       *[other] Mae { $count } traciwr wedi'u rhwystro yr wythnos hon. Dyma beth mae { -brand-short-name } yn eu cadw allan o'ch ffordd
+    }
+newtab-privacy-message-milestone-week-cta = Dyma'r diogelwch
+# Variables:
+#   $count (number) - Trackers blocked this month
+newtab-privacy-message-milestone-month =
+    { $count ->
+        [zero] Does { $count } tracwyr wedi'u rhwystro'r mis yma. Bydd hyn yn un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+        [one] Mae { $count } traciwr wedi'i rwystro'r mis yma. Un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+        [two] Mae { $count } draciwr wedi'u rhwystro'r mis yma. Un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+        [few] Mae { $count } thraciwr wedi'u rhwystro'r mis yma. Un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+        [many] Mae { $count } thraciwr wedi'u rhwystro'r mis yma. Un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+       *[other] Mae { $count } traciwr wedi'u rhwystro'r mis yma. Un cam bach ar gyfer preifatrwydd. Un cam mawr ar gyfer tawelwch meddwl.
+    }
+newtab-privacy-message-milestone-month-cta = Dyma'r diogelwch
+# Variables:
+#   $count (number) - Trackers blocked this year
+newtab-privacy-message-milestone-year =
+    { $count ->
+        [zero] Does { $count } tracwyr wedi'u rhwystro eleni. Dyma flwyddyn bwerus o ddiogelu eich preifatrwydd.
+        [one] Mae { $count } traciwr wedi'i rwystro eleni. Dyma flwyddyn bwerus o ddiogelu eich preifatrwydd.
+        [two] Mae { $count } draciwr wedi'u rhwystro eleni. Dyma flwyddyn bwerus o ddiogelu eich preifatrwydd.
+        [few] Mae { $count } traciwr wedi'u rhwystro eleni. Mae honno'n flwyddyn bwerus o ddiogelu eich preifatrwydd.
+        [many] Mae { $count } traciwr wedi'u rhwystro eleni. Dyma flwyddyn bwerus o ddiogelu eich preifatrwydd.
+       *[other] Mae { $count } traciwr wedi'u rhwystro eleni. Dyma flwyddyn bwerus o ddiogelu eich preifatrwydd.
+    }
+newtab-privacy-message-milestone-year-cta = Dyma'r diogelwch
+# Variables:
+#   $count (number) - Trackers blocked all-time
+newtab-privacy-message-milestone-total =
+    { $count ->
+        [zero] { $count } tracwyr wedi'u rhwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+        [one] { $count } traciwr wedi'i rwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+        [two] { $count } draciwr wedi'u rhwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+        [few] { $count } traciwr wedi'u rhwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+        [many] { $count } traciwr wedi'u rhwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+       *[other] { $count } traciwr wedi'u rhwystro. Dyna gynnydd mawr tuag at breifatrwydd ar eich telerau chi.
+    }
+newtab-privacy-message-milestone-total-cta = Dyma'r diogelwch
+# Shown when today's blocked-tracker count reaches the display cap ("100+").
+newtab-privacy-message-daily-cap = (100+ o dracwyr wedi'u rhwystro heddiw.) Mae llai o dracwyr yn golygu mwy o breifatrwydd.
+newtab-privacy-message-daily-cap-cta = Dyma'r diogelwch
+# Variables:
+#   $count (number) - Consecutive days the user has had trackers blocked
+newtab-privacy-message-streak =
+    { $count ->
+        [zero] Dydych heb eich diogelu am { $count } diwrnodau.
+        [one] Rydych wedi'ch diogelu am { $count } diwrnod.
+        [two] Rydych wedi'ch diogelu am { $count } ddiwrnod yn olynol.
+        [few] Rydych wedi'ch diogelu am { $count } diwrnod yn olynol.
+        [many] Rydych wedi'ch diogelu am { $count } diwrnod yn olynol.
+       *[other] Rydych wedi'ch diogelu am { $count } diwrnod yn olynol.
+    }
+newtab-privacy-message-streak-cta = Dyma'r diogelwch
+# Shown the first time the tracker count goes above zero.
+newtab-privacy-message-first-protection = Cadwch i bori, bydd { -brand-short-name } yn dal i rwystro.
+newtab-privacy-message-first-protection-cta = Dyma'r diogelwch
+
+## Strings for the Stocks widget
+
+# Context menu item for searching stock ticker symbols.
+newtab-stocks-menu-search = Chwilio symbolau'r ticiwr
+# Context menu item linking to more information about the Stocks widget.
+newtab-stocks-menu-learn-more = Dysgu rhagor
+# "Stocks widget options" is an icon-only button in the widget toolbar — the
+# attributes are consumed as tooltip/screen-reader label only. The button
+# never renders visible text.
+newtab-stocks-widget-menu-button =
+    .title = Dewisiadau'r teclyn stociau
+    .aria-label = Dewisiadau'r teclyn stociau
+# Heading for the Stocks widget.
+newtab-stocks-widget-title = Stociau
+
+## Screen-reader summary of a stock ticker.
+## Variables:
+##   $name (String) - the full fund/ETF name, e.g. "SPDR S&P 500 ETF Trust".
+##   $change (String) - the day's percentage change, e.g. "+2.1%".
+##   $price (String) - the last price, e.g. "$559.44".
+
+# Stock increased (went up) during the day
+newtab-stocks-ticker-status-up = { $name }, i fyny { $change }, { $price }
+# Stock decreased (went down) during the day
+newtab-stocks-ticker-status-down = { $name }, i lawr { $change }, { $price }
+# Stock didn't change during the day
+newtab-stocks-ticker-status-flat = { $name }, dim newid, { $change }, { $price }
+
+## Strings for the Picture of the Day widget
+
+# Title shown at the top of the widget, with the source name appended.
+# "Wikimedia Commons" is a brand name and should not be translated.
+newtab-picture-header = Darlun y dydd · Wikimedia Commons
+# Shorter title shown at the top of the widget, without the source name.
+newtab-picture-header-main = Darlun y dydd
+# Attribution line shown under the title once a picture loads: an author
+# credit, a link to the picture's source page, and a link to its license.
+# "©" is the copyright symbol.
+# $author (string) - the name of the image's author.
+newtab-picture-attribution-author = © { $author }
+# Link to the picture's source page (its Wikimedia Commons file page).
+# "Wikimedia Commons" is a brand name and should not be translated.
+newtab-picture-attribution-source-link = Comin Wikimedia
+# Screen-reader label for the license link; the visible text is the license
+# name (for example "CC BY-SA 4.0") provided with the picture.
+# $license (string) - the name of the license.
+newtab-picture-attribution-license =
+    .aria-label = Gweld trwydded { $license }
+# Tooltip and screen-reader label for the icon-only button that opens the
+# widget's context menu. The button never renders visible text.
+newtab-picture-widget-menu-button =
+    .title = Dewisiadau darlun y dydd
+    .aria-label = Dewisiadau darlun y dydd
+# Button that sets the current picture as the New Tab background wallpaper. The
+# button collapses to an icon when not hovered/focused, so .title is its tooltip.
+newtab-picture-set-wallpaper =
+    .label = Gosod y papur wal
+    .title = Gosod y papur wal
+    .aria-label = Gosod darlun y dydd heddiw fel eich papur wal
+# Context menu item that opens the New Tab customization panel.
+newtab-picture-menu-manage-wallpaper = Rheoli papur wal
+# Context menu item that hides today’s picture, replacing it with an existing
+# wallpaper.
+newtab-picture-menu-hide-photo = Cuddio darlun heddiw
+# Context menu item that restores today’s picture after it has been hidden.
+newtab-picture-menu-show-photo = Dangos darlun heddiw
+# Context menu item linking to more information about the widget.
+newtab-picture-menu-learn-more = Dysgu rhagor
+# Icon button shown on the widget once the picture is hidden; restores it.
+newtab-picture-show-button =
+    .title = Dangos darlun heddiw
+    .aria-label = Dangos darlun heddiw
+# Shown when there is no new picture to display yet.
+newtab-picture-check-back = Dewch nôl yfory am lun newydd
+# Screen-reader text alternative for the picture; fallback used when the source
+# provides no localized description.
+newtab-picture-image-alt = Darlun y dydd Comin Wikimedia
 
 ## Search box component.
 
@@ -52,7 +443,7 @@ newtab-search-box-input =
     .placeholder = Chwilio'r we
     .aria-label = Chwilio'r we
 
-## Top Sites - General form dialog.
+## Clear text button for the URL and image URL input fields in the Top Sites form.
 
 newtab-topsites-add-search-engine-header = Ychwanegu Peiriant Chwilio
 newtab-topsites-add-shortcut-header = Llwybr Byr Newydd
@@ -62,6 +453,7 @@ newtab-topsites-add-shortcut-label = Ychwanegu Llwybr Byr
 newtab-topsites-add-shortcut-title =
     .title = Ychwanegu Llwybr Byr
     .aria-label = Ychwanegu Llwybr Byr
+newtab-shortcuts-pinned-area = Ardal wedi'i Phinio
 newtab-topsites-title-label = Teitl
 newtab-topsites-title-input =
     .placeholder = Rhoi teitl
@@ -72,6 +464,11 @@ newtab-topsites-url-validation = Mae angen URL Ddilys
 newtab-topsites-image-url-label = URL Delwedd Gyfaddas
 newtab-topsites-use-image-link = Defnyddio delwedd gyfaddas…
 newtab-topsites-image-validation = Methodd y ddelwedd â llwytho. Defnyddiwch URL gwahanol.
+
+## Clear text button for the URL and image URL input fields in the Top Sites form.
+
+newtab-topsites-clear-input =
+    .aria-label = Clirio testun
 
 ## Top Sites - General form dialog buttons. These are verbs/actions.
 
@@ -127,7 +524,7 @@ newtab-menu-open-new-window = Agor mewn Ffenestr Newydd
 newtab-menu-open-new-private-window = Agor mewn Ffenestr Preifat Newydd
 newtab-menu-dismiss = Cau
 newtab-menu-pin = Pinio
-newtab-menu-unpin = Dad-binio
+newtab-menu-unpin = Dadbinio
 newtab-menu-delete-history = Dileu o'r Hanes
 newtab-menu-save-to-pocket = Cadw i { -pocket-brand-name }
 newtab-menu-delete-pocket = Dileu o { -pocket-brand-name }
@@ -139,6 +536,11 @@ newtab-menu-report = Adrodd
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Rhwystro
+# "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
+# e.g. Following the travel section of stories.
+newtab-menu-section-unfollow-topic = Dad-ddilyn
+# Context menu option to open a support page explaining the New Tab personalization features and privacy controls.
+newtab-menu-section-learn-more = Rhagor
 # "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
 # e.g. Following the travel section of stories.
 newtab-menu-section-unfollow = Dad-ddilyn Pwnc
@@ -251,18 +653,18 @@ newtab-empty-section-highlights = Cychwynnwch bori ac fe ddangoswn rhai erthygla
 # Ex. When there are no more Pocket story recommendations, in the space where there would have been stories, this is shown instead.
 # Variables:
 #   $provider (string) - Name of the content provider for this section, e.g "Pocket".
-newtab-empty-section-topstories = Rydych wedi dal i fynDewch nôl rhywbryd eto am fwy o'r straeon pwysicaf gan { $provider }. Methu aros? Dewiswch bwnc poblogaidd i ganfod straeon da o ar draws y we.
+newtab-empty-section-topstories = Rydych yn gyfredol. Dewch nôl rhywbryd eto am fwy o'r straeon pwysicaf gan { $provider }. Methu aros? Dewiswch bwnc poblogaidd i ganfod straeon da ar draws y we.
 # Ex. When there are no more story recommendations, in the space where there would have been stories, this is shown instead.
 newtab-empty-section-topstories-generic = Rydych yn gyfredol. Dewch nôl yn ddiweddarach am fwy o straeon. Methu aros? Dewiswch bwnc poblogaidd i ganfod rhagor o straeon difyr o bob rhan o'r we.
 
 ## Empty Section (Content Discovery Experience). These show when there are no more stories or when some stories fail to load.
 
-newtab-discovery-empty-section-topstories-header = Wedi dal i fyny!
+newtab-discovery-empty-section-topstories-header = Rydych yn gyfredol!
 newtab-discovery-empty-section-topstories-content = Dewch nôl eto am ragor o straeon.
 newtab-discovery-empty-section-topstories-try-again-button = Ceisiwch eto
 newtab-discovery-empty-section-topstories-loading = Yn llwytho…
 # Displays when a layout in a section took too long to fetch articles.
-newtab-discovery-empty-section-topstories-timed-out = Wps! Bron a lwytho'r adran hon, ond nid yn llwyr.
+newtab-discovery-empty-section-topstories-timed-out = Wps! Bron a llwytho'r adran hon, ond nid yn llwyr.
 
 ## Pocket Content Section.
 
@@ -307,9 +709,27 @@ newtab-error-fallback-refresh-link = Adnewyddu'r dudalen i geisio eto.
 
 newtab-custom-shortcuts-title = Llwybrau Byr
 newtab-custom-shortcuts-subtitle = Gwefannau rydych yn eu cadw neu'n ymweld â nhw
+#  (developer note): @nova-cleanup(remove-string): Remove old string once Nova lands. The newtab-custom-shortcuts-nova string will take over
 newtab-custom-shortcuts-toggle =
     .label = Llwybrau Byr
     .description = Gwefannau rydych yn eu cadw neu'n ymweld â nhw
+newtab-custom-shortcuts-nova =
+    .label = Llwybrau Byr
+newtab-custom-row-description =
+    .description = Nifer y rhesi
+# Variables
+#   $num (number) - Number of rows to display
+#  (developer note): @nova-cleanup(remove-string): Remove string once Nova lands. We won't be using "row"/"rows" anymore for the dropdown
+newtab-custom-row-selector2 =
+    .label =
+        { $num ->
+            [zero] { $num } rhesi
+            [one] { $num } rhes
+            [two] { $num } res
+            [few] { $num } rhes
+            [many] { $num } rhes
+           *[other] { $num } rhes
+        }
 # Variables
 #   $num (number) - Number of rows to display
 newtab-custom-row-selector =
@@ -324,11 +744,16 @@ newtab-custom-row-selector =
 newtab-custom-sponsored-sites = Llwybrau byr wedi'u noddi
 newtab-custom-pocket-title = Argymhellir gan  { -pocket-brand-name }
 newtab-custom-pocket-subtitle = Cynnwys eithriadol wedi'i guradu gan { -pocket-brand-name }, rhan o deulu { -brand-product-name }
+#  (developer note): @nova-cleanup(remove-string): Remove string once Nova lands. We won't be having a description under "Recommended stories" anymore
 newtab-custom-stories-toggle =
     .label = Straeon cymeradwy
     .description = Cynnwys eithriadol wedi'i gasglu gan deulu { -brand-product-name }
+newtab-recommended-stories-toggle =
+    .label = Straeon cymeradwy
 newtab-custom-stories-personalized-toggle =
     .label = Straeon
+newtab-custom-stories-personalized-checkbox =
+    .label = Straeon personol ar sail eich gweithgaredd
 newtab-custom-stories-personalized-checkbox-label = Straeon personol ar sail eich gweithgaredd
 newtab-custom-pocket-sponsored = Straeon wedi'u noddi
 newtab-custom-pocket-show-recent-saves = Dangos pethau gadwyd yn ddiweddar
@@ -343,6 +768,18 @@ newtab-custom-widget-lists-toggle =
     .label = Rhestrau
 newtab-custom-widget-timer-toggle =
     .label = Amserydd
+newtab-custom-widget-sports-toggle =
+    .label = Cwpan y Byd
+newtab-custom-widget-clock-toggle =
+    .label = Cloc
+newtab-custom-widget-sports-toggle2 =
+    .label = Chwaraeon
+newtab-custom-widget-privacy-toggle =
+    .label = Preifatrwydd
+newtab-custom-widget-stocks-toggle =
+    .label = Stociau
+newtab-custom-widget-picture-toggle =
+    .label = Darlun y dydd
 newtab-custom-widget-section-title = Teclynnau
 newtab-custom-widget-section-toggle =
     .label = Teclynnau
@@ -360,8 +797,12 @@ newtab-custom-settings = Rheoli rhagor o osodiadau
 
 newtab-wallpaper-title = Papurau wal
 newtab-wallpaper-reset = Ailosod i'r rhagosodiad
+#  (developer note): @nova-cleanup(remove-string): Remove old "Upload an image" string once Nova lands. The new "Add an image"  string will take over
 newtab-wallpaper-upload-image = Llwytho delwedd
+newtab-wallpaper-add-an-image = Ychwanegu delwedd
 newtab-wallpaper-custom-color = Dewis lliw
+newtab-wallpaper-toggle-title =
+    .label = Papurau wal
 # Variables
 #   $file_size (number) - The number of the maximum image file size (in MB) that may be uploaded
 newtab-wallpaper-error-max-file-size = Mae'r ddelwedd yn fwy na'r terfyn maint ffeil { $file_size }MB. Ceisiwch lwytho ffeil lai.
@@ -384,7 +825,9 @@ newtab-wallpaper-light-fox-anniversary = Llwynog mewn cae glaswelltog gyda thirl
 
 ## Solid Colors
 
+#  (developer note): @nova-cleanup(remove-string): Remove old "Solid colors" string once Nova lands. The simplified "Colors" string will take over
 newtab-wallpaper-category-title-colors = Lliwiau solet
+newtab-wallpaper-colors = Lliwiau
 newtab-wallpaper-blue = Glas
 newtab-wallpaper-light-blue = Glas golau
 newtab-wallpaper-light-purple = Porffor golau
@@ -475,6 +918,9 @@ newtab-weather-menu-change-location = Newid lleoliad
 newtab-weather-change-location-search-input-placeholder =
     .placeholder = Chwilio am leoliad
     .aria-label = Chwilio am leoliad
+# "Current" refers to the user's physical/geographic location detected via geolocation.
+newtab-weather-change-location-search-use-current =
+    .label = Defnyddiwch y lleoliad presennol
 newtab-weather-menu-weather-display = Dangos y tywydd
 newtab-weather-todays-forecast = Rhagolwg heddiw
 newtab-weather-see-full-forecast = Gweld y rhagolwg llawn
@@ -490,7 +936,6 @@ newtab-weather-menu-temperature-option-fahrenheit = Fahrenheit
 newtab-weather-menu-temperature-option-celsius = Celsius
 newtab-weather-menu-change-temperature-units-fahrenheit = Newid i Fahrenheit
 newtab-weather-menu-change-temperature-units-celsius = Newid i Celsius
-newtab-weather-menu-hide-weather-v2 = Cuddio'r tywydd
 newtab-weather-menu-hide-weather = Cuddio'r tywydd ar Dab Newydd
 newtab-weather-menu-learn-more = Rhagor
 newtab-weather-menu-detect-my-location = Canfod fy lleoliad
@@ -501,8 +946,18 @@ newtab-weather-opt-in-not-now =
     .label = Nid nawr
 newtab-weather-opt-in-yes =
     .label = Iawn
+newtab-weather-opt-in-headline = Cael eich rhagolygon tywydd lleol
+newtab-weather-opt-in-use-location =
+    .label = Defnyddio'r lleoliad
+newtab-weather-opt-in-choose-location = Dewis lleoliad
 # We'll be showing static (fake) weather data if the user has not opted in to using their location
 newtab-weather-static-city = Dinas Efrog Newydd
+# "Highest" here refers to the highest temperature of the day
+newtab-weather-high =
+    .aria-label = Uchel
+# "Lowest" here refers to the lowest temperature of the day
+newtab-weather-low =
+    .aria-label = Isel
 # Variables:
 #   $provider (string) - Service provider for weather data
 newtab-weather-see-forecast-description =
@@ -554,8 +1009,16 @@ newtab-topic-selection-button-pick-interests = Dewiswch eich diddordebau
 ## e.g. Following the travel section of stories.
 
 newtab-section-follow-button = Dilyn
+# Variables:
+#   $topic (string) - Topic that the user can follow
+newtab-section-follow-button-label =
+    .aria-label = Dilyn { $topic }
 newtab-section-following-button = Yn dilyn
 newtab-section-unfollow-button = Dad-ddilyn
+# Variables:
+#   $topic (string) - Topic that the user is following and can unfollow
+newtab-section-unfollow-button-label =
+    .aria-label = Yn dilyn: Dad-ddilyn { $topic }
 # A modal may appear next to the Follow button, directing users to try out the feature
 newtab-section-follow-highlight-title = Mireinio'ch ffrwd
 newtab-section-follow-highlight-subtitle = Dilynwch eich diddordebau i weld mwy o'r hyn rydych yn ei hoffi.
@@ -567,6 +1030,22 @@ newtab-section-follow-highlight-subtitle = Dilynwch eich diddordebau i weld mwy 
 newtab-section-block-button = Rhwystro
 newtab-section-blocked-button = Rhwystrwyd
 newtab-section-unblock-button = Dadrwystro
+# Variables:
+#   $topic (string) - Name of topic that user is following
+newtab-section-follow-topic =
+    .aria-label = Dilyn { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is unfollowing
+newtab-section-unfollow-topic =
+    .aria-label = Peidio dilyn { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is blocking
+newtab-section-block-topic =
+    .aria-label = Rhwystro { $topic }
+# Variables:
+#   $topic (string) - Name of topic that user is unblocking
+newtab-section-unblock-topic =
+    .aria-label = Peidio rhwystro { $topic }
 
 ## Confirmation modal for blocking a section
 
@@ -576,6 +1055,7 @@ newtab-section-confirm-block-topic-p2 = Ni fydd pynciau sydd wedi'u rhwystro yn 
 # Variables:
 #   $topic (string) - Name of topic that user is blocking
 newtab-section-block-topic-button = Rhwystro { $topic }
+newtab-section-block-cancel-button = Diddymu
 
 ## Strings for custom wallpaper highlight
 
@@ -596,6 +1076,12 @@ newtab-custom-wallpaper-cta = Rhowch gynnig arni
 newtab-new-user-custom-wallpaper-title = Dewiswch bapur wal i wneud { -brand-product-name } eich un chi
 newtab-new-user-custom-wallpaper-subtitle = Gwnewch i bob tab newydd deimlo fel adref gyda phapurau wal a lliwiau cyfaddas.
 newtab-new-user-custom-wallpaper-cta = Rhowch gynnig arno
+
+## Strings for Nova wallpaper feature highlight
+
+newtab-wallpaper-feature-highlight-title = Mae papurau wal newydd ffres wedi cyrraedd
+newtab-wallpaper-feature-highlight-subtitle = Dewis eich ffefryn a gwneud i bob tab newydd deimlo fel cartref.
+newtab-wallpaper-feature-highlight-cta = Dewis papur wal
 
 ## Strings for download mobile highlight
 
@@ -637,6 +1123,20 @@ newtab-report-cancel = Diddymu
 newtab-report-submit = Cyflwyno
 newtab-toast-thanks-for-reporting =
     .message = Diolch am adrodd am hyn.
+newtab-toast-widgets-hidden =
+    .message = Dewiswch yr eicon pensil i adfer teclynnau unrhyw bryd.
+# Variables:
+#   $topic (string) - Topic that the user has followed
+newtab-section-toast-follow =
+    .message = Rydych nawr yn dilyn { $topic }.
+# Variables:
+#   $topic (string) - Topic that the user has unfollowed
+newtab-section-toast-unfollow =
+    .message = Dydych chi nawr ddim yn dilyn { $topic }.
+# Variables:
+#   $topic (string) - Topic that the user has blocked
+newtab-section-toast-block =
+    .message = Fyddwch chi ddim yn gweld straeon am { $topic } bellach.
 
 ## Strings for task / to-do list productivity widget
 
@@ -651,32 +1151,62 @@ newtab-widget-lists-label-beta =
 # Variables:
 #   $number (number) - Amount of list items marked complete
 newtab-widget-lists-completed-list = Wedi cwblhau ( { $number })
+newtab-widget-lists-celebration-headline = Gwaith da
+newtab-widget-lists-celebration-subhead = Popeth wedi'i orffen
 newtab-widget-task-list-menu-copy = Copïo
 newtab-widget-lists-menu-edit = Golygu enw'r rhestr
+newtab-widget-lists-menu-edit2 =
+    .aria-label = Golygu enw'r rhestr
 newtab-widget-lists-menu-create = Creu rhestr newydd
 newtab-widget-lists-menu-delete = Dileu'r rhestr hon
 newtab-widget-lists-menu-copy = Copïo'r rhestr i'r clipfwrdd
-newtab-widget-lists-menu-hide = Cuddio pob rhestr
 newtab-widget-lists-menu-learn-more = Dysgu rhagor
-newtab-widget-lists-input-add-an-item =
+newtab-widget-lists-button-add-item = Ychwanegu eitem
+newtab-widget-lists-input-add-an-item2 =
     .placeholder = Ychwanegu eitem
+    .aria-label = Ychwanegu eitem
 newtab-widget-lists-input-error = Cynhwyswch destun i ychwanegu eitem.
 newtab-widget-lists-input-menu-open-link = Agor dolen
 newtab-widget-lists-input-menu-move-up = Symud i fyny
 newtab-widget-lists-input-menu-move-down = Symud i lawr
 newtab-widget-lists-input-menu-delete = Dileu
 newtab-widget-lists-input-menu-edit = Golygu
+newtab-widget-lists-input-menu-edit2 =
+    .aria-label = Golygu eitem
+newtab-widget-lists-edit-clear =
+    .aria-label = Diddymu
+    .title = Diddymu
 # the + symbol emphasises the functionality of adding a new list
 newtab-widget-lists-dropdown-create =
     .label = + Creu rhestr newydd
 newtab-widget-lists-name-label-default =
     .label = Rhestr tasgau
+newtab-widget-lists-name-label-checklist =
+    .label = Rhestr wirio
 newtab-widget-lists-name-placeholder-default =
     .placeholder = Rhestr tasgau
+newtab-widget-lists-name-placeholder-checklist2 =
+    .placeholder = Rhestr wirio
+    .aria-label = Golygu enw'r rhestr
 # The placeholder value of the name field for a newly created list
-newtab-widget-lists-name-placeholder-new =
+newtab-widget-lists-name-placeholder-new2 =
     .placeholder = Rhestr newydd
+    .aria-label = Golygu enw'r rhestr
 newtab-widget-section-title = Teclynnau
+newtab-widget-menu-hide = Cuddio'r teclyn
+newtab-widget-menu-change-size = Newid maint
+# Parent label for a submenu in the widget menu that reorders the widget
+# among its siblings. "Left" and "Right" appear as items inside this submenu.
+newtab-widget-menu-move = Symud
+# Submenu item under "Move"; moves the widget one position to the left.
+# RTL locales should translate this as "Right".
+newtab-widget-menu-move-left = Chwith
+# Submenu item under "Move"; moves the widget one position to the right.
+# RTL locales should translate this as "Left".
+newtab-widget-menu-move-right = De
+newtab-widget-size-small = Bach
+newtab-widget-size-medium = Canolig
+newtab-widget-size-large = Mawr
 # Tooltip for hide all widgets button
 newtab-widget-section-hide-all-button =
     .title = Cuddio teclynnau
@@ -687,9 +1217,27 @@ newtab-widget-section-maximize =
 newtab-widget-section-minimize =
     .title = Lleihau teclynnau
     .aria-label = Lleihau pob teclyn i faint llai
+newtab-widget-section-menu-button =
+    .title = Dewislen teclynnau
+    .aria-label = Agor dewislen teclynnau
+newtab-widget-add-widgets-button =
+    .aria-label = Ychwanegu teclyn
+    .title = Ychwanegu teclyn
+newtab-widget-section-menu-manage = Rheoli teclynnau
+newtab-widget-section-menu-hide-all = Cuddio teclynnau
+newtab-widget-section-menu-learn-more = Dysgu rhagor
+newtab-widget-section-feedback = Dywedwch wrthym beth yw eich barn
+# Button shown when additional widgets are hidden beyond the
+# first row, allowing users to show them.
+newtab-widget-section-show-more =
+    .label = Dangos rhagor o declynnau
+# Button shown when the widgets row is expanded to multiple rows,
+# allowing users to collapse it back to one row.
+newtab-widget-section-show-less =
+    .label = Dangos llai o declynnau
+newtab-widget-lists-name-default = Rhestr wirio
 
-## Strings for timer productivity widget
-## When the timer ends, a system notification may be shown. Depending on which mode the timer is in, that message would be shown
+## Strings introduced by the Nova redesign of the Timer widget
 
 newtab-widget-timer-notification-title = Amserydd
 newtab-widget-timer-notification-focus = Mae'r amser canolbwyntio ar ben. Gwaith da. Angen seibiant?
@@ -707,23 +1255,334 @@ newtab-widget-timer-reset =
     .title = Ailosod
 newtab-widget-timer-menu-notifications = Diffodd hysbysiadau
 newtab-widget-timer-menu-notifications-on = Troi hysbysiadau ymlaen
-newtab-widget-timer-menu-hide = Cuddio'r amserydd
 newtab-widget-timer-menu-learn-more = Dysgu rhagor
+newtab-widget-timer-menu-button =
+    .aria-label = Dewisiadau amserydd
 # The title displays above a set of top news headlines.
 newtab-daily-briefing-card-title = Prif Benawdau
 newtab-daily-briefing-card-menu-dismiss = Cau
 # Variables:
 #   $minutes (number) - Time since the feed has been refreshed
 newtab-daily-briefing-card-timestamp = Diweddarwyd { $minutes }m yn ôl
-newtab-widget-message-title = Canolbwyntio gyda rhestrau a'r amserydd mewnol
+newtab-widget-message-title = Canolbwyntio gyda rhestrau a'r amserydd cynhenid
 # to-dos stands for "things to do".
 newtab-widget-message-copy = O negeseuon atgoffa cyflym i dasgau bob dydd, sesiynau canolbwyntio i egwyliau ymarfer corff — cadwch i'r dasg ac amser.
+# One spot refers to a dedicated section on new tab to manage and use widgets
+newtab-widget-message-focus-forecasts-title = Un man ar gyfer canolbwynt, rhagolygon, a mwy
+newtab-widget-message-focus-forecasts-body = Cadwch eich diwrnod i lifo gyda theclynnau { -brand-product-name }. Gwiriwch y rhagolwg, cadw ar dasg, neu ddilyn amser ledled y byd.
+# "Make Firefox yours" refers to about:newtab. The call to action here ("Try it now")
+# is to customize the new tab page with a background image or color from
+# the built-in wallpaper collection or uploading your own image.
+newtab-promo-card-title-addons = Gwnewch { -brand-product-name } yn gartrefol
+newtab-promo-card-body-addons = Dewiswch bapur wal o'n casgliad, neu crëwch un eich hun.
+newtab-promo-card-cta-addons = Rhowch gynnig arno nawr
 newtab-promo-card-title = Cefnogi { -brand-product-name }
 newtab-promo-card-body = Mae ein noddwyr yn cefnogi ein cenhadaeth i adeiladu gwe well
 newtab-promo-card-cta = Dysgu rhagor
 newtab-promo-card-dismiss-button =
     .title = Cau
     .aria-label = Cau
+
+## Strings introduced by the Nova redesign of the Timer widget
+
+# Variables:
+#   $minutes (number) - The currently selected timer duration in minutes
+newtab-widget-timer-start-aria =
+    .aria-label =
+        { $minutes ->
+            [zero] Cychwyn amserydd { $minutes }-munudau
+            [one] Cychwyn amserydd { $minutes }-munud
+            [two] Cychwyn amserydd { $minutes }-funud
+            [few] Cychwyn amserydd { $minutes }-munud
+            [many] Cychwyn amserydd { $minutes }-munud
+           *[other] Cychwyn amserydd { $minutes }-munud
+        }
+newtab-widget-timer-pause-aria =
+    .aria-label = Oedi amserydd
+# Variables:
+#   $minutes (number) - The currently selected timer duration in minutes
+newtab-widget-timer-spinbutton-name =
+    .aria-label =
+        { $minutes ->
+            [zero] { $minutes } munudau
+            [one] { $minutes } munud
+            [two] { $minutes } funud
+            [few] { $minutes } munud
+            [many] { $minutes } munud
+           *[other] { $minutes } munud
+        }
+newtab-widget-timer-decrease-min =
+    .title = Llai 1 munud
+newtab-widget-timer-increase-min =
+    .title = Mwy 1 munud
+newtab-widget-timer-mode-group =
+    .aria-label = Modd amserydd
+# Small label shown beneath the live time while the focus timer is running or paused.
+newtab-widget-timer-running-focus = Canolbwynt
+# Small label shown beneath the live time while the break timer is running or paused.
+newtab-widget-timer-running-break = Toriad
+# Context-menu item to hide the Timer widget. Replaces the shared "Hide widget"
+# copy with a widget-specific string per the Nova design.
+newtab-widget-timer-menu-hide = Cuddio'r amserydd
+# Heading shown inside the Timer widget after a focus session ends.
+newtab-widget-timer-celebration-heading-focus = Gwaith da
+# Heading shown inside the Timer widget after a break session ends.
+newtab-widget-timer-celebration-heading-break = Mae'ch toriad drosodd
+# Message shown inside the Timer widget after a focus session ends.
+newtab-widget-timer-celebration-message-focus = Angen toriad?
+# Message shown inside the Timer widget after a break session ends.
+newtab-widget-timer-celebration-message-break = Yn barod i ganolbwyntio?
+
+##
+
+newtab-sports-widget-menu-follow-teams = Dilyn timau
+newtab-sports-widget-menu-view-schedule = Gweld amserlen
+newtab-sports-widget-menu-view-upcoming = Gweld yr hyn sydd i ddod
+newtab-sports-widget-menu-view-results = Gweld y canlyniadau
+# Milestone dates (e.g. group stage, semifinals, etc.). Refers to calendar dates.
+newtab-sports-widget-menu-key-dates = Dyddiadau allweddol
+newtab-sports-widget-menu-learn-more = Dysgu rhagor
+# “Keep tabs on” is an informal expression meaning to stay updated on, stay informed on, or regularly follow something (in this case, World Cup matches and updates).
+newtab-sports-widget-keep-tabs = Cadw golwg ar Gwpan y Byd
+newtab-sports-widget-get-updates = Cael diweddariadau gemau byw a mwy.
+newtab-sports-widget-view-schedule =
+    .label = Gweld yr amserlen
+newtab-sports-widget-follow-teams =
+    .label = Dilyn timau
+newtab-sports-widget-view-matches =
+    .label = Gweld gemau
+# Variables:
+#   $number (number) - Maximum number of teams a user can choose to follow in the team selection state
+newtab-sports-widget-follow-teams-title =
+    { $number ->
+        [zero] Dilyn hyd at { $number } timau
+        [one] Dilyn hyd at { $number } tîm
+        [two] Dilyn hyd at { $number } dîm
+        [few] Dilyn hyd at { $number } tîm
+        [many] Dilyn hyd at { $number } thîm
+       *[other] Dilyn hyd at { $number } tîm
+    }
+newtab-sports-widget-choose-wallpaper =
+    .label = Dewis Papur Wal
+newtab-sports-widget-skip = Hepgor
+newtab-sports-widget-search-country =
+    .placeholder = Chwilio gwlad
+    .aria-label = Chwilio gwlad
+newtab-sports-widget-cancel = Na
+newtab-sports-widget-back-button =
+    .aria-label = Nôl
+newtab-sports-widget-done-button =
+    .label = Gorffen
+# Shown in the follow-teams list for a team that has been knocked out of the tournament.
+# Variables:
+#   $teamName (string) - the localized team name (e.g. "Canada").
+newtab-sports-widget-team-name-eliminated = { $teamName } ( wedi'i fwrw allan)
+newtab-sports-widget-view-all =
+    .label = Gweld y cyfan
+newtab-sports-widget-show-less =
+    .label = Dangos llai
+# Toggle that filters the list of teams the user follows
+newtab-sports-widget-followed-only-toggle =
+    .label = Dim ond timau sy'n cael eu dilyn
+# Status shown when more matches are being fetched.
+newtab-sports-widget-loading-more = Wrthi'n llwytho mwy o gydweddu…
+# Watch is a verb (as in watch matches online).
+newtab-sports-widget-watch =
+    .label = Gwylio
+    .title = Gwylio'n fyw
+# Watch is a verb (as in watch matches online).
+newtab-sports-widget-watch-icon =
+    .aria-label = Gwylio'n fyw
+    .title = Gwylio'n fyw
+newtab-sports-widget-watch-dialog-close =
+    .aria-label = Cau
+    .title = Cau
+# Tag: user can watch without paying (sign-in may still be required).
+newtab-sports-widget-watch-stream-free = Am Ddim
+# Tag: user can start watching via a trial; continued access may require payment after it ends.
+newtab-sports-widget-watch-stream-free-trial = Profi am ddim
+# Tag: provider offers both a no-cost or trial path and a paid path.
+newtab-sports-widget-watch-stream-free-paid = Am ddim ac am dâl
+# Tag: user must pay to watch (subscription, TV provider, premium plan, or add-on).
+newtab-sports-widget-watch-stream-paid = Am dâl
+# Note: provider only streams some matches, not the full tournament.
+newtab-sports-widget-watch-stream-select-games-only = Dim ond gemau penodol
+# Heading for the list of streaming services available in the user’s country/region.
+newtab-sports-widget-watch-available-region = Ar gael yn eich ardal
+# Heading for the list of streaming services available outside the user’s country/region.
+newtab-sports-widget-watch-available-other-regions = Ardaloedd eraill
+# Button that opens the provider’s stream page in a new tab.
+newtab-sports-widget-watch-play =
+    .aria-label = Agor ffrwd
+    .title = Agor ffrwd
+newtab-sports-widget-group-stage = Cymal Grŵp
+newtab-sports-widget-group-a = Grŵp A
+newtab-sports-widget-group-b = Grŵp B
+newtab-sports-widget-group-c = Grŵp C
+newtab-sports-widget-group-d = Grŵp D
+newtab-sports-widget-group-e = Grŵp E
+newtab-sports-widget-group-f = Grŵp F
+newtab-sports-widget-group-g = Grŵp G
+newtab-sports-widget-group-h = Grŵp H
+newtab-sports-widget-group-i = Grŵp I
+newtab-sports-widget-group-j = Grŵp J
+newtab-sports-widget-group-k = Grŵp K
+newtab-sports-widget-group-l = Grŵp L
+newtab-sports-widget-round-32 = Rownd o 32
+newtab-sports-widget-round-16 = Rownd o 16
+newtab-sports-widget-quarter-finals = Chwarteri
+# The "LIVE" string is meant to be uppercase in English, but other languages and locales may vary in how they handle this.
+newtab-sports-widget-live = BYW
+newtab-custom-widget-live-refresh =
+    .title = Diweddaru sgoriau
+    .aria-label = Diweddaru sgoriau
+# Milestone dates (e.g. group stage, semifinals, etc.). Refers to calendar dates.
+newtab-sports-widget-key-dates = Dyddiadau allweddol
+newtab-sports-widget-upcoming = I Ddod
+# Used for a match currently ongoing
+newtab-sports-widget-now = Nawr
+newtab-sports-widget-results = Canlyniadau
+newtab-sports-widget-semi-finals = Cyn-derfynol
+newtab-sports-widget-bronze-finals = Y Ffeinal Efydd
+# Final is the final match for 1st place.
+newtab-sports-widget-final = Y Ffeinal
+# Variables:
+#   $start (Date) - Start date of a tournament stage
+#   $end (Date) - End date of a tournament stage
+newtab-sports-widget-key-date-range = { DATETIME($start, month: "short", day: "numeric") } – { DATETIME($end, month: "short", day: "numeric") }
+# Variables:
+#   $date (Date) - Date of a single tournament event
+newtab-sports-widget-key-date = { DATETIME($date, month: "short", day: "numeric") }
+newtab-sports-widget-delayed = Rhedeg yn Hwyr
+newtab-sports-widget-postponed = Wedi'i Ohirio
+newtab-sports-widget-suspended = Wedi'i Atal
+newtab-sports-widget-cancelled = Wedi'i Ganslo
+newtab-sports-widget-information = Gwybodaeth am y gêm
+newtab-sports-widget-no-live-data = Dyw data gêm fyw ddim yn cael ei ddiweddaru ar hyn o bryd
+newtab-sports-widget-view-results-link = Gweld y canlyniadau
+newtab-sports-widget-third-place = Yn Drydydd
+# Runner-up is the team in 2nd place.
+newtab-sports-widget-runner-up = Yn Ail
+newtab-sports-widget-champions = Pencampwyr
+newtab-sports-widget-world-cup-champions = Pencampwyr Cwpan y Byd 2026
+# Compact champions label for the medium-size widget result card; the larger
+# card uses newtab-sports-widget-world-cup-champions.
+newtab-sports-widget-world-cup-champions-short = Pencampwyr 2026
+# Variables:
+#   $date (Date) - The match start time
+newtab-sports-widget-match-time = { DATETIME($date, hour: "2-digit", minute: "2-digit") }
+newtab-sports-widget-match-full-time = Amser llawn
+newtab-sports-widget-match-halftime = Hanner amser
+newtab-sports-widget-match-extra-time = Amser ychwanegol
+newtab-sports-widget-match-penalties = Ciciau cosb
+# Separator shown between two teams in a placeholder match row when no upcoming
+# match details are available yet.
+newtab-sports-widget-match-vs = vs
+# Note shown in the Upcoming tab when no match details are available yet.
+newtab-sports-widget-no-upcoming-matches = Cadwch olwg am fanylion gêm sydd i ddod
+
+## Sports widget live-games pagination. Shown when 2+ matches are live at the same time
+
+# arrow button that goes to the previous page of live matches.
+newtab-sports-widget-pagination-previous =
+    .aria-label = Blaenorol
+    .title = Blaenorol
+# arrow button that goes to the next page of live matches.
+newtab-sports-widget-pagination-next =
+    .aria-label = Nesaf
+    .title = Nesaf
+# Dot indicator that jumps directly to a given live match.
+# $index (number) - 1-based position of this dot in the list.
+# $total (number) - Total number of live matches.
+newtab-sports-widget-pagination-dot =
+    .aria-label = { $index }  gêm fyw o { $total }
+    .title = { $index }  gêm fyw o { $total }
+
+## Accessible labels for match rows in the sports widget. These are read by
+## screen readers to announce the match details and status.
+## Variables shared by all messages in this group:
+##   $homeTeam (String) - The full name of the home team (e.g. "Mexico")
+##   $awayTeam (String) - The full name of the away team (e.g. "Russia")
+
+# A finished match row (regular full-time result).
+# Variables:
+#   $homeScore (number) - The home team's regular-time score
+#   $awayScore (number) - The away team's regular-time score
+newtab-sports-widget-match-aria-label-results =
+    .aria-label = { $homeTeam } , { $homeScore } yn erbyn { $awayTeam } , { $awayScore }
+# A finished match row that went to a penalty shootout.
+# Parenthesized values are the shootout score.
+# Variables:
+#   $homeScore (number) - The home team's regular-time score
+#   $awayScore (number) - The away team's regular-time score
+#   $homePenalty (number) - The home team's penalty shootout score
+#   $awayPenalty (number) - The away team's penalty shootout score
+newtab-sports-widget-match-aria-label-results-penalties =
+    .aria-label = { $homeTeam } , { $homeScore } ( { $homePenalty }) yn erbyn { $awayTeam }, { $awayScore } ( { $awayPenalty })
+# A match that is currently in progress.
+# Variables:
+#   $homeScore (number) - The home team's current score
+#   $awayScore (number) - The away team's current score
+newtab-sports-widget-match-aria-label-now =
+    .aria-label = Yn fyw: { $homeTeam } , { $homeScore } yn erbyn { $awayTeam }, { $awayScore }
+# An upcoming scheduled match row. Announces kickoff time and date.
+# Variables:
+#   $date (Date) - The scheduled kickoff date/time
+newtab-sports-widget-match-aria-label-upcoming =
+    .aria-label = { $homeTeam } yn erbyn { $awayTeam }, { DATETIME($date, hour: "numeric", minute: "numeric") }, { DATETIME($date, day: "numeric", month: "long") }
+# An upcoming match row whose status is "delayed".
+newtab-sports-widget-match-aria-label-upcoming-delayed =
+    .aria-label = { $homeTeam } yn erbyn { $awayTeam } , wedi'i ohirio
+# An upcoming match row whose status is "postponed".
+newtab-sports-widget-match-aria-label-upcoming-postponed =
+    .aria-label = { $homeTeam } yn erbyn { $awayTeam } , wedi'i ohirio
+# An upcoming match row whose status is "suspended".
+newtab-sports-widget-match-aria-label-upcoming-suspended =
+    .aria-label = { $homeTeam } yn erbyn { $awayTeam }, wedi'i atal
+# An upcoming match row whose status is "cancelled".
+newtab-sports-widget-match-aria-label-upcoming-cancelled =
+    .aria-label = { $homeTeam } yn erbyn { $awayTeam } , wedi'i ganslo
+
+## Sports widget — team names (FIFA country codes)
+## Only includes names not adequately covered by standard country-code
+## internationalization tooling.
+
+newtab-sports-widget-team-name-label-bih =
+    .label = Bosnia a Herzegovina
+newtab-sports-widget-team-name-label-civ =
+    .label = Côte d'Ivoire
+newtab-sports-widget-team-name-label-cod =
+    .label = DR Congo
+newtab-sports-widget-team-name-label-eng =
+    .label = Lloegr
+newtab-sports-widget-team-name-label-sco =
+    .label = Yr Alban
+# Placeholder used in a match row's aria-label for an undecided team (shown visually as "--").
+newtab-sports-widget-team-tbd = I'w benderfynu
+
+## Sports widget OMC messages
+## Shown as on-screen messages promoting the Sports widget and World Cup wallpapers.
+
+newtab-sports-widget-message-wallpapers-title = Cychwyn Cwpan y Byd gyda phapurau wal newydd
+newtab-sports-widget-message-wallpapers-body = Dewch ag ychydig o egni diwrnod gêm i'ch porwr ar gyfer y twrnamaint.
+newtab-sports-widget-message-wallpapers-cta = Dewis papur wal
+newtab-sports-widget-message-wallpapers-semifinals-title = Cael papur wal newydd ar gyfer y rowndiau cynderfynol
+newtab-sports-widget-message-wallpapers-semifinals-body = Patatoi ar gyfer gemau mwyaf Cwpan y Byd.
+newtab-sports-widget-message-add-widgets-cta =
+    .label = Ychwanegu teclyn
+newtab-sports-widget-message-day-in-play-title = Cadwch eich diwrnod ar waith gyda theclynnau { -brand-product-name }
+newtab-sports-widget-message-day-in-play-body = Dilynwch Gwpan y Byd, cadw ar y dasg, dilyn amser o amgylch y byd, a mwy.
+newtab-sports-widget-message-explore-widgets-cta =
+    .label = Archwilio'r teclynnau
+
+## Survey prompts shown after the World Cup to gather feedback on the widgets experience.
+
+newtab-sports-widget-message-survey-title = Helpwch ni i wella teclynnau
+newtab-sports-widget-message-survey-body = Dyna ddiwedd ar Gwpan y Byd. Rhannwch eich adborth am y profiad.
+newtab-sports-widget-message-survey-widget-title = Sut oedd teclyn Cwpan y Byd?
+newtab-sports-widget-message-survey-widget-body = Rhannwch eich adborth i'n helpu ni i wella teclynnau'r dyfodol. Yna, rhowch gynnig ar yr un newydd yn eich tîm.
+newtab-sports-widget-message-survey-cta =
+    .label = Llenwch yr Arolwg
 
 ## Strings for activation window message variants. In certain experiment configurations,
 ## the strings from these variants may be displayed in a message below the search input
@@ -746,3 +1605,76 @@ newtab-activation-window-message-customization-focus-primary-button =
 # the existing widgetry that appears on it.
 newtab-activation-window-message-values-focus-header = Mae'r gofod hwn yn chwarae yn ôl eich rheolau chi
 newtab-activation-window-message-values-focus-message = Mae { -brand-product-name } yn gadael i chi bori'r ffordd fyddwch chi'n ei hoffi, gyda dull mwy personol i ddechrau'ch diwrnod ar-lein. Gwnewch { -brand-product-name } yn ddefnyddiol i chi.
+
+## Strings for the Clock widget
+
+# Context menu item: toggle the clock card off.
+newtab-clock-widget-menu-hide = Cuddio cloc
+newtab-clock-widget-menu-learn-more = Dysgu rhagor
+newtab-clock-widget-menu-edit = Golygu clociau
+newtab-clock-widget-menu-switch-to-12h = Newid i fformat 12 awr
+newtab-clock-widget-menu-switch-to-24h = Newid i fformat 24 awr
+newtab-clock-widget-label-your-clocks = Eich clociau
+newtab-clock-widget-search-location-input =
+    .label = Lleoliad
+    .placeholder = Chwilio am ddinas
+    .aria-label = Chwilio am ddinas
+# "Nickname (optional)" refers to a custom, user-defined label for a saved location
+# (e.g., "Home", "Office", or "School") to make it easier to recognize.
+# Not to be translated as a legal name, username, or alias used for identity verification.
+newtab-clock-widget-input-nickname =
+    .label = Llysenw (dewisol)
+    .placeholder = Ychwanegu llysenw
+    .aria-label = Llysenw (dewisol)
+# "Add new clock" is an icon-only button in the widget toolbar — the
+# attributes are consumed as tooltip/screen-reader label only. The button
+# never renders visible text.
+newtab-clock-widget-button-add =
+    .title = Ychwanegu cloc newydd
+    .aria-label = Ychwanegu cloc newydd
+newtab-clock-widget-button-add-clock = Ychwanegu
+newtab-clock-widget-button-cancel = Na
+newtab-clock-widget-button-back =
+    .title = Nôl
+    .aria-label = Nôl
+newtab-clock-widget-button-edit-clock =
+    .title = Golygu cloc
+    .aria-label = Golygu cloc
+newtab-clock-widget-button-save = Cadw
+newtab-clock-widget-button-remove-clock =
+    .title = Tynnu cloc
+    .aria-label = Tynnu cloc
+# Accessible name for a clock row in the "Your clocks" management panel
+# when the row has no user-provided nickname. Read aloud by screen
+# readers when focus lands on the row.
+# Variables:
+#   $city (string) - The city name displayed in the row.
+newtab-clock-widget-edit-item =
+    .aria-label = { $city }
+# Accessible name for a clock row when a user nickname has been set.
+# Variables:
+#   $city (string) - The city name displayed in the row.
+#   $nickname (string) - The user-provided nickname for the row.
+newtab-clock-widget-edit-item-with-nickname =
+    .aria-label = { $city }, llysenw: { $nickname }
+newtab-clock-widget-add-clock-form =
+    .aria-label = Ychwanegu cloc
+newtab-clock-widget-edit-clock-form =
+    .aria-label = Golygu cloc
+# "Search results" is the accessible label for the listbox dropdown that appears
+# below the location search field, listing matching cities as the user types.
+# It means "results of the search", not "search within the results".
+newtab-clock-widget-search-results =
+    .aria-label = Canlyniadau chwilio
+# Shown in place of the search results when the user's query does not match any
+# supported city — e.g. typing a misspelled name or a place not in the IANA
+# time zone list.
+newtab-clock-widget-search-no-results = Dim cydweddiad
+# "Open menu for clock" is an icon-only button in the widget toolbar — the
+# attributes are consumed as tooltip/screen-reader label only. The button
+# never renders visible text.
+newtab-clock-widget-menu-button =
+    .title = Agor y ddewislen ar gyfer cloc
+    .aria-label = Agor y ddewislen ar gyfer cloc
+# $nickname (String) - The user-defined nickname for a saved clock location (e.g., "Home", "Office").
+newtab-clock-widget-label-nickname-with-value = Llysenw: { $nickname }

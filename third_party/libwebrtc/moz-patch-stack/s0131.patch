@@ -1,32 +1,23 @@
-From: Dan Baker <dbaker@mozilla.com>
-Date: Wed, 3 Dec 2025 09:44:00 -0700
-Subject: Bug 2000941 - (fix-412ea40eeb) ifdef out IID_IGraphicsCaptureSession6
- as current windows build SDK does not include it
+From: Michael Froman <mfroman@mozilla.com>
+Date: Mon, 6 Apr 2026 18:41:00 -0500
+Subject: Bug 2029247 - (fix-4520c7897c) fix new usage of GetRealTimeClock in
+ bitrate_adjuster.h
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/cb3700134901dea40f70b2da11e35b3e861d0c3c
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a88b1959591bc4ddbf6deb88ff76dcc24fd8ae5d
 ---
- modules/desktop_capture/win/wgc_capture_session.cc | 4 ++++
- 1 file changed, 4 insertions(+)
+ common_video/include/bitrate_adjuster.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/modules/desktop_capture/win/wgc_capture_session.cc b/modules/desktop_capture/win/wgc_capture_session.cc
-index 3037d471cc..763ae9c22d 100644
---- a/modules/desktop_capture/win/wgc_capture_session.cc
-+++ b/modules/desktop_capture/win/wgc_capture_session.cc
-@@ -276,6 +276,9 @@ HRESULT WgcCaptureSession::StartCapture(const DesktopCaptureOptions& options) {
-   }
- #endif
- 
-+// Until Mozilla builds with SDK v10.0.26100.0 or newer, this
-+// code will not build.
-+#if !defined(WEBRTC_MOZILLA_BUILD)
-   // Windows 11 24H2 (10.0.26100.0) added
-   // `IGraphicsCaptureSession6::put_IncludeSecondaryWindows()`. See
-   // `wgc_include_secondary_windows()` in
-@@ -287,6 +290,7 @@ HRESULT WgcCaptureSession::StartCapture(const DesktopCaptureOptions& options) {
-     session6->put_IncludeSecondaryWindows(
-         options.wgc_include_secondary_windows());
-   }
-+#endif
- 
-   allow_zero_hertz_ = options.allow_wgc_zero_hertz();
- 
+diff --git a/common_video/include/bitrate_adjuster.h b/common_video/include/bitrate_adjuster.h
+index 6cd92b7deb..d414fb7e25 100644
+--- a/common_video/include/bitrate_adjuster.h
++++ b/common_video/include/bitrate_adjuster.h
+@@ -40,7 +40,7 @@ class RTC_EXPORT BitrateAdjuster {
+   ABSL_DEPRECATE_AND_INLINE()
+   BitrateAdjuster(float min_adjusted_bitrate_pct,
+                   float max_adjusted_bitrate_pct)
+-      : BitrateAdjuster(Clock::GetRealTimeClock(),
++      : BitrateAdjuster(Clock::GetRealTimeClockRaw(),
+                         min_adjusted_bitrate_pct,
+                         max_adjusted_bitrate_pct) {}
+   virtual ~BitrateAdjuster() = default;

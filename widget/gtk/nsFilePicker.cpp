@@ -1,38 +1,37 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsFilePicker.h"
+
 #include <dlfcn.h>
 #include <gtk/gtk.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "AsyncDBus.h"
-#include "nsGtkUtils.h"
-#include "nsIFileURL.h"
-#include "nsIGIOService.h"
-#include "nsIURI.h"
-#include "nsIWidget.h"
-#include "nsIFile.h"
-#include "nsIStringBundle.h"
-#include "nsWindow.h"
-#include "mozilla/Components.h"
-#include "mozilla/Preferences.h"
-#include "mozilla/dom/Promise.h"
-#include "mozilla/dom/Document.h"
-
-#include "nsArrayEnumerator.h"
-#include "nsEnumeratorUtils.h"
-#include "nsNetUtil.h"
-#include "nsReadableUtils.h"
+#include "GRefPtr.h"
 #include "MozContainer.h"
 #include "WidgetUtilsGtk.h"
-
 #include "gfxPlatform.h"
+#include "mozilla/Components.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/Promise.h"
+#include "nsArrayEnumerator.h"
+#include "nsEnumeratorUtils.h"
+#include "nsGtkUtils.h"
+#include "nsIFile.h"
+#include "nsIFileURL.h"
+#include "nsIGIOService.h"
+#include "nsIStringBundle.h"
+#include "nsIURI.h"
+#include "nsIWidget.h"
+#include "nsNetUtil.h"
+#include "nsReadableUtils.h"
+#include "nsWindow.h"
 #include "nsXULAppAPI.h"
-#include "nsFilePicker.h"
 
 #undef LOG
 #ifdef MOZ_LOGGING
@@ -51,6 +50,14 @@ using mozilla::dom::Promise;
 #define MAX_PREVIEW_SOURCE_SIZE 8192
 
 static nsIFile* sPrevDisplayDirectory = nullptr;
+
+// Use an application-defined response ID (non-negative) for the accept button
+// instead of GTK_RESPONSE_ACCEPT (-3). GTK's built-in negative response IDs
+// cause the button to be treated as the dialog's default widget, meaning it
+// activates on Enter. A non-negative ID prevents this, so a page that tricks
+// the user into holding Enter before the dialog appears cannot auto-confirm
+// an unintended file upload. See bug 2033848 and the equivalent Chrome fix.
+static const gint kFilePickerAccept = 0;
 
 void nsFilePicker::Shutdown() { NS_IF_RELEASE(sPrevDisplayDirectory); }
 
@@ -226,12 +233,11 @@ void nsFilePicker::ReadValuesFromNonPortalFileChooser(
 }
 
 void nsFilePicker::InitNative(nsIWidget* aParent, const nsAString& aTitle) {
-  mParentWidget = aParent;
+  mParentWidget = nsWindow::FromWidget(aParent);
   mTitle.Assign(aTitle);
 
   if (mParentWidget) {
-    auto window = static_cast<nsWindow*>(mParentWidget.get());
-    if (GtkWidget* widget = window->GetGtkWidget()) {
+    if (GtkWidget* widget = mParentWidget->GetGtkWidget()) {
       if (auto* title = gtk_window_get_title(GTK_WINDOW(widget))) {
         mTitle.AppendLiteral(" - ");
         mTitle.Append(NS_ConvertUTF8toUTF16(title));
@@ -468,17 +474,15 @@ void nsFilePicker::FinishOpeningPortal() {
   MOZ_DIAGNOSTIC_ASSERT(!mExportedParent);
   nsAutoCString parentWindow;
   if (mParentWidget) {
-    static_cast<nsWindow*>(mParentWidget.get())
-        ->ExportHandle()
-        ->Then(
-            GetCurrentSerialEventTarget(), __func__,
-            [self = RefPtr{this}](nsCString&& aResult) {
-              self->mExportedParent = true;
-              self->FinishOpeningPortalWithParent(aResult);
-            },
-            [self = RefPtr{this}](bool) {
-              self->FinishOpeningPortalWithParent(""_ns);
-            });
+    mParentWidget->ExportHandle()->Then(
+        GetCurrentSerialEventTarget(), __func__,
+        [self = RefPtr{this}](nsCString&& aResult) {
+          self->mExportedParent = true;
+          self->FinishOpeningPortalWithParent(aResult);
+        },
+        [self = RefPtr{this}](bool) {
+          self->FinishOpeningPortalWithParent(""_ns);
+        });
   } else {
     FinishOpeningPortalWithParent(""_ns);
   }
@@ -617,8 +621,8 @@ void nsFilePicker::ReadPortalUriList(GVariant* aUriList) {
 }
 
 void nsFilePicker::ClearPortalState() {
-  if (mExportedParent) {
-    static_cast<nsWindow*>(mParentWidget.get())->UnexportHandle();
+  if (mExportedParent && mParentWidget) {
+    mParentWidget->UnexportHandle();
     mExportedParent = false;
   }
   mPortalProxy = nullptr;
@@ -676,7 +680,9 @@ void nsFilePicker::OpenNonPortal() {
   NS_ConvertUTF16toUTF8 title(mTitle);
 
   GtkWindow* parent_widget =
-      GTK_WINDOW(mParentWidget->GetNativeData(NS_NATIVE_SHELLWIDGET));
+      mParentWidget
+          ? GTK_WINDOW(mParentWidget->GetNativeData(NS_NATIVE_SHELLWIDGET))
+          : nullptr;
 
   GtkFileChooserAction action = GetGtkFileChooserAction(mMode);
 
@@ -691,7 +697,7 @@ void nsFilePicker::OpenNonPortal() {
 
   GtkFileChooser* file_chooser = GTK_FILE_CHOOSER(gtk_file_chooser_dialog_new(
       title.get(), parent_widget, action, g_dgettext("gtk30", "_Cancel"),
-      GTK_RESPONSE_CANCEL, accept_button, GTK_RESPONSE_ACCEPT, nullptr));
+      GTK_RESPONSE_CANCEL, accept_button, kFilePickerAccept, nullptr));
 
   // If we have --enable-proxy-bypass-protection, then don't allow
   // remote URLs to be used.
@@ -767,11 +773,6 @@ void nsFilePicker::OpenNonPortal() {
     }
   }
 
-  if (GTK_IS_DIALOG(file_chooser)) {
-    gtk_dialog_set_default_response(GTK_DIALOG(file_chooser),
-                                    GTK_RESPONSE_ACCEPT);
-  }
-
   size_t count = mFilters.Length();
   for (size_t i = 0; i < count; ++i) {
     GtkFileFilter* filter = NewFilter(mFilters[i], mFilterNames[i]);
@@ -795,6 +796,7 @@ void nsFilePicker::OpenNonPortal() {
                    this);
   g_signal_connect(file_chooser, "destroy", G_CALLBACK(OnNonPortalDestroy),
                    this);
+  RecordLastShownTime();
   gtk_widget_show(GTK_WIDGET(file_chooser));
 }
 
@@ -861,22 +863,32 @@ bool nsFilePicker::WarnForNonReadableFile() {
       mParentWidget
           ? GTK_WINDOW(mParentWidget->GetNativeData(NS_NATIVE_SHELLWIDGET))
           : nullptr;
-  auto* cancel_dialog = gtk_message_dialog_new(
+  RefPtr<GtkWidget> cancel_dialog = gtk_message_dialog_new(
       parent_window, flags, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s",
       NS_ConvertUTF16toUTF8(errorMessage).get());
-  gtk_dialog_run(GTK_DIALOG(cancel_dialog));
+  gtk_dialog_run(GTK_DIALOG(cancel_dialog.get()));
   gtk_widget_destroy(cancel_dialog);
 
   return true;
 }
 
 void nsFilePicker::DoneNonPortal(GtkWidget* file_chooser, gint response) {
+  // Ignore a confirmation that arrives before the input-protection time range
+  // has passed, leaving the dialog open. (GTK emits GTK_RESPONSE_ACCEPT on a
+  // double-click.)
+  if ((response == GTK_RESPONSE_OK || response == GTK_RESPONSE_ACCEPT ||
+       response == kFilePickerAccept) &&
+      IsPickerInputProtected()) {
+    return;
+  }
+
   mFileChooser = nullptr;
 
   nsIFilePicker::ResultCode result;
   switch (response) {
     case GTK_RESPONSE_OK:
-    case GTK_RESPONSE_ACCEPT:
+    case GTK_RESPONSE_ACCEPT:  // emitted by GTK internally on double-click
+    case kFilePickerAccept:
       ReadValuesFromNonPortalFileChooser(GTK_FILE_CHOOSER(file_chooser));
       result = nsIFilePicker::returnOK;
       break;

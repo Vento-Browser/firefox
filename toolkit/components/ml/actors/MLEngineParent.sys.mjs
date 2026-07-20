@@ -50,8 +50,6 @@ const RS_RUNTIME_COLLECTION = "ml-onnx-runtime";
 const RS_INFERENCE_OPTIONS_COLLECTION = "ml-inference-options";
 const RS_ALLOW_DENY_COLLECTION = "ml-model-allow-deny-list";
 const TERMINATE_TIMEOUT = 5000;
-const RS_FALLBACK_BASE_URL =
-  "https://firefox-settings-attachments.cdn.mozilla.net";
 
 const RUNTIME_ROOT_IN_OPFS = "mlRuntimeFiles";
 
@@ -295,10 +293,13 @@ export class MLEngineParent extends JSProcessActorParent {
           return /** @type {MLEngine<FeatureId>} */ (currentEngine);
         }
         lazy.console.debug(`Replacing existing engine for ${engineId}`);
-        try {
-          Services.obs.removeObserver(currentEngine, "ipc:content-shutdown");
-        } catch (e) {
-          lazy.console.error("Failed to remove observer", e);
+        if (currentEngine.isObserving) {
+          try {
+            Services.obs.removeObserver(currentEngine, "ipc:content-shutdown");
+            currentEngine.isObserving = false;
+          } catch (e) {
+            lazy.console.error("Failed to remove observer", e);
+          }
         }
 
         await MLEngine.removeInstance(
@@ -338,8 +339,12 @@ export class MLEngineParent extends JSProcessActorParent {
         notificationsCallback,
       });
 
-      // engine will observe ipc:content-shutdown to get notified if the inference process crashes
-      Services.obs.addObserver(engine, "ipc:content-shutdown");
+      // Observe ipc:content-shutdown to detect inference process crashes.
+      // Use a weak reference so this observer doesn't root the engine
+      // and its pending request promises, which may prevent windows
+      // that triggered inference from being cycle-collected.
+      Services.obs.addObserver(engine, "ipc:content-shutdown", true);
+      engine.isObserving = true;
 
       const creationTime = ChromeUtils.now() - start;
 
@@ -463,8 +468,8 @@ export class MLEngineParent extends JSProcessActorParent {
     await Promise.all(
       [...this.#modelFilesInUse].map(async ([key, entry]) => {
         await modelHub.deleteNonMatchingModelRevisions(
-          entry.modelWithHostname,
           entry.taskName,
+          entry.modelWithHostname,
           entry.revision
         );
         this.#modelFilesInUse.delete(key);
@@ -666,7 +671,7 @@ export class MLEngineParent extends JSProcessActorParent {
 
     ChromeUtils.addProfilerMarker(
       "MLEngineParent",
-      null,
+      undefined,
       `Backend selected: ${bestBackend} (requested: ${backend})`
     );
 
@@ -774,14 +779,14 @@ export class MLEngineParent extends JSProcessActorParent {
   static async downloadRSAttachment({ wasmRecord, localRoot }) {
     const { attachment, version } = wasmRecord;
     const { location, filename, hash, size } = attachment;
-    let baseURL = RS_FALLBACK_BASE_URL;
+
+    // If the base URL cannot be obtained from Remote Settings, no need to go further.
+    let baseURL;
     try {
       baseURL = await lazy.Utils.baseAttachmentsURL();
     } catch (error) {
-      console.error(
-        `Error fetching remote settings base url from CDN. Falling back to ${RS_FALLBACK_BASE_URL}`,
-        error
-      );
+      console.error("Error fetching content from Remote settings:", error);
+      throw error;
     }
 
     // Validate inputs
@@ -1066,6 +1071,15 @@ export class MLEngine {
   engineStatus = "uninitialized";
 
   /**
+   * Whether this engine is currently registered as an "ipc:content-shutdown"
+   * observer. Used to avoid removing an observer that was never added, which
+   * would throw NS_ERROR_ILLEGAL_VALUE.
+   *
+   * @type {boolean}
+   */
+  isObserving = false;
+
+  /**
    * Unique identifier for the engine.
    *
    * @type {string}
@@ -1136,6 +1150,10 @@ export class MLEngine {
       featureId: pipelineOptions.featureId,
       flowId: pipelineOptions.flowId,
     });
+    this.QueryInterface = ChromeUtils.generateQI([
+      "nsIObserver",
+      "nsISupportsWeakReference",
+    ]);
   }
 
   /**
@@ -1145,7 +1163,6 @@ export class MLEngine {
    * @returns {object|null} The validated request, or null if blocked
    */
   #validateRequest(request) {
-    lazy.console.debug("[MLSecurity] Validating request:", request);
     return request;
   }
 
@@ -1403,6 +1420,12 @@ export class MLEngine {
         if (data.error) {
           newPortResolvers.reject(data.error);
         } else {
+          // The child reports the backend it actually used; record it so
+          // telemetry and log messages reflect reality rather than the
+          // requested sentinel (e.g. "best-onnx").
+          if (data.resolvedBackend) {
+            this.pipelineOptions.backend = data.resolvedBackend;
+          }
           newPortResolvers.resolve();
         }
 
@@ -1680,6 +1703,12 @@ export class MLEngine {
     let tokenCount = 0;
     let characterCount = 0;
 
+    // Only generated (non-prompt) chunks are counted for cadence telemetry.
+    let firstChunkTime = null;
+    let lastChunkTime = null;
+    let generatedChunkCount = 0;
+    let interChunkTimeTotal = 0;
+
     let chunkPromise = responseChunkResolvers.getAndAdvanceChunkPromise();
     let chunkStartTime = ChromeUtils.now();
 
@@ -1695,11 +1724,24 @@ export class MLEngine {
         );
         tokenCount += chunk.metadata.tokens?.length ?? 0;
         characterCount += chunk.metadata.text?.length ?? 0;
+
+        if (!chunk.metadata.isPrompt) {
+          const now = ChromeUtils.now();
+          if (firstChunkTime === null) {
+            firstChunkTime = now;
+          } else {
+            interChunkTimeTotal += now - lastChunkTime;
+          }
+          lastChunkTime = now;
+          generatedChunkCount++;
+        }
+
         yield {
           text: chunk.metadata.text,
           tokens: chunk.metadata.tokens,
           isPrompt: chunk.metadata.isPrompt,
           toolCalls: chunk.metadata.toolCalls,
+          usage: chunk.metadata.usage,
         };
 
         // Be a bit defensive here in getting the metadata, as different engines may
@@ -1780,6 +1822,12 @@ export class MLEngine {
       backend: this.pipelineOptions.backend,
       tokenCount,
       characterCount,
+      timeToFirstChunk:
+        firstChunkTime === null ? null : firstChunkTime - startTime,
+      averageChunkTime:
+        generatedChunkCount > 1
+          ? interChunkTimeTotal / (generatedChunkCount - 1)
+          : null,
     });
 
     return result;

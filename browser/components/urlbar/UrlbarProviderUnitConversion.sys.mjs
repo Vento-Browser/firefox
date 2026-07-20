@@ -20,8 +20,8 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
-  UrlbarResult: "moz-src:///browser/components/urlbar/UrlbarResult.sys.mjs",
-  UrlbarView: "moz-src:///browser/components/urlbar/UrlbarView.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -78,8 +78,6 @@ const VIEW_TEMPLATE = {
 export class UrlbarProviderUnitConversion extends UrlbarProvider {
   constructor() {
     super();
-    lazy.UrlbarResult.addDynamicResultType(DYNAMIC_RESULT_TYPE);
-    lazy.UrlbarView.addDynamicViewTemplate(DYNAMIC_RESULT_TYPE, VIEW_TEMPLATE);
   }
 
   /**
@@ -114,6 +112,10 @@ export class UrlbarProviderUnitConversion extends UrlbarProvider {
     return false;
   }
 
+  getViewTemplate(_result) {
+    return VIEW_TEMPLATE;
+  }
+
   /**
    * This is called only for dynamic result types, when the urlbar view updates
    * the view of one of the results of the provider.  It should return an object
@@ -142,8 +144,8 @@ export class UrlbarProviderUnitConversion extends UrlbarProvider {
    */
   startQuery(queryContext, addCallback) {
     const result = new lazy.UrlbarResult({
-      type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-      source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+      type: lazy.UrlbarShared.RESULT_TYPE.DYNAMIC,
+      source: lazy.UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
       suggestedIndex: lazy.UrlbarPrefs.get("unitConversion.suggestedIndex"),
       payload: {
         dynamicType: DYNAMIC_RESULT_TYPE,
@@ -155,10 +157,6 @@ export class UrlbarProviderUnitConversion extends UrlbarProvider {
   }
 
   onEngagement(queryContext, controller, details) {
-    let { element } = details;
-    const { textContent } = element.querySelector(
-      ".urlbarView-dynamic-unitConversion-output"
-    );
-    lazy.ClipboardHelper.copyString(textContent);
+    lazy.ClipboardHelper.copyString(details.result.payload.output);
   }
 }

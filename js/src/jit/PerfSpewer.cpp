@@ -1,11 +1,10 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Printf.h"
+
 #include "js/Utility.h"
 
 #if defined(JS_ION_PERF) && defined(XP_UNIX)
@@ -60,8 +59,6 @@ pid_t gettid_pthread() {
 #  define gettid() gettid_pthread()
 #endif
 
-#include "jit/PerfSpewer.h"
-
 #include <atomic>
 
 #include "jit/BaselineFrameInfo.h"
@@ -71,6 +68,7 @@ pid_t gettid_pthread() {
 #include "jit/LIR.h"
 #include "jit/MIR-wasm.h"
 #include "jit/MIR.h"
+#include "jit/PerfSpewer.h"
 #include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin, JS::ColumnNumberOffset
 #include "js/Exception.h"
 #include "js/JitCodeAPI.h"
@@ -79,10 +77,11 @@ pid_t gettid_pthread() {
 #include "vm/MutexIDs.h"
 
 #ifdef XP_WIN
+// clang-format off
 #  include "util/WindowsWrapper.h"
-#  include <codecvt>
 #  include <evntprov.h>
-#  include <locale>
+// clang-format on
+
 #  include <string>
 
 const GUID PROVIDER_JSCRIPT9 = {
@@ -109,21 +108,31 @@ static std::atomic<PerfModeType> PerfMode = PerfModeType::None;
 // profiling is enabled.
 MOZ_RUNINIT static js::Mutex PerfMutex(mutexid::PerfSpewer);
 
-MOZ_RUNINIT static PersistentRooted<
-    GCVector<JitCode*, 0, js::SystemAllocPolicy>>
+static PersistentRooted<GCVector<JitCode*, 0, js::SystemAllocPolicy>>
     jitCodeVector;
 MOZ_RUNINIT static ProfilerJitCodeVector profilerData;
 
 static bool IsGeckoProfiling() { return geckoProfiling; }
 #ifdef JS_ION_PERF
-MOZ_RUNINIT static UniqueChars spew_dir;
+constinit static UniqueChars spew_dir;
 static FILE* JitDumpFilePtr = nullptr;
 static void* mmap_address = nullptr;
 static char* jitDumpBuffer = nullptr;
 static bool IsPerfProfiling() { return JitDumpFilePtr != nullptr; }
 #endif
 
-AutoLockPerfSpewer::AutoLockPerfSpewer() { PerfMutex.lock(); }
+AutoLockPerfSpewer::AutoLockPerfSpewer() {
+  // The profiler may re-enter us on the main thread when profiling native
+  // memory allocations and call JS::LookupJitCodeRecord which requires taking
+  // this lock. Therefore suppress the profiler when taking this lock if
+  // running on the main thread.
+  JSContext* cx = TlsContext.get();
+  if (cx) {
+    asps.emplace(cx);
+  }
+
+  PerfMutex.lock();
+}
 
 AutoLockPerfSpewer::~AutoLockPerfSpewer() { PerfMutex.unlock(); }
 
@@ -231,6 +240,10 @@ static bool openJitDump() {
   }
 
   // Allocate a large buffer to reduce write() syscall overhead.
+  // On Android, setvbuf is not used because Android processes don't always
+  // shut down cleanly, which would leave buffered data unflushed and produce
+  // incomplete jitdump files.
+#  ifndef ANDROID
   constexpr size_t kJitDumpBufferSize = 2 * 1024 * 1024;
   jitDumpBuffer = js_pod_malloc<char>(kJitDumpBufferSize);
   if (!jitDumpBuffer) {
@@ -239,6 +252,7 @@ static bool openJitDump() {
     return false;
   }
   setvbuf(JitDumpFilePtr, jitDumpBuffer, _IOFBF, kJitDumpBufferSize);
+#  endif
 
 #  ifdef XP_LINUX
   // We need to mmap the jitdump file for perf to find it.
@@ -433,15 +447,16 @@ JS::JitCodeRecord* JS::LookupJitCodeRecord(uint64_t addr) {
 
   AutoLockPerfSpewer lock;
 
-  // Search through profilerData for a record that contains this address
+  JS::JitCodeRecord* result = nullptr;
   for (auto& record : profilerData) {
     if (addr >= record.code_addr &&
         addr < record.code_addr + record.instructionSize) {
-      return &record;
+      result = &record;
+      break;
     }
   }
 
-  return nullptr;
+  return result;
 }
 
 static bool PerfSrcEnabled() {
@@ -639,8 +654,11 @@ static void PrintStackValue(JSContext* maybeCx, StackValue* stackVal,
 }
 #endif
 
+WasmBaselinePerfSpewer::WasmBaselinePerfSpewer()
+    : needsToRecordInstruction_(PerfIREnabled() || PerfSrcEnabled()) {}
+
 [[nodiscard]] bool WasmBaselinePerfSpewer::needsToRecordInstruction() const {
-  return PerfIREnabled() || PerfSrcEnabled();
+  return needsToRecordInstruction_;
 }
 
 void WasmBaselinePerfSpewer::recordInstruction(MacroAssembler& masm,
@@ -793,7 +811,7 @@ void PerfSpewer::CollectJitCodeInfo(UniqueChars& function_name, void* code_addr,
 #endif
 #ifdef XP_WIN
   if (etwCollection) {
-    void* scriptContextId = NULL;
+    void* scriptContextId = nullptr;
     uint32_t flags = 0;
     uint64_t map = 0;
     uint64_t assembly = 0;
@@ -1007,9 +1025,11 @@ void PerfSpewer::saveWasmCodeDebugInfo(uintptr_t base,
 
 void PerfSpewer::saveJSProfile(JitCode* code, UniqueChars& desc,
                                JSScript* script) {
-  MOZ_ASSERT(PerfEnabled());
   MOZ_ASSERT(code && desc);
   AutoLockPerfSpewer lock;
+  if (!PerfEnabled()) {
+    return;
+  }
   JS::JitCodeRecord* maybeProfilerRecord = nullptr;
   if (!MaybeCreateProfilerEntry(lock, maybeProfilerRecord)) {
     return;  // Allocation failure.
@@ -1021,9 +1041,11 @@ void PerfSpewer::saveJSProfile(JitCode* code, UniqueChars& desc,
 
 void PerfSpewer::saveWasmProfile(uintptr_t base, size_t size,
                                  UniqueChars& desc) {
-  MOZ_ASSERT(PerfEnabled());
   MOZ_ASSERT(desc);
   AutoLockPerfSpewer lock;
+  if (!PerfEnabled()) {
+    return;
+  }
   JS::JitCodeRecord* maybeProfilerRecord = nullptr;
   if (!MaybeCreateProfilerEntry(lock, maybeProfilerRecord)) {
     return;  // Allocation failure.
@@ -1281,7 +1303,7 @@ void js::jit::CollectPerfSpewerJitCodeProfile(JitCode* code, const char* msg) {
     }
     UniqueChars desc = JS_smprintf("%s", msg);
     if (!desc) {
-      DisablePerfSpewer();
+      DisablePerfSpewer(lock);
       return;
     }
     PerfSpewer::CollectJitCodeInfo(desc, code, maybeProfilerRecord, lock);
@@ -1303,7 +1325,7 @@ void js::jit::CollectPerfSpewerJitCodeProfile(uintptr_t base, uint64_t size,
     }
     UniqueChars desc = JS_smprintf("%s", msg);
     if (!desc) {
-      DisablePerfSpewer();
+      DisablePerfSpewer(lock);
       return;
     }
     PerfSpewer::CollectJitCodeInfo(desc, reinterpret_cast<void*>(base), size,

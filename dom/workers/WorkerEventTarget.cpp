@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -237,6 +235,13 @@ WorkerEventTarget::RegisterShutdownTask(nsITargetShutdownTask* aTask) {
     return NS_ERROR_UNEXPECTED;
   }
 
+  // The debugger-only target backs the RemoteWorkerDebugger's MessageChannel.
+  // Track its shutdown tasks separately so they don't keep the worker
+  // ineligible for CC (bug 1944240); they still run on worker shutdown.
+  if (mBehavior == Behavior::DebuggerOnly) {
+    return mWorkerPrivate->RegisterDebuggerShutdownTask(aTask);
+  }
+
   return mWorkerPrivate->RegisterShutdownTask(aTask);
 }
 
@@ -248,6 +253,10 @@ WorkerEventTarget::UnregisterShutdownTask(nsITargetShutdownTask* aTask) {
 
   if (!mWorkerPrivate) {
     return NS_ERROR_UNEXPECTED;
+  }
+
+  if (mBehavior == Behavior::DebuggerOnly) {
+    return mWorkerPrivate->UnregisterDebuggerShutdownTask(aTask);
   }
 
   return mWorkerPrivate->UnregisterShutdownTask(aTask);

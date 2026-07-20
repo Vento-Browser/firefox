@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,9 +12,8 @@
  */
 
 #include "mozilla/Assertions.h"
-#include "nsAString.h"
 #include "mozilla/TextUtils.h"
-
+#include "nsAString.h"
 #include "nsTArrayForwardDeclare.h"
 
 // From the nsstring crate
@@ -599,11 +596,10 @@ const nsCString& VoidCString();
  * Returns 0 if the strings are equal, -1 if aUTF8String is less
  * than aUTF16Count, and 1 in the reverse case. Errors are replaced
  * with U+FFFD and then the U+FFFD is compared as if it had occurred
- * in the input. If aErr is not nullptr, *aErr is set to true if
- * either string had malformed sequences.
+ * in the input.
  */
 int32_t CompareUTF8toUTF16(const nsACString& aUTF8String,
-                           const nsAString& aUTF16String, bool* aErr = nullptr);
+                           const nsAString& aUTF16String);
 
 void AppendUCS4ToUTF16(const uint32_t aSource, nsAString& aDest);
 

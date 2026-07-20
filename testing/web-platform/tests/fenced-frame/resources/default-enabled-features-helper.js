@@ -1,4 +1,4 @@
-// This is a helper file used for the attribution-reporting-*.https.html tests.
+// This is a helper file used for the default-enabled-features-*.https.html tests.
 // To use this, make sure you import these scripts:
 // <script src="/resources/testharness.js"></script>
 // <script src="/resources/testharnessreport.js"></script>
@@ -25,27 +25,22 @@ async function runDefaultEnabledFeaturesTest(t, should_load, fenced_origin,
   }
 
   await fencedframe.execute((generator_api) => {
-    assert_true(
-        document.featurePolicy.allowsFeature('attribution-reporting'),
-        "Attribution reporting should be allowed if the fenced " +
-        "frame loaded using FLEDGE or shared storage.");
-
     if (generator_api == "fledge") {
       assert_true(
-            document.featurePolicy.allowsFeature('shared-storage'),
+            document.permissionsPolicy.allowsFeature('shared-storage'),
             "Shared Storage should be allowed if the fenced " +
             "frame loaded using FLEDGE.");
       assert_true(
-            document.featurePolicy.allowsFeature('private-aggregation'),
+            document.permissionsPolicy.allowsFeature('private-aggregation'),
             "Private Aggregation should be allowed if the fenced " +
             "frame loaded using FLEDGE.");
     } else {
       assert_true(
-            document.featurePolicy.allowsFeature('shared-storage'),
+            document.permissionsPolicy.allowsFeature('shared-storage'),
             "Shared Storage should be allowed if the fenced " +
             "frame loaded using Shared Storage.");
       assert_false(
-            document.featurePolicy.allowsFeature('private-aggregation'),
+            document.permissionsPolicy.allowsFeature('private-aggregation'),
             "Private Aggregation should be disabled if the fenced " +
             "frame loaded using Shared Storage.");
     }

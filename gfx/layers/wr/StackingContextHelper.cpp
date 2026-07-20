@@ -1,19 +1,17 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/layers/StackingContextHelper.h"
 
-#include "mozilla/PresShell.h"
-#include "mozilla/gfx/Point.h"
-#include "mozilla/gfx/Matrix.h"
-#include "UnitTransforms.h"
-#include "nsDisplayList.h"
-#include "mozilla/dom/BrowserChild.h"
-#include "nsLayoutUtils.h"
 #include "ActiveLayerTracker.h"
+#include "UnitTransforms.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/dom/BrowserChild.h"
+#include "mozilla/gfx/Matrix.h"
+#include "mozilla/gfx/Point.h"
+#include "nsDisplayList.h"
+#include "nsLayoutUtils.h"
 
 namespace mozilla {
 namespace layers {
@@ -23,8 +21,7 @@ StackingContextHelper::StackingContextHelper()
     : mBuilder(nullptr),
       mScale(1.0f, 1.0f),
       mAffectsClipPositioning(false),
-      mDeferredTransformItem(nullptr),
-      mRasterizeLocally(false) {}
+      mDeferredTransformItem(nullptr) {}
 
 static nsSize ComputeDesiredDisplaySizeForAnimation(nsIFrame* aContainerFrame) {
   // Use the size of the nearest widget as the maximum size.  This
@@ -130,9 +127,7 @@ StackingContextHelper::StackingContextHelper(
     const LayoutDeviceRect& aBounds)
     : mBuilder(&aBuilder),
       mScale(1.0f, 1.0f),
-      mDeferredTransformItem(aParams.mDeferredTransformItem),
-      mRasterizeLocally(aParams.mRasterizeLocally ||
-                        aParentSC.mRasterizeLocally) {
+      mDeferredTransformItem(aParams.mDeferredTransformItem) {
   MOZ_ASSERT(!aContainerItem || aContainerItem->CreatesStackingContextHelper());
 
   // Compute scale for fallback rendering. We don't try to guess a scale for 3d
@@ -205,10 +200,11 @@ StackingContextHelper::StackingContextHelper(
     mScale = aParentSC.mScale;
   }
 
-  auto rasterSpace =
-      mRasterizeLocally
-          ? wr::RasterSpace::Local(std::max(mScale.xScale, mScale.yScale))
-          : wr::RasterSpace::Screen();
+  // Content is always rasterized in screen (device) space. We used to rasterize
+  // in local space for animated transforms, but that skipped WebRender's
+  // device-pixel snapping and left text blurry at fractional device offsets
+  // (Bug 2051166); device raster space stays sharp and reuses cached glyphs.
+  auto rasterSpace = wr::RasterSpace::Screen();
 
   MOZ_ASSERT(!aParams.clip.IsNone());
   mReferenceFrameId = mBuilder->PushStackingContext(

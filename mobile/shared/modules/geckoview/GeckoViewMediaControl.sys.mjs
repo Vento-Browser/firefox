@@ -23,6 +23,11 @@ export class GeckoViewMediaControl extends GeckoViewModule {
     this.controller.addEventListener("positionstatechange", this, options);
     this.controller.addEventListener("metadatachange", this, options);
     this.controller.addEventListener("playbackstatechange", this, options);
+    this.controller.addEventListener(
+      "effectiveaudiosessiontypechange",
+      this,
+      options
+    );
   }
 
   onDestroyBrowser() {
@@ -34,6 +39,10 @@ export class GeckoViewMediaControl extends GeckoViewModule {
     this.controller.removeEventListener("positionstatechange", this);
     this.controller.removeEventListener("metadatachange", this);
     this.controller.removeEventListener("playbackstatechange", this);
+    this.controller.removeEventListener(
+      "effectiveaudiosessiontypechange",
+      this
+    );
   }
 
   onEnable() {
@@ -75,13 +84,13 @@ export class GeckoViewMediaControl extends GeckoViewModule {
         this.controller.play();
         break;
       case "GeckoView:MediaSession:Pause":
-        this.controller.pause();
+        this.controller.pause("user");
         break;
       case "GeckoView:MediaSession:Stop":
         this.controller.stop();
-        this.eventDispatcher.sendRequest({
-          type: "GeckoView:MediaSession:Playback:None",
-        });
+        this.eventDispatcher.sendRequest(
+          "GeckoView:MediaSession:Playback:None"
+        );
         break;
       case "GeckoView:MediaSession:NextTrack":
         this.controller.nextTrack();
@@ -103,9 +112,9 @@ export class GeckoViewMediaControl extends GeckoViewModule {
         break;
       case "GeckoView:MediaSession:MuteAudio":
         if (aData.mute) {
-          this.browser.mute();
+          this.controller.mute();
         } else {
-          this.browser.unmute();
+          this.controller.unmute();
         }
         break;
     }
@@ -134,33 +143,54 @@ export class GeckoViewMediaControl extends GeckoViewModule {
       case "playbackstatechange":
         this.handlePlaybackStateChanged();
         break;
+      case "effectiveaudiosessiontypechange":
+        this.handleEffectiveAudioSessionTypeChanged();
+        break;
       default:
         warn`Unknown event type ${aEvent.type}`;
         break;
     }
   }
 
+  handleEffectiveAudioSessionTypeChanged() {
+    const type = this.controller.effectiveAudioSessionType;
+    debug`handleEffectiveAudioSessionTypeChanged ${type}`;
+
+    // Only shape the embedder's audio focus after the audio-session type when
+    // the GeckoView-specific preference is on. When off, the type is never
+    // forwarded, so the embedder keeps its existing audio-focus behaviour
+    // regardless of whether the web Audio Session API is enabled.
+    if (
+      !Services.prefs.getBoolPref(
+        "media.geckoview.audio_session_type.enabled",
+        false
+      )
+    ) {
+      return;
+    }
+
+    this.eventDispatcher.sendRequest(
+      "GeckoView:MediaSession:AudioSessionType",
+      { type }
+    );
+  }
+
   handleActivated() {
     debug`handleActivated`;
 
-    this.eventDispatcher.sendRequest({
-      type: "GeckoView:MediaSession:Activated",
-    });
+    this.eventDispatcher.sendRequest("GeckoView:MediaSession:Activated");
   }
 
   handleDeactivated() {
     debug`handleDeactivated`;
 
-    this.eventDispatcher.sendRequest({
-      type: "GeckoView:MediaSession:Deactivated",
-    });
+    this.eventDispatcher.sendRequest("GeckoView:MediaSession:Deactivated");
   }
 
   handlePositionStateChanged(aEvent) {
     debug`handlePositionStateChanged`;
 
-    this.eventDispatcher.sendRequest({
-      type: "GeckoView:MediaSession:PositionState",
+    this.eventDispatcher.sendRequest("GeckoView:MediaSession:PositionState", {
       state: {
         duration: aEvent.duration,
         playbackRate: aEvent.playbackRate,
@@ -181,8 +211,7 @@ export class GeckoViewMediaControl extends GeckoViewModule {
       features[key] = true;
     });
 
-    this.eventDispatcher.sendRequest({
-      type: "GeckoView:MediaSession:Features",
+    this.eventDispatcher.sendRequest("GeckoView:MediaSession:Features", {
       features,
     });
   }
@@ -197,8 +226,7 @@ export class GeckoViewMediaControl extends GeckoViewModule {
     debug`handleMetadataChanged ${metadata}`;
 
     if (metadata) {
-      this.eventDispatcher.sendRequest({
-        type: "GeckoView:MediaSession:Metadata",
+      this.eventDispatcher.sendRequest("GeckoView:MediaSession:Metadata", {
         metadata,
       });
     }
@@ -215,7 +243,9 @@ export class GeckoViewMediaControl extends GeckoViewModule {
         type = "GeckoView:MediaSession:Playback:None";
         break;
       case "paused":
-        type = "GeckoView:MediaSession:Playback:Paused";
+        type = this.controller.isAnyMediaBeingControlled
+          ? "GeckoView:MediaSession:Playback:Paused"
+          : "GeckoView:MediaSession:Playback:None";
         break;
       case "playing":
         type = "GeckoView:MediaSession:Playback:Playing";
@@ -226,9 +256,7 @@ export class GeckoViewMediaControl extends GeckoViewModule {
       return;
     }
 
-    this.eventDispatcher.sendRequest({
-      type,
-    });
+    this.eventDispatcher.sendRequest(type);
   }
 }
 

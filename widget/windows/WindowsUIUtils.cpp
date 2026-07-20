@@ -1,39 +1,39 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <windows.h>
-#include <winreg.h>
-#include <wrl.h>
-#include <powerbase.h>
-#include <cfgmgr32.h>
-
-#include "nsServiceManagerUtils.h"
-
 #include "WindowsUIUtils.h"
 
-#include "nsIObserverService.h"
-#include "nsIAppShellService.h"
-#include "nsAppShellCID.h"
+// clang-format off
+#include <windows.h>
+#include <cfgmgr32.h>
+#include <powerbase.h>
+#include <winreg.h>
+#include <wrl.h>
+// clang-format on
+
+#include "Units.h"
+#include "WinRegistry.h"
+#include "WinUtils.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/LookAndFeel.h"
 #include "mozilla/ResultVariant.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/WindowsVersion.h"
-#include "mozilla/LookAndFeel.h"
 #include "mozilla/media/MediaUtils.h"
-#include "nsString.h"
+#include "nsAppShellCID.h"
 #include "nsGlobalWindowOuter.h"
+#include "nsIAppShellService.h"
+#include "nsIObserverService.h"
 #include "nsIWidget.h"
 #include "nsIWindowMediator.h"
 #include "nsPIDOMWindow.h"
+#include "nsServiceManagerUtils.h"
+#include "nsString.h"
 #include "nsWindowGfx.h"
-#include "Units.h"
 #include "nsWindowsHelpers.h"
-#include "WinRegistry.h"
-#include "WinUtils.h"
 
 mozilla::LazyLogModule gTabletModeLog("TabletMode");
 extern mozilla::LazyLogModule gWindowsLog;
@@ -45,8 +45,8 @@ extern mozilla::LazyLogModule gWindowsLog;
 
 #  include <inspectable.h>
 #  include <roapi.h>
-#  include <windows.ui.viewmanagement.h>
 #  include <uiviewsettingsinterop.h>
+#  include <windows.ui.viewmanagement.h>
 
 #  pragma comment(lib, "runtimeobject.lib")
 
@@ -486,6 +486,8 @@ void WindowsUIUtils::UpdateInWin10TabletMode() {
   }
 
   HWND winPtr = (HWND)widget->GetNativeData(NS_NATIVE_WINDOW);
+  NS_ENSURE_TRUE_VOID(winPtr);
+
   ComPtr<IUIViewSettingsInterop> uiViewSettingsInterop;
 
   HRESULT hr = GetActivationFactory(

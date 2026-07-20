@@ -22,7 +22,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs",
   IntentClassifier:
     "moz-src:///browser/components/aiwindow/models/IntentClassifier.sys.mjs",
-  UrlbarResult: "moz-src:///browser/components/urlbar/UrlbarResult.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
   UrlbarProviderHeuristicFallback:
     "moz-src:///browser/components/urlbar/UrlbarProviderHeuristicFallback.sys.mjs",
@@ -82,7 +83,7 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @param {UrlbarController} [controller] The current controller.
+   * @param {UrlbarParentController} [controller] The current controller.
    * @returns {Promise<boolean>} True if the provider should be invoked.
    */
   async isActive(queryContext, controller) {
@@ -90,7 +91,7 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
       lazy.AIWindow.isAIWindowActiveAndEnabled(controller.browserWindow) &&
       queryContext.trimmedSearchString.length >=
         UrlbarProviderAiChat.MIN_CHARS_FOR_CHAT &&
-      !queryContext.searchMode
+      !queryContext.restrictInSearchMode()
     );
   }
 
@@ -138,8 +139,8 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
     let heuristic = canReturnHeuristicResult && intent == "chat";
     let result = new lazy.UrlbarResult({
       heuristic,
-      type: UrlbarUtils.RESULT_TYPE.AI_CHAT,
-      source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+      type: lazy.UrlbarShared.RESULT_TYPE.AI_CHAT,
+      source: lazy.UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
       suggestedIndex: heuristic ? undefined : 1,
       payload: {
         icon: UrlbarProviderAiChat.CHAT_ICON_URL,
@@ -161,8 +162,10 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
       }
 
       let searchResult = new lazy.UrlbarResult({
-        type: UrlbarUtils.RESULT_TYPE.SEARCH,
-        source: UrlbarUtils.RESULT_SOURCE.SEARCH,
+        type: lazy.UrlbarShared.RESULT_TYPE.SEARCH,
+        source: lazy.UrlbarShared.RESULT_SOURCE.SEARCH,
+        // Pin below the heuristic result.
+        suggestedIndex: 1,
         payload: {
           engine: engine.name,
           query: queryContext.searchString,
@@ -177,8 +180,8 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
     }
   }
 
-  async onEngagement(queryContext, controller) {
-    let win = controller.input.inputField.ownerGlobal;
+  async onEngagement(queryContext, controller, details) {
+    let win = controller.input.inputField.documentGlobal;
     /** @type {AISmartBarParent} */
     let actor;
     if (queryContext.sapName == "urlbar") {
@@ -195,7 +198,18 @@ export class UrlbarProviderAiChat extends UrlbarProvider {
       this.logger.error("AISmartBar actor not found");
       return;
     }
-    actor.ask(queryContext.searchString);
+
+    const isCtaButtonClick = details.event?.type.startsWith(
+      "aiwindow-input-cta:"
+    );
+    actor.ask({
+      contextMentions: controller.input.getResolvedContextWebsites?.() ?? [],
+      contextPageUrl: controller.input.getContextPageUrl?.() ?? null,
+      detectedIntent: this.#lastIntentEvaluation.intent ?? "chat",
+      location: controller.input.sapLocation ?? "urlbar",
+      submitType: isCtaButtonClick ? "button" : "enter",
+      value: queryContext.searchString,
+    });
   }
 
   async #getSidebarBrowser(win) {

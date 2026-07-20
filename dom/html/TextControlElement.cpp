@@ -1,18 +1,24 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TextControlElement.h"
 
+#include "mozilla/ContentEvents.h"
+#include "mozilla/EventDispatcher.h"
 #include "mozilla/IMEContentObserver.h"
 #include "mozilla/IMEStateManager.h"
+#include "mozilla/LookAndFeel.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/TextControlState.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/HTMLBRElement.h"
 #include "mozilla/dom/ShadowRoot.h"
+#include "nsFocusManager.h"
+#include "nsFrameSelection.h"
 #include "nsIFormControl.h"
+#include "nsTextControlFrame.h"
 #include "nsTextNode.h"
 
 using namespace mozilla::dom;
@@ -94,17 +100,19 @@ void TextControlElement::SetPreviewValue(const nsAString& aValue) {
     text->SetData(aValue, IgnoreErrors());
     return;
   }
-  // Preview goes before the root (and after placeholder if present).
-  RefPtr editingRoot =
-      FindShadowPseudo(PseudoStyleType::MozTextControlEditingRoot);
-  if (NS_WARN_IF(!editingRoot)) {
+  // Preview goes after the root or placeholder.
+  RefPtr prevSibling = FindShadowPseudo(PseudoStyleType::Placeholder);
+  if (!prevSibling) {
+    prevSibling = FindShadowPseudo(PseudoStyleType::MozTextControlEditingRoot);
+  }
+  if (NS_WARN_IF(!prevSibling)) {
     // This can happen if we get called on e.g. a datetimebox or so.
     return;
   }
   RefPtr preview = MakePlaceholderOrPreview(
       *OwnerDoc(), PseudoStyleType::MozTextControlPreview, aValue);
-  sr->InsertChildBefore(preview, editingRoot, /* aNotify = */ true,
-                        IgnoreErrors());
+  sr->InsertChildBefore(preview, prevSibling->GetNextSibling(),
+                        /* aNotify = */ true, IgnoreErrors());
 }
 
 static void ProcessPlaceholder(nsAString& aValue, bool aTextArea) {
@@ -152,21 +160,82 @@ void TextControlElement::UpdatePlaceholder(const nsAttrValue* aOldValue,
   ProcessPlaceholder(value, IsTextArea());
   RefPtr ph = MakePlaceholderOrPreview(*OwnerDoc(),
                                        PseudoStyleType::Placeholder, value);
-  // ::placeholder is always the first child, see SetupShadowTree().
-  sr->InsertChildBefore(ph, sr->GetFirstChild(), /* aNotify = */ true,
+  // Placeholder goes after editing root.
+  RefPtr editingRoot =
+      FindShadowPseudo(PseudoStyleType::MozTextControlEditingRoot);
+  if (NS_WARN_IF(!editingRoot)) {
+    return;
+  }
+  sr->InsertChildBefore(ph, editingRoot->GetNextSibling(), /* aNotify = */ true,
                         IgnoreErrors());
+}
+
+already_AddRefed<Element> TextControlElement::CreateButton() const {
+  auto& doc = *OwnerDoc();
+  switch (mType) {
+    case FormControlType::InputPassword:
+      if (StaticPrefs::layout_forms_reveal_password_button_enabled() ||
+          doc.ChromeRulesEnabled()) {
+        RefPtr button =
+            MakeAnonElement(doc, PseudoStyleType::MozReveal, nsGkAtoms::button);
+        button->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex, u"-1"_ns,
+                        false);
+        return button.forget();
+      }
+      break;
+    case FormControlType::InputSearch: {
+      // Bug 1936648: Until we're absolutely sure we've solved the
+      // accessibility issues around the clear search button, we're only
+      // enabling the clear button in chrome contexts. See also Bug 1655503
+      if (StaticPrefs::layout_forms_input_type_search_enabled() ||
+          doc.ChromeRulesEnabled()) {
+        RefPtr button = MakeAnonElement(
+            doc, PseudoStyleType::MozSearchClearButton, nsGkAtoms::button);
+        button->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex, u"-1"_ns,
+                        false);
+        button->SetAttr(kNameSpaceID_None, nsGkAtoms::title, u""_ns, false);
+        return button.forget();
+      }
+      break;
+    }
+#ifndef ANDROID
+    case FormControlType::InputNumber: {
+      RefPtr button = MakeAnonElement(doc, PseudoStyleType::MozNumberSpinBox);
+      for (auto pseudo : {PseudoStyleType::MozNumberSpinUp,
+                          PseudoStyleType::MozNumberSpinDown}) {
+        RefPtr spinner = MakeAnonElement(doc, pseudo);
+        button->AppendChildTo(spinner, false, IgnoreErrors());
+      }
+      return button.forget();
+    }
+#endif
+    default:
+      break;
+  }
+  return nullptr;
+}
+
+void TextControlElement::UpdateTextEditorShadowTree() {
+  Element* root = GetTextEditorRoot();
+  if (!root) {
+    // We might not have created the shadow tree yet.
+    return;
+  }
+  auto* text = Text::FromNodeOrNull(root->GetFirstChild());
+  if (!text) {
+    MOZ_DIAGNOSTIC_ASSERT(false, "There should be editable text");
+    return;
+  }
+  if (IsPasswordTextControl()) {
+    text->MarkAsMaybeMasked();
+  } else {
+    text->UnsetFlags(NS_MAYBE_MASKED);
+  }
 }
 
 void TextControlElement::SetupShadowTree(ShadowRoot& aShadow, bool aNotify) {
   MOZ_ASSERT(IsSingleLineTextControlOrTextArea());
   auto& doc = *OwnerDoc();
-  nsAutoString value;
-  if (GetAttr(nsGkAtoms::placeholder, value)) {
-    ProcessPlaceholder(value, IsTextArea());
-    RefPtr ph =
-        MakePlaceholderOrPreview(doc, PseudoStyleType::Placeholder, value);
-    aShadow.AppendChildTo(ph, aNotify, IgnoreErrors());
-  }
   const bool isPassword = mType == FormControlType::InputPassword;
   RefPtr root =
       MakeAnonElement(doc, PseudoStyleType::MozTextControlEditingRoot);
@@ -177,59 +246,18 @@ void TextControlElement::SetupShadowTree(ShadowRoot& aShadow, bool aNotify) {
       text->MarkAsMaybeMasked();
     }
     root->AppendChildTo(text, false, IgnoreErrors());
+    RefPtr br = doc.CreateHTMLElement(nsGkAtoms::br);
+    br->SetFlags(NS_PADDING_FOR_EMPTY_LAST_LINE);
+    root->AppendChildTo(br, false, IgnoreErrors());
   }
   aShadow.AppendChildTo(root, aNotify, IgnoreErrors());
 
-  auto button = [&]() -> RefPtr<Element> {
-    switch (mType) {
-      case FormControlType::InputPassword:
-        if (StaticPrefs::layout_forms_reveal_password_button_enabled() ||
-            doc.ChromeRulesEnabled()) {
-          RefPtr button = MakeAnonElement(doc, PseudoStyleType::MozReveal,
-                                          nsGkAtoms::button);
-          button->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex, u"-1"_ns,
-                          false);
-          return button;
-        }
-        break;
-      case FormControlType::InputSearch: {
-        // Bug 1936648: Until we're absolutely sure we've solved the
-        // accessibility issues around the clear search button, we're only
-        // enabling the clear button in chrome contexts. See also Bug 1655503
-        if (StaticPrefs::layout_forms_input_type_search_enabled() ||
-            doc.ChromeRulesEnabled()) {
-          // Create the ::-moz-search-clear-button pseudo-element:
-          RefPtr button = MakeAnonElement(
-              doc, PseudoStyleType::MozSearchClearButton, nsGkAtoms::button);
-          button->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex, u"-1"_ns,
-                          false);
-          button->SetAttr(kNameSpaceID_None, nsGkAtoms::title, u""_ns, false);
-          return button;
-        }
-        break;
-      }
-#ifndef ANDROID
-      case FormControlType::InputNumber: {
-        // Create the ::-moz-number-spin-box pseudo-element:
-        RefPtr button = MakeAnonElement(doc, PseudoStyleType::MozNumberSpinBox);
-        // Create the ::-moz-number-spin-up/down pseudo-elements:
-        for (auto pseudo : {PseudoStyleType::MozNumberSpinUp,
-                            PseudoStyleType::MozNumberSpinDown}) {
-          RefPtr spinner = MakeAnonElement(doc, pseudo);
-          button->AppendChildTo(spinner, false, IgnoreErrors());
-        }
-        return button;
-      }
-#endif
-      default:
-        break;
-    }
-    return nullptr;
-  }();
-
-  if (button) {
-    MOZ_ASSERT(IsButtonPseudoElement(button->GetPseudoElementType()));
-    aShadow.AppendChildTo(button, aNotify, IgnoreErrors());
+  nsAutoString value;
+  if (GetAttr(nsGkAtoms::placeholder, value)) {
+    ProcessPlaceholder(value, IsTextArea());
+    RefPtr ph =
+        MakePlaceholderOrPreview(doc, PseudoStyleType::Placeholder, value);
+    aShadow.AppendChildTo(ph, aNotify, IgnoreErrors());
   }
 
   UpdateValueDisplay(aNotify);
@@ -260,15 +288,8 @@ Element* TextControlElement::GetTextEditorPreview() const {
 }
 
 Element* TextControlElement::GetTextEditorButton() const {
-  auto* sr = GetShadowRoot();
-  if (!sr) {
-    return nullptr;
-  }
-  auto* el = Element::FromNodeOrNull(sr->GetLastChild());
-  if (!el || !IsButtonPseudoElement(el->GetPseudoElementType())) {
-    return nullptr;
-  }
-  return el;
+  nsTextControlFrame* frame = do_QueryFrame(GetPrimaryFrame());
+  return frame ? frame->GetButton() : nullptr;
 }
 
 void TextControlElement::UpdateValueDisplay(bool aNotify) {
@@ -284,6 +305,155 @@ void TextControlElement::UpdateValueDisplay(bool aNotify) {
   nsAutoString value;
   GetTextEditorValue(value);
   textContent->SetText(value, aNotify);
+}
+
+static bool SelectTextFieldOnFocus() {
+  return LookAndFeel::GetInt(LookAndFeel::IntID::SelectTextfieldsOnKeyFocus);
+}
+
+void TextControlElement::ScrollSelectionIntoViewAsync(
+    ScrollAncestors aScrollAncestors) {
+  nsCOMPtr<nsISelectionController> selCon = GetSelectionController();
+  if (!selCon) {
+    return;
+  }
+
+  // Scroll the selection into view (see bug 231389).
+  const auto flags = aScrollAncestors == ScrollAncestors::Yes
+                         ? ScrollFlags::None
+                         : ScrollFlags::ScrollFirstAncestorOnly;
+  selCon->ScrollSelectionIntoView(
+      SelectionType::eNormal, nsISelectionController::SELECTION_FOCUS_REGION,
+      AxisScrollParams(), AxisScrollParams(), flags);
+}
+
+void TextControlElement::ShowSelection() {
+  nsISelectionController* selCon = GetSelectionController();
+  if (!selCon) {
+    return;
+  }
+  RefPtr<Selection> ourSel =
+      selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
+  if (!ourSel) {
+    return;
+  }
+  RefPtr<PresShell> ps = OwnerDoc()->GetPresShell();
+  if (!ps) {
+    return;
+  }
+  RefPtr<nsCaret> caret = ps->GetOriginalCaret();
+  if (!caret) {
+    return;
+  }
+
+  // Tell the caret to use our selection
+  caret->SetSelection(ourSel);
+
+  // mutual-exclusion: the selection is either controlled by the document or by
+  // the text input/area. Clear any selection in the document since the focus is
+  // now on our independent selection.
+
+  RefPtr<Selection> docSel =
+      ps->GetSelection(nsISelectionController::SELECTION_NORMAL);
+  if (!docSel) {
+    return;
+  }
+
+  if (!docSel->IsCollapsed()) {
+    docSel->RemoveAllRanges(IgnoreErrors());
+  }
+  if (ps->IsDestroying()) {
+    return;
+  }
+
+  // If the focus moved to a text control during text selection by pointer
+  // device, stop extending the selection.
+  if (RefPtr<nsFrameSelection> frameSelection = ps->FrameSelection()) {
+    frameSelection->SetDragState(false);
+  }
+}
+
+bool TextControlElement::NeedToInitializeEditorForEvent(
+    EventChainPreVisitor& aVisitor) const {
+  switch (aVisitor.mEvent->mMessage) {
+    case eVoidEvent:
+    case eMouseMove:
+    case eMouseEnterIntoWidget:
+    case eMouseExitFromWidget:
+    case eMouseOver:
+    case eMouseOut:
+    case eScrollPortUnderflow:
+    case eScrollPortOverflow:
+      return false;
+    default:
+      return true;
+  }
+}
+
+void TextControlElement::WillFocus(const WidgetEvent& aFocusEvent) {
+  MOZ_ASSERT(aFocusEvent.mMessage == eFocus);
+  MOZ_ASSERT(aFocusEvent.IsTrusted());
+
+  if (!IsInComposedDoc()) {
+    return;
+  }
+
+  ShowSelection();
+
+  // See if we should select the contents of the textbox. This happens
+  // for text and password fields when the field was focused by the
+  // keyboard or a navigation, the platform allows it, and it wasn't
+  // just because we raised a window.
+  //
+  // While it'd usually make sense, we don't do this for JS callers
+  // because it causes some compat issues, see bug 1712724 for example.
+  const RefPtr<nsFocusManager> fm = nsFocusManager::GetFocusManager();
+  if (!IsTextArea() && !aFocusEvent.AsFocusEvent()->mFromRaise &&
+      SelectTextFieldOnFocus()) {
+    uint32_t lastFocusMethod = fm->GetLastFocusMethod(OwnerDoc()->GetWindow());
+    const bool shouldSelectAllOnFocus = [&] {
+      if (lastFocusMethod & nsIFocusManager::FLAG_BYMOVEFOCUS) {
+        return true;
+      }
+      if (lastFocusMethod & nsIFocusManager::FLAG_BYJS) {
+        return false;
+      }
+      return bool(lastFocusMethod & nsIFocusManager::FLAG_BYKEY);
+    }();
+    if (shouldSelectAllOnFocus) {
+      SelectAll();
+    }
+  }
+  if (fm && fm->GetFocusedElement() == this && aFocusEvent.IsTrusted())
+      [[likely]] {
+    const RefPtr<TextEditor> textEditor = GetExtantTextEditor();
+    if (textEditor) [[likely]] {
+      DebugOnly<nsresult> rv = textEditor->OnFocus(*this);
+      NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                           "EditorBase::OnFocus() failed, but ignored");
+    }
+  }
+}
+
+void TextControlElement::WillBlur(const WidgetEvent& aBlurEvent) {
+  MOZ_ASSERT(aBlurEvent.mMessage == eBlur);
+
+  if (aBlurEvent.IsTrusted()) {
+    const RefPtr<TextEditor> textEditor = GetExtantTextEditor();
+    if (textEditor) [[likely]] {
+      DebugOnly<nsresult> rv = textEditor->OnBlur(this);
+      NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                           "EditorBase::OnBlur() failed, but ignored");
+    }
+  }
+}
+
+void TextControlElement::SelectAll() {
+  if (auto* state = GetTextControlState()) {
+    state->SetSelectionRange(0, UINT32_MAX, Optional<nsAString>(),
+                             IgnoreErrors(),
+                             TextControlState::ScrollAfterSelection::No);
+  }
 }
 
 }  // namespace mozilla

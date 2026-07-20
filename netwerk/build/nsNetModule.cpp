@@ -1,27 +1,24 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #define ALLOW_LATE_HTTPLOG_H_INCLUDE 1
 #include "base/basictypes.h"
-
-#include "nsCOMPtr.h"
-#include "nsIClassInfoImpl.h"
 #include "mozilla/Components.h"
 #include "mozilla/ModuleUtils.h"
-#include "nscore.h"
-#include "nsSimpleURI.h"
-#include "nsLoadGroup.h"
-#include "nsMimeTypes.h"
-#include "nsDNSPrefetch.h"
-#include "nsXULAppAPI.h"
-#include "nsCategoryCache.h"
-#include "nsIContentSniffer.h"
-#include "nsStandardURL.h"
 #include "mozilla/net/BackgroundChannelRegistrar.h"
 #include "mozilla/net/NeckoChild.h"
+#include "nsCOMPtr.h"
+#include "nsCategoryCache.h"
+#include "nsDNSPrefetch.h"
+#include "nsIClassInfoImpl.h"
+#include "nsIContentSniffer.h"
+#include "nsLoadGroup.h"
+#include "nsMimeTypes.h"
+#include "nsSimpleURI.h"
+#include "nsStandardURL.h"
+#include "nsXULAppAPI.h"
+#include "nscore.h"
 #ifdef MOZ_AUTH_EXTENSION
 #  include "nsAuthGSSAPI.h"
 #endif
@@ -50,13 +47,13 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsLoadGroup, Init)
 ///////////////////////////////////////////////////////////////////////////////
 
 // http/https
-#include "nsHttpHandler.h"
 #include "Http2Compression.h"
+#include "nsHttpHandler.h"
 #undef LOG
 #undef LOG_ENABLED
-#include "nsHttpAuthManager.h"
-#include "nsHttpActivityDistributor.h"
 #include "ThrottleQueue.h"
+#include "nsHttpActivityDistributor.h"
+#include "nsHttpAuthManager.h"
 #undef LOG
 #undef LOG_ENABLED
 
@@ -76,15 +73,16 @@ NS_IMPL_COMPONENT_FACTORY(net::nsHttpsHandler) {
 #include "WebSocketChannel.h"
 #include "WebSocketChannelChild.h"
 namespace mozilla::net {
-static BaseWebSocketChannel* WebSocketChannelConstructor(bool aSecure) {
+static already_AddRefed<BaseWebSocketChannel> WebSocketChannelConstructor(
+    bool aSecure) {
   if (IsNeckoChild()) {
-    return new WebSocketChannelChild(aSecure);
+    return MakeAndAddRef<WebSocketChannelChild>(aSecure);
   }
 
   if (aSecure) {
-    return new WebSocketSSLChannel;
+    return MakeAndAddRef<WebSocketSSLChannel>();
   }
-  return new WebSocketChannel;
+  return MakeAndAddRef<WebSocketChannel>();
 }
 
 #define WEB_SOCKET_HANDLER_CONSTRUCTOR(type, secure)          \
@@ -103,10 +101,10 @@ WEB_SOCKET_HANDLER_CONSTRUCTOR(WebSocketSSLChannel, true)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "nsStreamConverterService.h"
-#include "nsMultiMixedConv.h"
-#include "nsHTTPCompressConv.h"
 #include "mozTXTToHTMLConv.h"
+#include "nsHTTPCompressConv.h"
+#include "nsMultiMixedConv.h"
+#include "nsStreamConverterService.h"
 #include "nsUnknownDecoder.h"
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -4085,26 +4085,26 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                 )
             )
 
-            if not switch:
-                method.addcode(
-                    """
-                    MOZ_ASSERT_UNREACHABLE("message protocol not supported");
-                    return MsgNotKnown;
-                    """
-                )
-                return method
+            if hasReply:
+                ondeadactor = [StmtReturn(_Result.Dropped)]
+            else:
+                ondeadactor = [
+                    self.logMessage(
+                        None, ExprAddrOf(msgvar), "Ignored message for dead actor"
+                    ),
+                    StmtReturn(_Result.Processed),
+                ]
+
+            method.addcode(
+                """
+                if (!CanSend()) {
+                    $*{ondeadactor}
+                }
+                """,
+                ondeadactor=ondeadactor,
+            )
 
             if dispatches:
-                if hasReply:
-                    ondeadactor = [StmtReturn(_Result.Dropped)]
-                else:
-                    ondeadactor = [
-                        self.logMessage(
-                            None, ExprAddrOf(msgvar), "Ignored message for dead actor"
-                        ),
-                        StmtReturn(_Result.Processed),
-                    ]
-
                 method.addcode(
                     """
                     IPC::Message::routeid_t route__ = ${msgvar}.routing_id();
@@ -4125,6 +4125,15 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                     name=name,
                     args=[p.name for p in params],
                 )
+
+            if not switch:
+                method.addcode(
+                    """
+                    MOZ_ASSERT_UNREACHABLE("message protocol not supported");
+                    return MsgNotKnown;
+                    """
+                )
+                return method
 
             # bug 509581: don't generate the switch stmt if there
             # is only the default case; MSVC doesn't like that
@@ -4593,7 +4602,8 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
 
     def genHelperCtor(self, md):
         helperdecl = self.makeSendMethodDecl(md)
-        helperdecl.params = helperdecl.params[1:]
+        params = helperdecl.params
+        helperdecl.params = params[1:]
         helper = MethodDefn(helperdecl)
 
         helper.addstmts(
@@ -4601,7 +4611,10 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                 self.callAllocActor(md, retsems="out", side=self.side),
                 StmtReturn(
                     ExprCall(
-                        ExprVar(helperdecl.name), args=md.makeCxxArgs(paramsems="move")
+                        ExprVar(helperdecl.name), args=[
+                            ExprCode("std::forward<${t}>(${n})", t=p.type, n=p.name)
+                            for p in params
+                        ]
                     )
                 ),
             ]
@@ -4800,6 +4813,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                 StmtDecl(Decl(r.bareType(self.side), r.var().name), initargs=[])
                 for r in md.returns
             ]
+            + [StmtExpr(ExprCall(ExprVar("DoomSubtree")))]
             + self.invokeRecvHandler(md)
             + [Whitespace.NL]
             + saveIdStmts

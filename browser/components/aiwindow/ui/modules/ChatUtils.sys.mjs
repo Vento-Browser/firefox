@@ -9,9 +9,24 @@ ChromeUtils.defineESModuleGetters(lazy, {
   CryptoUtils: "moz-src:///services/crypto/modules/utils.sys.mjs",
 });
 
-import { MESSAGE_ROLE } from "./ChatConstants.sys.mjs";
+import { MESSAGE_ROLE, TOOL_RESULT_TYPE } from "./AIWindowConstants.sys.mjs";
 import { ChatConversation } from "./ChatConversation.sys.mjs";
 import { ChatMessage, ChatHistoryResult } from "./ChatMessage.sys.mjs";
+
+/** @typedef {import("./ChatConversation.sys.mjs").PooledHistoryResult} PooledHistoryResult */
+
+/**
+ *  Gets the URL of the currently selected tab of a window.
+ *  Primarily used to retrieve the current tab's url for use in
+ *  ChatMessage.pageUrl and message context chips.
+ *
+ *  @param {Window} window
+ *
+ *  @returns {?URL}
+ */
+export function getCurrentTabUrl(window) {
+  return window?.gBrowser?.selectedTab?.linkedBrowser?.currentURI;
+}
 
 /**
  * Creates a 12 characters GUID with 72 bits of entropy.
@@ -32,6 +47,10 @@ export function makeGuid() {
  * @returns {ChatConversation} The parsed conversation object.
  */
 export function parseConversationRow(row) {
+  const seenUrlsArray = parseJSONOrNull(row.getResultByName("seen_urls"));
+  const serpUrlsForAnonymousFetchArray = parseJSONOrNull(
+    row.getResultByName("serp_urls_for_anonymous_fetch")
+  );
   return new ChatConversation({
     id: row.getResultByName("conv_id"),
     title: row.getResultByName("title"),
@@ -41,6 +60,14 @@ export function parseConversationRow(row) {
     createdDate: row.getResultByName("created_date"),
     updatedDate: row.getResultByName("updated_date"),
     status: row.getResultByName("status"),
+    securityProperties: parseJSONOrNull(
+      row.getResultByName("security_properties")
+    ),
+    seenUrls: Array.isArray(seenUrlsArray) ? seenUrlsArray : [],
+    serpUrlsForAnonymousFetch: Array.isArray(serpUrlsForAnonymousFetchArray)
+      ? serpUrlsForAnonymousFetchArray
+      : [],
+    memoriesToggled: row.getResultByName("memories_toggled"),
   });
 }
 
@@ -53,6 +80,8 @@ export function parseConversationRow(row) {
  */
 export function parseMessageRows(rows) {
   return rows.map(row => {
+    const toolResults =
+      parseJSONOrNull(row.getResultByName("tool_results")) ?? {};
     return new ChatMessage({
       id: row.getResultByName("message_id"),
       createdDate: row.getResultByName("created_date"),
@@ -68,12 +97,15 @@ export function parseMessageRows(rows) {
       convId: row.getResultByName("conv_id"),
       pageUrl: URL.parse(row.getResultByName("page_url")),
       turnIndex: row.getResultByName("turn_index"),
-      memoriesEnabled: row.getResultByName("memories_enabled"),
+      memoriesEnabled: !!row.getResultByName("memories_enabled"),
       memoriesFlagSource: row.getResultByName("memories_flag_source"),
       memoriesApplied: parseJSONOrNull(row.getResultByName("memories_applied")),
       webSearchQueries: parseJSONOrNull(
         row.getResultByName("web_search_queries")
       ),
+      pageHistoryDeleted: !!row.getResultByName("page_history_deleted"),
+      toolUIData: toolResults[TOOL_RESULT_TYPE.TOOL_UI]?.[0],
+      historyResults: toolResults[TOOL_RESULT_TYPE.HISTORY_RESULTS],
     });
   });
 }
@@ -87,13 +119,9 @@ export function parseMessageRows(rows) {
  */
 export function parseChatHistoryViewRows(rows) {
   return rows.map(row => {
-    const urlsString = row.getResultByName("urls");
-    const urls = urlsString
-      ? urlsString
-          .split(",")
-          .filter(url => url && url.trim())
-          .map(url => new URL(url.trim()))
-      : [];
+    const urls = (parseJSONOrNull(row.getResultByName("urls")) ?? [])
+      .filter(url => url && url.trim())
+      .map(url => new URL(url.trim()));
 
     return new ChatHistoryResult({
       convId: row.getResultByName("conv_id"),
@@ -134,6 +162,22 @@ export function toJSONOrNull(value) {
 }
 
 /**
+ * Strip resolved page assets from a history result record before persisting.
+ * `image` (a moz-page-thumb:// URI) and `hasFavicon` are re-resolved lazily on
+ * load, since the underlying thumbnail/favicon cache can be evicted.
+ *
+ * @param {PooledHistoryResult} record - A history result record.
+ * @returns {Omit<PooledHistoryResult, "image" | "hasFavicon">} A copy removing
+ *   the resolved asset fields `image` and `hasFavicon`.
+ */
+export function stripHistoryResultAssets(record) {
+  const persisted = { ...record };
+  delete persisted.image;
+  delete persisted.hasFavicon;
+  return persisted;
+}
+
+/**
  * Converts the different types of message roles from
  * the database numeric type to a string label
  *
@@ -156,4 +200,24 @@ export function getRoleLabel(role) {
   }
 
   return "";
+}
+
+/**
+ * Returns whether the sidebar should be open for a given tab state and the
+ * sidebarOpenByDefault pref value. The state's keepSidebarOpen field drives
+ * the decision:
+ * - true: user explicitly opened the sidebar for this tab
+ * - false: user explicitly closed it
+ * - null/undefined: no explicit preference, defer to the pref
+ *
+ * @param {object|null|undefined} state - The tab state object
+ * @param {boolean} sidebarOpenByDefault
+ * @returns {boolean}
+ */
+export function getKeepSidebarOpenState(state, sidebarOpenByDefault) {
+  const keepSidebarOpen = state?.keepSidebarOpen;
+  return (
+    keepSidebarOpen === true ||
+    (keepSidebarOpen == null && sidebarOpenByDefault)
+  );
 }

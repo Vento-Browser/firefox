@@ -1,22 +1,20 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
+/*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "ImageLogging.h"
 #include "ProgressTracker.h"
 
+#include "Image.h"
+#include "ImageLogging.h"
 #include "imgINotificationObserver.h"
 #include "imgIRequest.h"
-#include "Image.h"
-#include "nsNetUtil.h"
-#include "nsIObserverService.h"
-
 #include "mozilla/AppShutdown.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Services.h"
+#include "nsIObserverService.h"
+#include "nsNetUtil.h"
 
 using mozilla::WeakPtr;
 
@@ -153,7 +151,7 @@ class AsyncNotifyRunnable : public Runnable {
 };
 
 ProgressTracker::RenderBlockingRunnable::RenderBlockingRunnable(
-    already_AddRefed<AsyncNotifyRunnable>&& aEvent)
+    already_AddRefed<AsyncNotifyRunnable> aEvent)
     : PrioritizableRunnable(std::move(aEvent),
                             nsIRunnablePriority::PRIORITY_RENDER_BLOCKING) {}
 
@@ -170,7 +168,7 @@ void ProgressTracker::RenderBlockingRunnable::RemoveObserver(
 /* static */
 already_AddRefed<ProgressTracker::RenderBlockingRunnable>
 ProgressTracker::RenderBlockingRunnable::Create(
-    already_AddRefed<AsyncNotifyRunnable>&& aEvent) {
+    already_AddRefed<AsyncNotifyRunnable> aEvent) {
   MOZ_ASSERT(NS_IsMainThread());
   RefPtr<ProgressTracker::RenderBlockingRunnable> event(
       new ProgressTracker::RenderBlockingRunnable(std::move(aEvent)));
@@ -199,7 +197,7 @@ void ProgressTracker::Notify(IProgressObserver* aObserver) {
     mRunnable->AddObserver(aObserver);
   } else if (!AppShutdown::IsInOrBeyond(ShutdownPhase::XPCOMShutdownThreads)) {
     // Avoid dispatch if we are late in shutdown.
-    RefPtr<AsyncNotifyRunnable> ev = new AsyncNotifyRunnable(this, aObserver);
+    auto ev = MakeRefPtr<AsyncNotifyRunnable>(this, aObserver);
     mRunnable = ProgressTracker::RenderBlockingRunnable::Create(ev.forget());
     SchedulerGroup::Dispatch(do_AddRef(mRunnable));
   }

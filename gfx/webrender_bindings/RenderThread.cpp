@@ -1,46 +1,45 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "base/task.h"
-#include "GeckoProfiler.h"
-#include "gfxPlatform.h"
-#include "GfxInfoBase.h"
-#include "GLContext.h"
 #include "RenderThread.h"
-#include "nsThread.h"
-#include "nsThreadUtils.h"
-#include "transport/runnable_utils.h"
+
+#include "GLContext.h"
+#include "GeckoProfiler.h"
+#include "GfxInfoBase.h"
+#include "OGLShaderProgram.h"
+#include "base/task.h"
+#include "gfxPlatform.h"
 #include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/Components.h"
-#include "mozilla/layers/AsyncImagePipelineManager.h"
-#include "mozilla/gfx/gfxVars.h"
+#include "mozilla/PerfStats.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/gfx/GPUParent.h"
 #include "mozilla/gfx/GPUProcessManager.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/glean/GfxMetrics.h"
-#include "mozilla/layers/CompositorThread.h"
+#include "mozilla/layers/AsyncImagePipelineManager.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerParent.h"
+#include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/Fence.h"
-#include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/layers/SurfacePool.h"
 #include "mozilla/layers/SynchronousTask.h"
-#include "mozilla/PerfStats.h"
-#include "mozilla/StaticPtr.h"
-#include "mozilla/webrender/RendererOGL.h"
+#include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/webrender/RenderTextureHost.h"
+#include "mozilla/webrender/RendererOGL.h"
 #include "mozilla/widget/CompositorWidget.h"
-#include "OGLShaderProgram.h"
+#include "nsThread.h"
+#include "nsThreadUtils.h"
+#include "transport/runnable_utils.h"
 
 #ifdef XP_WIN
 #  include "GLContextEGL.h"
 #  include "GLLibraryEGL.h"
-#  include "mozilla/widget/WinCompositorWindowThread.h"
 #  include "mozilla/gfx/DeviceManagerDx.h"
 #  include "mozilla/webrender/DCLayerTree.h"
+#  include "mozilla/widget/WinCompositorWindowThread.h"
 // #  include "nsWindowsHelpers.h"
 // #  include <d3d11.h>
 #endif
@@ -51,8 +50,8 @@
 #endif
 
 #ifdef MOZ_WIDGET_GTK
-#  include "mozilla/WidgetUtilsGtk.h"
 #  include "GLLibraryEGL.h"
+#  include "mozilla/WidgetUtilsGtk.h"
 #endif
 
 using namespace mozilla;
@@ -233,9 +232,21 @@ void RenderThread::ShutDownTask() {
     mRenderTextureOps.clear();
   }
 
-  // Let go of our handle to the (internally ref-counted) thread pool.
-  mThreadPool.Release();
-  mThreadPoolLP.Release();
+  // These must be destroyed before the thread pools as they hold a reference to
+  // the worker threads.
+  mShaders = nullptr;
+  mProgramCache = nullptr;
+
+  // Destroy the thread pools, waiting for the worker threads to join in
+  // leak-checking / ASAN / etc builds. In normal builds we don't care and just
+  // want to shut down quickly.
+#ifdef NS_FREE_PERMANENT_DATA
+  const bool joinWorkers = true;
+#else
+  const bool joinWorkers = false;
+#endif
+  mThreadPool.Destroy(joinWorkers);
+  mThreadPoolLP.Destroy(joinWorkers);
 
   // Releasing on the render thread will allow us to avoid dispatching to remove
   // remaining textures from the texture map.
@@ -940,9 +951,11 @@ bool RenderThread::Resume(wr::WindowId aWindowId) {
 
 void RenderThread::NotifyIdle() {
   if (!IsInRenderThread()) {
-    PostRunnable(NewRunnableMethod("RenderThread::NotifyIdle", this,
-                                   &RenderThread::NotifyIdle));
-
+    PostRunnable(NS_NewRunnableFunction("RenderThread::NotifyIdle", []() {
+      if (auto* rt = RenderThread::Get()) {
+        rt->NotifyIdle();
+      }
+    }));
     return;
   }
 
@@ -1039,7 +1052,8 @@ void RenderThread::RegisterExternalImage(
   if (texture->SyncObjectNeeded()) {
     mSyncObjectNeededRenderTextures.emplace(aExternalImageId, texture);
   }
-  mRenderTextures.emplace(aExternalImageId, texture);
+  auto [it, inserted] = mRenderTextures.emplace(aExternalImageId, texture);
+  MOZ_RELEASE_ASSERT(inserted, "ExternalImageId collision");
 
 #ifdef DEBUG
   int32_t maxAllowedIncrease =
@@ -1571,11 +1585,11 @@ WebRenderThreadPool::WebRenderThreadPool(bool low_priority) {
   mThreadPool = wr_thread_pool_new(low_priority);
 }
 
-WebRenderThreadPool::~WebRenderThreadPool() { Release(); }
+WebRenderThreadPool::~WebRenderThreadPool() { Destroy(false); }
 
-void WebRenderThreadPool::Release() {
+void WebRenderThreadPool::Destroy(bool aJoinWorkers) {
   if (mThreadPool) {
-    wr_thread_pool_delete(mThreadPool);
+    wr_thread_pool_delete(mThreadPool, aJoinWorkers);
     mThreadPool = nullptr;
   }
 }

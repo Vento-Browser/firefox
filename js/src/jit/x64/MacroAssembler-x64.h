@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -613,13 +611,17 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared {
     load64(src, dest);
   }
   template <typename T>
-  void storePtr(ImmWord imm, T address) {
+  FaultingCodeOffset storePtr(ImmWord imm, T address) {
     if ((intptr_t)imm.value <= INT32_MAX && (intptr_t)imm.value >= INT32_MIN) {
+      FaultingCodeOffset fco = FaultingCodeOffset(currentOffset());
       movq(Imm32((int32_t)imm.value), Operand(address));
+      return fco;
     } else {
       ScratchRegisterScope scratch(asMasm());
       mov(imm, scratch);
+      FaultingCodeOffset fco = FaultingCodeOffset(currentOffset());
       movq(scratch, Operand(address));
+      return fco;
     }
   }
   template <typename T>

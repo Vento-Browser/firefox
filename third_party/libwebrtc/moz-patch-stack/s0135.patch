@@ -1,61 +1,28 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Sun, 28 Dec 2025 15:36:00 -0600
-Subject: Bug 2006933 - (fix-d381cc8b23) fix base-toolchains build
+From: Landry Breuil <landry@openbsd.org>
+Date: Wed, 15 Apr 2026 13:31:00 +0000
+Subject: Bug 2030612 - define AOM_EFLAG_FREEZE_INTERNAL_STATE if not defined
+ r=mjf
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/ff7279205c599769b913c9359873562896b80799
+fixes build with system-av1/aom after bug 2029247
+
+Differential Revision: https://phabricator.services.mozilla.com/D293051
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/70d2379819582d44092dee15e1e45ddbc9cd3f22
 ---
- modules/rtp_rtcp/source/rtp_format.cc | 15 +++++++--------
- 1 file changed, 7 insertions(+), 8 deletions(-)
+ modules/video_coding/codecs/av1/libaom_av1_encoder.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
 
-diff --git a/modules/rtp_rtcp/source/rtp_format.cc b/modules/rtp_rtcp/source/rtp_format.cc
-index fda60ffac9..195b5ec77b 100644
---- a/modules/rtp_rtcp/source/rtp_format.cc
-+++ b/modules/rtp_rtcp/source/rtp_format.cc
-@@ -36,32 +36,31 @@ std::unique_ptr<RtpPacketizer> RtpPacketizer::Create(
-     PayloadSizeLimits limits,
-     // Codec-specific details.
-     const RTPVideoHeader& rtp_video_header) {
--  using enum PacketizationFormat;
-   switch (format) {
--    case kRaw: {
-+    case PacketizationFormat::kRaw: {
-       return std::make_unique<RtpPacketizerGeneric>(payload, limits);
-     }
--    case kH264: {
-+    case PacketizationFormat::kH264: {
-       const auto& h264 =
-           std::get<RTPVideoHeaderH264>(rtp_video_header.video_type_header);
-       return std::make_unique<RtpPacketizerH264>(payload, limits,
-                                                  h264.packetization_mode);
-     }
--    case kVP8: {
-+    case PacketizationFormat::kVP8: {
-       const auto& vp8 =
-           std::get<RTPVideoHeaderVP8>(rtp_video_header.video_type_header);
-       return std::make_unique<RtpPacketizerVp8>(payload, limits, vp8);
-     }
--    case kVP9: {
-+    case PacketizationFormat::kVP9: {
-       const auto& vp9 =
-           std::get<RTPVideoHeaderVP9>(rtp_video_header.video_type_header);
-       return std::make_unique<RtpPacketizerVp9>(payload, limits, vp9);
-     }
--    case kAV1:
-+    case PacketizationFormat::kAV1:
-       return std::make_unique<RtpPacketizerAv1>(
-           payload, limits, rtp_video_header.frame_type,
-           rtp_video_header.is_last_frame_in_picture);
--    case kH265: {
-+    case PacketizationFormat::kH265: {
- #ifdef RTC_ENABLE_H265
-       return std::make_unique<RtpPacketizerH265>(payload, limits);
- #else
-@@ -69,7 +68,7 @@ std::unique_ptr<RtpPacketizer> RtpPacketizer::Create(
-                                                     rtp_video_header);
+diff --git a/modules/video_coding/codecs/av1/libaom_av1_encoder.cc b/modules/video_coding/codecs/av1/libaom_av1_encoder.cc
+index 75c1d730f2..0540ed96ca 100644
+--- a/modules/video_coding/codecs/av1/libaom_av1_encoder.cc
++++ b/modules/video_coding/codecs/av1/libaom_av1_encoder.cc
+@@ -67,6 +67,10 @@
+ #define AOM_EFLAG_CALCULATE_PSNR (1 << 3)
  #endif
-     }
--    case kGeneric: {
-+    case PacketizationFormat::kGeneric: {
-       return std::make_unique<RtpPacketizerGeneric>(payload, limits,
-                                                     rtp_video_header);
-     }
+ 
++#ifndef AOM_EFLAG_FREEZE_INTERNAL_STATE
++#define AOM_EFLAG_FREEZE_INTERNAL_STATE (1 << 2)
++#endif
++
+ #if defined(WEBRTC_ENCODER_PSNR_STATS)
+ constexpr bool kEnablePsnrStats = true;
+ #else

@@ -1,22 +1,22 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsStyleConsts.h"
-#include "nsXULAppAPI.h"
 #include "nsLookAndFeel.h"
+
 #include "Theme.h"
+#include "ThemeColors.h"
 #include "gfxFont.h"
 #include "gfxFontConstants.h"
 #include "mozilla/FontPropertyTypes.h"
-#include "mozilla/gfx/2D.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_widget.h"
+#include "mozilla/gfx/2D.h"
 #include "mozilla/java/GeckoAppShellWrappers.h"
 #include "mozilla/java/GeckoRuntimeWrappers.h"
 #include "mozilla/java/GeckoSystemStateListenerWrappers.h"
-#include "ThemeColors.h"
+#include "nsStyleConsts.h"
+#include "nsXULAppAPI.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;

@@ -1,23 +1,24 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ScaledFontMac.h"
+
 #include "UnscaledFontMac.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #ifdef MOZ_WIDGET_COCOA
 #  include "nsCocoaFeatures.h"
 #endif
+#include <dlfcn.h>
+
+#include <vector>
+
 #include "PathSkia.h"
 #include "skia/include/core/SkFont.h"
 #include "skia/include/core/SkFontTypes.h"
 #include "skia/include/core/SkPaint.h"
 #include "skia/include/core/SkPath.h"
 #include "skia/include/ports/SkTypeface_mac.h"
-#include <vector>
-#include <dlfcn.h>
 #ifdef MOZ_WIDGET_UIKIT
 #  include <CoreFoundation/CoreFoundation.h>
 #endif
@@ -784,7 +785,7 @@ cairo_font_face_t* ScaledFontMac::CreateCairoFontFace(
 
 already_AddRefed<UnscaledFont> UnscaledFontMac::CreateFromFontDescriptor(
     const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex) {
-  if (aDataLength == 0) {
+  if (aDataLength == 0 || aIndex > aDataLength) {
     gfxWarning() << "Mac font descriptor is truncated.";
     return nullptr;
   }
@@ -821,7 +822,7 @@ already_AddRefed<UnscaledFont> UnscaledFontMac::CreateFromFontDescriptor(
     font = CTFontCopyGraphicsFont(newFont, nullptr);
   }
 
-  RefPtr<UnscaledFont> unscaledFont = new UnscaledFontMac(font);
+  RefPtr unscaledFont = MakeRefPtr<UnscaledFontMac>(font);
   CFRelease(font);
   return unscaledFont.forget();
 }

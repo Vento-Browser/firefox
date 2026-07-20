@@ -1,20 +1,24 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+#include "stun_socket_filter.h"
+
+#include <cstddef>
 #include <iomanip>
 #include <set>
 
-extern "C" {
+// clang-format off
+// For Windows builds, nr_api.h needs to appear before
+// mozilla/net/DNS.h
 #include "nr_api.h"
-#include "stun.h"
-#include "transport_addr.h"
-}
+// clang-format on
 
 #include "logging.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/net/DNS.h"
 #include "nr_socket_prsock.h"
-#include "stun_socket_filter.h"
+#include "stun.h"
+#include "transport_addr.h"
 
 namespace {
 
@@ -284,6 +288,18 @@ class PendingSTUNId {
   const UINT12 id_;
 };
 
+// Reads the STUN transaction id out of a (possibly unaligned) message buffer.
+// For TCP-framed packets the message starts two bytes into the buffer, so
+// reinterpret_cast<const nr_stun_message_header*> would yield a misaligned
+// pointer; copying the field avoids that undefined behavior.
+// Note: caller is responsible for validing the stun pointer.
+static UINT12 GetStunTransactionId(const UCHAR* stun) {
+  UINT12 id;
+  memcpy(id.octet, stun + offsetof(nr_stun_message_header, id),
+         sizeof(id.octet));
+  return id;
+}
+
 class STUNTCPSocketFilter : public nsISocketFilter {
  public:
   STUNTCPSocketFilter() : white_listed_(false) {}
@@ -350,14 +366,13 @@ bool STUNTCPSocketFilter::filter_incoming_packet(const uint8_t* data,
     }
   }
 
-  const nr_stun_message_header* msg =
-      reinterpret_cast<const nr_stun_message_header*>(stun);
+  const UINT12 id = GetStunTransactionId(stun);
 
   // If it is a STUN response message and we can match its id with one of the
   // pending requests, we can add this address into whitelist.
   if (nr_is_stun_response_message(stun, length)) {
     std::set<PendingSTUNId>::iterator it =
-        pending_request_ids_.find(PendingSTUNId(msg->id));
+        pending_request_ids_.find(PendingSTUNId(id));
     if (it != pending_request_ids_.end()) {
       pending_request_ids_.erase(it);
       white_listed_ = true;
@@ -365,7 +380,7 @@ bool STUNTCPSocketFilter::filter_incoming_packet(const uint8_t* data,
   } else {
     // If it is a STUN message, but not a response message, we add it into
     // response allowed list and allow outgoing filter to send a response back.
-    response_allowed_ids_.insert(PendingSTUNId(msg->id));
+    response_allowed_ids_.insert(PendingSTUNId(id));
   }
 
   return true;
@@ -392,13 +407,12 @@ bool STUNTCPSocketFilter::filter_outgoing_packet(const uint8_t* data,
     }
   }
 
-  const nr_stun_message_header* msg =
-      reinterpret_cast<const nr_stun_message_header*>(stun);
+  const UINT12 id = GetStunTransactionId(stun);
 
   // Check if it is a stun request. If yes, we put it into a pending list and
   // wait for response packet.
   if (nr_is_stun_request_message(stun, length)) {
-    pending_request_ids_.insert(PendingSTUNId(msg->id));
+    pending_request_ids_.insert(PendingSTUNId(id));
     return true;
   }
 
@@ -406,7 +420,7 @@ bool STUNTCPSocketFilter::filter_outgoing_packet(const uint8_t* data,
   // can allow it packet to pass filter.
   if (nr_is_stun_response_message(stun, length)) {
     std::set<PendingSTUNId>::iterator it =
-        response_allowed_ids_.find(PendingSTUNId(msg->id));
+        response_allowed_ids_.find(PendingSTUNId(id));
     if (it != response_allowed_ids_.end()) {
       response_allowed_ids_.erase(it);
       white_listed_ = true;

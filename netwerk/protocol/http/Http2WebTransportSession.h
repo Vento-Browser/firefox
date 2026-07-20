@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,14 +7,14 @@
 
 #include "CapsuleParser.h"
 #include "Http2StreamTunnel.h"
-#include "mozilla/UniquePtr.h"
-#include "mozilla/Queue.h"
-#include "nsRefPtrHashtable.h"
-#include "nsTHashMap.h"
-#include "nsHashKeys.h"
 #include "WebTransportFlowControl.h"
 #include "WebTransportSessionBase.h"
 #include "WebTransportStreamBase.h"
+#include "mozilla/Queue.h"
+#include "mozilla/UniquePtr.h"
+#include "nsHashKeys.h"
+#include "nsRefPtrHashtable.h"
+#include "nsTHashMap.h"
 
 namespace mozilla::net {
 

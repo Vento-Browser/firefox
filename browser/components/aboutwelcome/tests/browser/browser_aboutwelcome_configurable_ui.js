@@ -85,6 +85,12 @@ async function testAboutWelcomeLogoFor(logo = {}) {
   browser.closeBrowser();
 }
 
+add_setup(async function () {
+  registerCleanupFunction(function () {
+    Services.prefs.clearUserPref("browser.aboutwelcome.didSeeFinalScreen");
+  });
+});
+
 /**
  * Test rendering a screen in about welcome with decorative noodles
  */
@@ -319,6 +325,11 @@ add_task(async function test_aboutwelcome_dismiss_button() {
  * Test rendering a screen with the "split" position
  */
 add_task(async function test_aboutwelcome_split_position() {
+  // Forcing light-mode prevents the test from failing locally if your OS is in dark-mode
+  await SpecialPowers.pushPrefEnv({
+    set: [["ui.systemUsesDarkTheme", 0]],
+  });
+
   const TEST_SPLIT_STEP = makeTestContent("TEST_SPLIT_STEP", {
     position: "split",
     hero_text: "hero test",
@@ -346,16 +357,20 @@ add_task(async function test_aboutwelcome_split_position() {
   );
 
   // Ensure secondary action has button styling
+  const novaEnabled = Services.prefs.getBoolPref("browser.nova.enabled", false);
   await test_element_styles(
     browser,
     ".action-buttons .secondary-cta .secondary",
     // Expected styles:
     {
       // Override default text-link styles
-      "background-color": "color(srgb 0.0823529 0.0784314 0.101961 / 0.07)",
-      color: "rgb(21, 20, 26)",
+      "background-color": novaEnabled
+        ? "rgba(0, 0, 0, 0)"
+        : "color(srgb 0.0823529 0.0784314 0.101961 / 0.07)",
+      color: novaEnabled ? "rgb(22, 20, 35)" : "rgb(21, 20, 26)",
     }
   );
+  await SpecialPowers.popPrefEnv();
   browser.closeBrowser();
 });
 
@@ -467,12 +482,13 @@ add_task(async function test_aboutwelcome_with_text_color_override() {
   );
 
   // Ensure next step indicator inherits light color
+  const novaEnabled = Services.prefs.getBoolPref("browser.nova.enabled", false);
   await test_element_styles(
     browser,
     ".indicator:not(.current)",
     // Expected styles:
     {
-      color: "rgb(251, 251, 254)",
+      color: novaEnabled ? "rgb(242, 240, 248)" : "rgb(251, 251, 254)",
     }
   );
 
@@ -489,6 +505,7 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     set: [
       ["ui.systemUsesDarkTheme", 0],
       ["ui.prefersReducedMotion", 0],
+      ["ui.useAccessibilityTheme", 0],
     ],
   });
   let screens = [];
@@ -517,7 +534,8 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
   });
   let browser = await openAboutWelcome(JSON.stringify(screens));
 
-  await SpecialPowers.spawn(browser, [], async () => {
+  const novaEnabled = Services.prefs.getBoolPref("browser.nova.enabled", false);
+  await SpecialPowers.spawn(browser, [novaEnabled], async isNova => {
     const progressBar = await ContentTaskUtils.waitForCondition(() =>
       content.document.querySelector(".progress-bar")
     );
@@ -527,7 +545,9 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     // Progress bar should have a gray background.
     is(
       content.window.getComputedStyle(progressBar)["background-color"],
-      "color(srgb 0.0823529 0.0784314 0.101961 / 0.25)",
+      isNova
+        ? "color(srgb 0.0862745 0.0784314 0.137255 / 0.25)"
+        : "color(srgb 0.0823529 0.0784314 0.101961 / 0.25)",
       "Correct progress bar background"
     );
 
@@ -535,7 +555,7 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     for (let [key, val] of Object.entries({
       // The filled "completed" element should have
       // `background-color: var(--button-background-color-primary);`
-      "background-color": "oklch(0.55 0.24 260)",
+      "background-color": isNova ? "rgb(118, 78, 221)" : "oklch(0.55 0.24 260)",
       // Base progress bar step styles.
       height: "6px",
       "margin-inline": "-1px",

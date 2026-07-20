@@ -5,10 +5,13 @@
 package org.mozilla.fenix.home.toolbar
 
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
 import androidx.annotation.VisibleForTesting
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
@@ -27,6 +30,7 @@ import mozilla.components.compose.browser.toolbar.concept.PageOrigin.Companion.P
 import mozilla.components.compose.browser.toolbar.concept.PageOrigin.Companion.PageOriginContextualMenuInteractions.PasteFromClipboardClicked
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.BrowserActionsEndUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.NavigationActionsUpdated
+import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.PageActionsEndUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.PageActionsStartUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.PageOriginUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserEditToolbarAction.SearchQueryUpdated
@@ -56,16 +60,19 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode.Normal
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode.Private
+import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.UseCases
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchStarted
 import org.mozilla.fenix.components.appstate.SupportedMenuNotifications
+import org.mozilla.fenix.components.appstate.VoiceSearchAction.VoiceInputRequested
 import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.home.HomeFragmentDirections
 import org.mozilla.fenix.home.toolbar.DisplayActions.FakeClicked
 import org.mozilla.fenix.home.toolbar.DisplayActions.MenuClicked
+import org.mozilla.fenix.home.toolbar.DisplayActions.VoiceSearchClicked
 import org.mozilla.fenix.home.toolbar.PageOriginInteractions.OriginClicked
 import org.mozilla.fenix.home.toolbar.TabCounterInteractions.AddNewPrivateTab
 import org.mozilla.fenix.home.toolbar.TabCounterInteractions.AddNewTab
@@ -74,16 +81,21 @@ import org.mozilla.fenix.home.toolbar.TabCounterInteractions.TabCounterLongClick
 import org.mozilla.fenix.search.BrowserToolbarSearchMiddleware
 import org.mozilla.fenix.search.ext.searchEngineShortcuts
 import org.mozilla.fenix.settings.ShortcutType
-import org.mozilla.fenix.tabstray.Page
+import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.utils.Settings
+import mozilla.components.feature.summarize.R as summariesR
 import mozilla.components.lib.state.Action as MVIAction
 import mozilla.components.ui.icons.R as iconsR
 import mozilla.components.ui.tabcounter.R as tabcounterR
+
+// Speculative delay for putting the toolbar in edit mode after an initial voice search request.
+private const val DISPLAY_TOOLBAR_DELAY_AFTER_VOICE_REQUEST = 1_000L
 
 @VisibleForTesting
 internal sealed class DisplayActions : BrowserToolbarEvent {
     data class MenuClicked(override val source: Source) : DisplayActions()
     data object FakeClicked : DisplayActions()
+    data object VoiceSearchClicked : DisplayActions()
 }
 
 internal sealed class TabCounterInteractions : BrowserToolbarEvent {
@@ -106,6 +118,7 @@ internal sealed class PageOriginInteractions : BrowserToolbarEvent {
  * @param clipboard [ClipboardHandler] to use for reading from device's clipboard.
  * @param useCases [UseCases] helping this integrate with other features of the applications.
  * @param navController [NavController] to use for navigating to other in-app destinations.
+ * @param browsingModeManager [BrowsingModeManager] for querying the current browsing mode.
  * @param settings [Settings] for accessing application settings.
  * @param isWideScreen Callback for checking if the screen is wide.
  * @param isTallScreen Callback for checking if the screen is tall.
@@ -119,6 +132,7 @@ class BrowserToolbarMiddleware(
     private val clipboard: ClipboardHandler,
     private val useCases: UseCases,
     private val navController: NavController,
+    private val browsingModeManager: BrowsingModeManager,
     private val settings: Settings,
     private val isWideScreen: () -> Boolean,
     private val isTallScreen: () -> Boolean,
@@ -142,6 +156,7 @@ class BrowserToolbarMiddleware(
                 }
 
                 updatePageOrigin(store)
+                updateEndPageActions(store)
                 updateEndBrowserActions(store)
                 updateNavigationActions(store)
                 updateToolbarActionsBasedOnOrientation(store)
@@ -176,7 +191,7 @@ class BrowserToolbarMiddleware(
                 navController.nav(
                     R.id.homeFragment,
                     NavGraphDirections.actionGlobalTabManagementFragment(
-                        page = when (appStore.state.mode) {
+                        page = when (browsingModeManager.mode) {
                             Normal -> Page.NormalTabs
                             Private -> Page.PrivateTabs
                         },
@@ -197,6 +212,14 @@ class BrowserToolbarMiddleware(
                 Events.searchBarTapped.record(Events.SearchBarTappedExtra("HOME"))
                 appStore.dispatch(SearchStarted())
             }
+            is VoiceSearchClicked -> {
+                scope.launch {
+                    appStore.dispatch(VoiceInputRequested)
+                    delay(DISPLAY_TOOLBAR_DELAY_AFTER_VOICE_REQUEST)
+                    appStore.dispatch(SearchStarted())
+                }
+                next(action)
+            }
             is PasteFromClipboardClicked -> {
                 openNewTab(store, searchTerms = clipboard.text)
             }
@@ -205,7 +228,7 @@ class BrowserToolbarMiddleware(
                     useCases.fenixBrowserUseCases.loadUrlOrSearch(
                         searchTermOrURL = it,
                         newTab = true,
-                        private = appStore.state.mode == Private,
+                        private = browsingModeManager.mode == Private,
                         searchEngine = reconcileSelectedEngine(),
                     )
                     navController.navigate(R.id.browserFragment)
@@ -223,8 +246,8 @@ class BrowserToolbarMiddleware(
         browsingMode: BrowsingMode? = null,
         searchTerms: String? = null,
     ) {
-        browsingMode?.let { appStore.dispatch(AppAction.BrowsingModeManagerModeChanged(mode = it)) }
-        store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms ?: "")))
+        browsingMode?.let { browsingModeManager.mode = it }
+        store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms ?: ""), true))
         appStore.dispatch(SearchStarted())
     }
 
@@ -269,7 +292,11 @@ class BrowserToolbarMiddleware(
         store.dispatch(
             PageOriginUpdated(
                 PageOrigin(
-                    hint = R.string.search_hint,
+                    hint = if (isVoiceSearchEnabledForDisplayToolbar()) {
+                        R.string.search_hint_short
+                    } else {
+                        R.string.search_hint
+                    },
                     title = null,
                     url = null,
                     contextualMenuOptions = listOf(PasteFromClipboard, LoadFromClipboard),
@@ -285,6 +312,32 @@ class BrowserToolbarMiddleware(
             ),
         )
     }
+
+    private fun updateEndPageActions(store: Store<BrowserToolbarState, BrowserToolbarAction>) =
+        store.dispatch(
+            PageActionsEndUpdated(
+                buildEndPageActions(),
+            ),
+        )
+
+    private fun buildEndPageActions(): List<Action> = buildList {
+        if (isVoiceSearchEnabledForDisplayToolbar() && isSpeechRecognitionAvailable()) {
+            add(
+                ActionButtonRes(
+                    drawableResId = iconsR.drawable.mozac_ic_microphone_24,
+                    contentDescription = R.string.voice_search_content_description,
+                    onClick = VoiceSearchClicked,
+                ),
+            )
+        }
+    }
+
+    private fun isVoiceSearchEnabledForDisplayToolbar() =
+        settings.shouldShowVoiceSearch && settings.showVoiceSearchInDisplayToolbar
+
+    private fun isSpeechRecognitionAvailable() =
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .resolveActivity(uiContext.packageManager) != null
 
     private fun buildStartPageActions(selectedSearchEngine: SearchEngine?): List<Action> {
         return listOfNotNull(
@@ -339,7 +392,7 @@ class BrowserToolbarMiddleware(
         val isWideWindow = isWideScreen()
         val isTallWindow = isTallScreen()
         val shouldUseExpandedToolbar = settings.shouldUseExpandedToolbar
-        val primarySlotAction = ShortcutType.fromValue(settings.toolbarExpandedShortcut)
+        val primarySlotAction = ShortcutType.fromValue(settings.toolbarExpandedShortcutKey)
             ?.toHomeToolbarAction() ?: HomeToolbarAction.FakeBookmark
 
         return listOf(
@@ -366,7 +419,7 @@ class BrowserToolbarMiddleware(
     }
 
     private fun buildTabCounterMenu(source: Source): CombinedEventAndMenu? {
-        val currentBrowsingMode = appStore.state.mode
+        val currentBrowsingMode = browsingModeManager.mode
 
         return CombinedEventAndMenu(TabCounterLongClicked(source)) {
             when (currentBrowsingMode) {
@@ -383,7 +436,7 @@ class BrowserToolbarMiddleware(
 
                 else -> listOf(
                     BrowserToolbarMenuButton(
-                        icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_24),
+                        icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_fill_24),
                         text = StringResText(tabcounterR.string.mozac_browser_menu_new_private_tab),
                         contentDescription = StringResContentDescription(
                             tabcounterR.string.mozac_browser_menu_new_private_tab,
@@ -442,7 +495,9 @@ class BrowserToolbarMiddleware(
 
     private fun reconcileSelectedEngine(): SearchEngine? =
         appStore.state.searchState.selectedSearchEngine?.searchEngine
-            ?: browserStore.state.search.selectedOrDefaultSearchEngine
+            ?: browserStore.state.search.selectedOrDefaultSearchEngine(
+                private = browsingModeManager.mode.isPrivate,
+            )
 
     @VisibleForTesting
     internal enum class HomeToolbarAction {
@@ -454,6 +509,7 @@ class BrowserToolbarMiddleware(
         FakeTranslate,
         FakeHomepage,
         FakeBack,
+        FakeSummarize,
     }
 
     private data class HomeToolbarActionConfig(
@@ -467,7 +523,7 @@ class BrowserToolbarMiddleware(
         source: Source = Source.Unknown,
     ): Action = when (action) {
         HomeToolbarAction.TabCounter -> {
-            val isInPrivateMode = appStore.state.mode.isPrivate
+            val isInPrivateMode = browsingModeManager.mode.isPrivate
             val tabsCount = browserStore.state.getNormalOrPrivateTabs(isInPrivateMode).size
 
             val tabCounterDescription = if (isInPrivateMode) {
@@ -487,6 +543,7 @@ class BrowserToolbarMiddleware(
 
         HomeToolbarAction.Menu -> {
             val highlighted = appStore.state.supportedMenuNotifications
+                .filterNot { it is SupportedMenuNotifications.Summarize }
                 .any { it != SupportedMenuNotifications.OpenInApp }
             ActionButtonRes(
                 drawableResId = iconsR.drawable.mozac_ic_ellipsis_vertical_24,
@@ -512,12 +569,12 @@ class BrowserToolbarMiddleware(
 
         HomeToolbarAction.NewTab -> ActionButtonRes(
             drawableResId = iconsR.drawable.mozac_ic_plus_24,
-            contentDescription = if (appStore.state.mode == Private) {
+            contentDescription = if (browsingModeManager.mode == Private) {
                 R.string.home_screen_shortcut_open_new_private_tab_2
             } else {
                 R.string.home_screen_shortcut_open_new_tab_2
             },
-            onClick = if (appStore.state.mode == Private) {
+            onClick = if (browsingModeManager.mode == Private) {
                 AddNewPrivateTab(source)
             } else {
                 AddNewTab(source)
@@ -544,6 +601,13 @@ class BrowserToolbarMiddleware(
             state = ActionButton.State.DISABLED,
             onClick = FakeClicked,
         )
+
+        HomeToolbarAction.FakeSummarize -> ActionButtonRes(
+            drawableResId = iconsR.drawable.mozac_ic_lightning_24,
+            contentDescription = summariesR.string.mozac_summarize_settings_summarize_pages,
+            state = ActionButton.State.DISABLED,
+            onClick = FakeClicked,
+        )
     }
 
     companion object {
@@ -555,6 +619,8 @@ class BrowserToolbarMiddleware(
             ShortcutType.TRANSLATE -> HomeToolbarAction.FakeTranslate
             ShortcutType.HOMEPAGE -> HomeToolbarAction.FakeHomepage
             ShortcutType.BACK -> HomeToolbarAction.FakeBack
+            ShortcutType.SUMMARIZE -> HomeToolbarAction.FakeSummarize
+            ShortcutType.NONE -> null
         }
     }
 }

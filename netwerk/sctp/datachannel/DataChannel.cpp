@@ -1,40 +1,39 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <algorithm>
 #include <stdio.h>
+
+#include <algorithm>
 
 #ifdef XP_WIN
 #  include <winsock.h>  // for htonl, htons, ntohl, ntohs
 #endif
 
-#include "nsIInputStream.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
-#include "mozilla/Sprintf.h"
-#include "nsProxyRelease.h"
-#include "nsThread.h"
-#include "nsThreadUtils.h"
-#include "nsNetUtil.h"
 #include "mozilla/Components.h"
+#include "mozilla/Sprintf.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/dom/RTCDataChannel.h"
 #include "mozilla/dom/RTCDataChannelBinding.h"
+#include "nsIInputStream.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
+#include "nsNetUtil.h"
+#include "nsProxyRelease.h"
+#include "nsThread.h"
+#include "nsThreadUtils.h"
 #ifdef MOZ_PEERCONNECTION
-#  include "transport/runnable_utils.h"
 #  include "jsapi/MediaTransportHandler.h"
 #  include "mediapacket.h"
+#  include "transport/runnable_utils.h"
 #endif
 
 #include "DataChannel.h"
 #include "DataChannelDcSctp.h"
-#include "DataChannelUsrsctp.h"
 #include "DataChannelLog.h"
 #include "DataChannelProtocol.h"
+#include "DataChannelUsrsctp.h"
 
 namespace mozilla {
 
@@ -335,7 +334,8 @@ void DataChannelConnection::SetSignals(const std::string& aTransportId) {
 }
 
 void DataChannelConnection::TransportStateChange(
-    const std::string& aTransportId, TransportLayer::State aState) {
+    const std::string& aTransportId, TransportLayer::State aState,
+    const nsTArray<nsTArray<uint8_t>>&, Maybe<dom::RTCErrorParams>) {
   MOZ_ASSERT(mSTS->IsOnCurrentThread());
   if (aTransportId == mTransportId) {
     if (aState == TransportLayer::TS_OPEN) {
@@ -357,7 +357,7 @@ void DataChannelConnection::ProcessQueuedOpens() {
   // Technically in an unspecified state, although no reasonable impl will leave
   // anything in here.
   mPending.clear();
-  for (auto channel : temp) {
+  for (const auto& channel : temp) {
     DC_DEBUG(("%p: Processing queued open for %p (%u)", this, channel.get(),
               channel->mStream));
     OpenFinish(channel);  // may end up back in mPending
@@ -1143,6 +1143,14 @@ void DataChannel::EndOfStream() {
   if (mConnection) {
     mConnection->EndOfStream(this);
   }
+}
+
+RefPtr<dom::RTCDataChannel> DataChannel::GetDomDataChannel() const {
+  MOZ_ASSERT(mDomEventTarget->IsOnCurrentThread());
+  if (NS_IsMainThread()) {
+    return mMainthreadDomDataChannel;
+  }
+  return mWorkerDomDataChannel;
 }
 
 void DataChannelConnection::FinishClose_s(const RefPtr<DataChannel>& aChannel) {

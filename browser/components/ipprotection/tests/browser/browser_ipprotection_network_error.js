@@ -5,10 +5,10 @@
 "use strict";
 
 const { ERRORS } = ChromeUtils.importESModule(
-  "chrome://browser/content/ipprotection/ipprotection-constants.mjs"
+  "moz-src:///toolkit/components/ipprotection/IPPProxyManager.sys.mjs"
 );
 const { IPPNetworkUtils } = ChromeUtils.importESModule(
-  "moz-src:///browser/components/ipprotection/IPPNetworkUtils.sys.mjs"
+  "moz-src:///toolkit/components/ipprotection/IPPNetworkUtils.sys.mjs"
 );
 
 /**
@@ -17,8 +17,7 @@ const { IPPNetworkUtils } = ChromeUtils.importESModule(
  */
 add_task(async function test_panel_no_error_when_opened_offline() {
   setupService({
-    isSignedIn: true,
-    isEnrolledAndEntitled: true,
+    isReady: true,
     canEnroll: true,
     proxyPass: {
       status: 200,
@@ -26,13 +25,11 @@ add_task(async function test_panel_no_error_when_opened_offline() {
       pass: makePass(),
     },
   });
-  await IPPEnrollAndEntitleManager.refetchEntitlement();
 
   // Go offline before opening panel
   Services.io.offline = true;
 
   let content = await openPanel({
-    isSignedOut: false,
     unauthenticated: false,
   });
 
@@ -62,21 +59,15 @@ add_task(async function test_panel_no_error_when_opened_offline() {
 });
 
 /**
- * Tests that the toolbar button icon updates when network goes offline,
- * even when VPN is not active.
+ * Tests that the toolbar button shows an error icon after the panel fails
+ * to activate due to network issues, and resets when the panel closes.
  */
-add_task(async function test_toolbar_button_icon_when_offline() {
+add_task(async function test_toolbar_button_icon_on_activation_failure() {
   setupService({
-    isSignedIn: true,
-    isEnrolledAndEntitled: true,
-    canEnroll: true,
-    proxyPass: {
-      status: 200,
-      error: undefined,
-      pass: makePass(),
-    },
+    isReady: true,
   });
-  await IPPEnrollAndEntitleManager.refetchEntitlement();
+  IPProtectionService.updateState();
+  await waitForProxyState(IPPProxyStates.READY);
 
   let button = document.getElementById(IPProtectionWidget.WIDGET_ID);
   Assert.ok(button, "Toolbar button should exist");
@@ -87,36 +78,44 @@ add_task(async function test_toolbar_button_icon_when_offline() {
     "Toolbar button should not show error initially"
   );
 
-  let iconUpdatePromise = TestUtils.waitForCondition(
-    () => button.classList.contains("ipprotection-error"),
-    "Toolbar button should show error icon when offline"
-  );
-
   // Go offline
   Services.io.offline = true;
-  Services.obs.notifyObservers(null, "network:offline-status-changed");
-
-  await iconUpdatePromise;
 
   Assert.ok(
-    button.classList.contains("ipprotection-error"),
-    "Toolbar button should show error icon even when VPN is off"
+    !button.classList.contains("ipprotection-error"),
+    "Toolbar button should not show error from offline status change alone"
   );
 
-  iconUpdatePromise = TestUtils.waitForCondition(
-    () => !button.classList.contains("ipprotection-error"),
-    "Toolbar button should clear error icon when back online"
+  // Open panel and try to activate while offline
+  let content = await openPanel({
+    isReady: true,
+  });
+  let turnOnButton = content.statusCardEl?.actionButtonEl;
+  Assert.ok(turnOnButton, "Turn on button should be present");
+
+  turnOnButton.click();
+
+  // Wait for panel to show network error
+  await TestUtils.waitForCondition(
+    () => content.state.error === ERRORS.NETWORK,
+    "Panel should show network error after failed activation"
+  );
+
+  Assert.ok(
+    button.classList.contains("ipprotection-network-error"),
+    "Toolbar button should show network error icon after panel activation failure"
   );
 
   // Back online
   Services.io.offline = false;
-  Services.obs.notifyObservers(null, "network:offline-status-changed");
-
-  await iconUpdatePromise;
+  // Close the panel
+  let panelHiddenPromise = waitForPanelEvent(document, "popuphidden");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await panelHiddenPromise;
 
   Assert.ok(
-    !button.classList.contains("ipprotection-error"),
-    "Toolbar button should clear error icon when back online"
+    !button.classList.contains("ipprotection-network-error"),
+    "Toolbar button should clear network error icon when panel closes"
   );
 
   cleanupService();
@@ -127,25 +126,17 @@ add_task(async function test_toolbar_button_icon_when_offline() {
  */
 add_task(async function test_network_error_when_activating_offline() {
   setupService({
-    isSignedIn: true,
-    isEnrolledAndEntitled: true,
-    canEnroll: true,
-    proxyPass: {
-      status: 200,
-      error: undefined,
-      pass: makePass(),
-    },
+    isReady: true,
   });
-  await IPPEnrollAndEntitleManager.refetchEntitlement();
-
-  // Stub alert manager to ensure we display it when a network error occurs
-  const sandbox = sinon.createSandbox();
-  let alertStub = sandbox.stub(IPProtectionAlertManager, "showErrorPrompts");
+  IPProtectionService.updateState();
+  await waitForProxyState(IPPProxyStates.READY);
 
   // Go offline before opening panel
   Services.io.offline = true;
 
-  let content = await openPanel();
+  let content = await openPanel({
+    isReady: true,
+  });
 
   await content.updateComplete;
 
@@ -155,31 +146,19 @@ add_task(async function test_network_error_when_activating_offline() {
   let turnOnButton = statusCard.actionButtonEl;
   Assert.ok(turnOnButton, "Turn on button should be present");
 
-  // Wait for ERROR state when clicking Turn On while offline
-  let errorStatePromise = BrowserTestUtils.waitForEvent(
-    IPPProxyManager,
-    "IPPProxyManager:StateChanged",
-    false,
-    () => IPPProxyManager.state === IPPProxyStates.ERROR
-  );
-
   // Try to activate the VPN while offline
   turnOnButton.click();
 
-  await errorStatePromise;
+  // Wait for panel to show the network error (set directly by #startProxy)
+  await TestUtils.waitForCondition(
+    () => content.state.error === ERRORS.NETWORK,
+    "Panel should show network error after failed activation"
+  );
 
   Assert.equal(
     IPPProxyManager.state,
-    IPPProxyStates.ERROR,
-    "IPPProxyManager should be in ERROR state when trying to start while offline"
-  );
-  Assert.ok(
-    IPPProxyManager.errors.includes(ERRORS.NETWORK),
-    "Should have network-error"
-  );
-  Assert.ok(
-    alertStub.calledOnce,
-    "Alert should be shown when activation fails due to network"
+    IPPProxyStates.READY,
+    "IPPProxyManager should stay in READY state when activation fails while offline"
   );
 
   await content.updateComplete;
@@ -197,5 +176,4 @@ add_task(async function test_network_error_when_activating_offline() {
 
   await closePanel();
   cleanupService();
-  sandbox.restore();
 });

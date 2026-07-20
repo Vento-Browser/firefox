@@ -27,12 +27,6 @@ const RECOMMENDED_PREFS = new Map([
   // Enables permission isolation by user context.
   // It should be enabled by default in Nightly in the scope of the bug 1641584.
   ["permissions.isolateBy.userContext", true],
-  // Enables race-cache-with-network, which avoids issues with requests
-  // intercepted in the responseStarted phase. Without this preference, any
-  // subsequent request to the same URL as a suspended request hangs as well.
-  // Bug 1966494: should allow to unblock subsequent request, but might do so
-  // with a timer, slowing down tests. Should be reconsidered once fixed.
-  ["network.http.rcwn.enabled", true],
 ]);
 
 /**
@@ -146,11 +140,11 @@ export class WebDriverBiDi {
       this.#sessionlessConnections.delete(sessionlessConnection);
     }
 
-    this.#userPromptHandlerManager = new lazy.UserPromptHandlerManager(
-      this.#session.userPromptHandler
-    );
-
     if (this.#session.bidi) {
+      this.#userPromptHandlerManager = new lazy.UserPromptHandlerManager(
+        this.#session.userPromptHandler
+      );
+
       // Creating a WebDriver BiDi session too early can cause issues with
       // clients in not being able to find any available browsing context.
       // Also when closing the application while it's still starting up can
@@ -184,7 +178,9 @@ export class WebDriverBiDi {
     // For multiple session check first if the last session was closed.
     lazy.cleanupCacheBypassState();
 
-    this.#userPromptHandlerManager.destroy();
+    if (this.#userPromptHandlerManager) {
+      this.#userPromptHandlerManager.destroy();
+    }
 
     this.#session.destroy();
     this.#session = null;

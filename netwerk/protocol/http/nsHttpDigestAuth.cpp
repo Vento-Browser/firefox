@@ -1,27 +1,25 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
+/*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // HttpLog.h should generally be included first
-#include "HttpLog.h"
+#include "nsHttpDigestAuth.h"
 
+#include "HttpLog.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticPrefs_network.h"
-
+#include "nsCRT.h"
+#include "nsComponentManagerUtils.h"
+#include "nsEscape.h"
 #include "nsHttp.h"
-#include "nsHttpDigestAuth.h"
+#include "nsICryptoHash.h"
 #include "nsIHttpAuthenticableChannel.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIURI.h"
-#include "nsString.h"
-#include "nsEscape.h"
 #include "nsNetCID.h"
-#include "nsCRT.h"
-#include "nsICryptoHash.h"
-#include "nsComponentManagerUtils.h"
+#include "nsString.h"
 #include "pk11pub.h"
 
 constexpr uint16_t DigestLength(uint16_t aAlgorithm) {
@@ -205,7 +203,7 @@ nsHttpDigestAuth::GenerateCredentials(
 
 {
   LOG(("nsHttpDigestAuth::GenerateCredentials [challenge=%s]\n",
-       aChallenge.BeginReading()));
+       PromiseFlatCString(aChallenge).get()));
 
   *aFlags = 0;
 

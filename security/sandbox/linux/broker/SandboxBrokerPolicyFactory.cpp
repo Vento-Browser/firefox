@@ -1,58 +1,12 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SandboxBrokerPolicyFactory.h"
-#include "SandboxInfo.h"
-#include "SandboxLogging.h"
 
-#include "mozilla/Array.h"
-#include "mozilla/ClearOnShutdown.h"
-#include "mozilla/Omnijar.h"
-#include "mozilla/Preferences.h"
-#include "mozilla/SandboxLaunch.h"
-#include "mozilla/SandboxSettings.h"
-#include "mozilla/StaticPrefs_security.h"
-#include "mozilla/StaticMutex.h"
-#include "mozilla/UniquePtr.h"
-#include "mozilla/UniquePtrExtensions.h"
-#include "mozilla/ipc/SharedMemoryHandle.h"
-#include "nsComponentManagerUtils.h"
-#include "nsPrintfCString.h"
-#include "nsString.h"
-#include "nsThreadUtils.h"
-#include "nsXULAppAPI.h"
-#include "nsDirectoryServiceDefs.h"
-#include "nsAppDirectoryServiceDefs.h"
-#include "SpecialSystemDirectory.h"
-#include "nsReadableUtils.h"
-#include "nsIFileStreams.h"
-#include "nsILineInputStream.h"
-#include "nsIFile.h"
-
-#include "nsNetCID.h"
-#include "prenv.h"
-
-#if defined(MOZ_PROFILE_GENERATE)
+#ifdef MOZ_PROFILE_GENERATE
 #  include <string>
 #endif
-
-#ifdef ANDROID
-#  include "cutils/properties.h"
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-#  include "mozilla/WidgetUtilsGtk.h"
-#  include <glib.h>
-#endif
-
-#ifdef MOZ_ENABLE_V4L2
-#  include <linux/videodev2.h>
-#  include <sys/ioctl.h>
-#  include <fcntl.h>
-#endif  // MOZ_ENABLE_V4L2
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -60,6 +14,48 @@
 #include <sys/types.h>
 #ifndef ANDROID
 #  include <glob.h>
+#endif
+#ifdef MOZ_ENABLE_V4L2
+#  include <fcntl.h>
+#  include <linux/videodev2.h>
+#  include <sys/ioctl.h>
+#endif  // MOZ_ENABLE_V4L2
+#ifdef MOZ_WIDGET_GTK
+#  include <glib.h>
+#endif
+
+#include "SandboxInfo.h"
+#include "SandboxLogging.h"
+#include "SpecialSystemDirectory.h"
+#include "mozilla/Array.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/Omnijar.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/SandboxLaunch.h"
+#include "mozilla/SandboxSettings.h"
+#include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPrefs_security.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
+#include "nsAppDirectoryServiceDefs.h"
+#include "nsComponentManagerUtils.h"
+#include "nsDirectoryServiceDefs.h"
+#include "nsIFile.h"
+#include "nsIFileStreams.h"
+#include "nsILineInputStream.h"
+#include "nsNetCID.h"
+#include "nsPrintfCString.h"
+#include "nsReadableUtils.h"
+#include "nsString.h"
+#include "nsThreadUtils.h"
+#include "nsXULAppAPI.h"
+#include "prenv.h"
+#ifdef MOZ_WIDGET_GTK
+#  include "mozilla/WidgetUtilsGtk.h"
+#endif
+#ifdef ANDROID
+#  include "cutils/properties.h"
 #endif
 
 namespace mozilla {
@@ -355,12 +351,9 @@ static void AddX11Dependencies(SandboxBroker::Policy* policy) {
   policy->AddPath(SandboxBroker::MAY_CONNECT, bumblebeeSocket);
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_X11)
-  // Allow local X11 connections, for several purposes:
+  // Allow local X11 connections, if:
   //
-  // * for content processes to use WebGL when the browser is in headless
-  //   mode, by opening the X display if/when needed
-  //
-  // * if Primus or VirtualGL is used, to contact the secondary X server
+  // * Primus or VirtualGL is used, to contact the secondary X server
   static const bool kIsX11 =
       !mozilla::widget::GdkIsWaylandDisplay() && PR_GetEnv("DISPLAY");
   if (kIsX11) {
@@ -917,6 +910,58 @@ static void AddV4l2Dependencies(SandboxBroker::Policy* policy) {
 }
 #endif  // MOZ_ENABLE_V4L2
 
+#ifdef MOZ_ENABLE_VULKAN_VIDEO
+
+static void AddVulkanDependencies(SandboxBroker::Policy* policy) {
+  // RDD Vulkan Video decode: ICD manifests (paths beyond AddGLDependencies).
+  // No MAY_CONNECT rules needed: Vulkan initialisation is done before the
+  // sandbox starts (VA-API also does not need display-server connections).
+  policy->AddTree(rdonly, "/usr/share/vulkan/icd.d");
+  policy->AddTree(rdonly, "/usr/local/share/vulkan/icd.d");
+  policy->AddTree(rdonly, "/etc/vulkan/icd.d");
+
+  // Allow user-provided optional extra ICD JSON manifests for the Vulkan loader
+  // (colon-separated list, used as the input for the Vulkan loader).
+  const char* vkDriverFiles = PR_GetEnv("VK_DRIVER_FILES");
+  if (vkDriverFiles && vkDriverFiles[0] != '\0') {
+    nsAutoCString paths(vkDriverFiles);
+    for (const nsACString& path : paths.Split(':')) {
+      if (!path.IsEmpty()) {
+        char* resolvedPath = realpath(PromiseFlatCString(path).get(), nullptr);
+        if (resolvedPath) {
+          policy->AddTree(rdonly, resolvedPath);
+          free(resolvedPath);
+        }
+      }
+    }
+  }
+
+  // Custom Mesa prefix to allow user-provided Intel ANV Mesa build dir (binary
+  // files location)
+  const char* mesaBuildDir = PR_GetEnv("MESA_BUILD_DIR");
+  if (mesaBuildDir && mesaBuildDir[0] != '\0') {
+    policy->AddTree(rdonly, nsPrintfCString("%s", mesaBuildDir).get());
+  }
+
+  // Custom Vulkan SDK prefix to allow user-provided Vulkan SDK dir (binary and
+  // source files location)
+  const char* vulkanSdkDir = PR_GetEnv("VULKAN_SDK");
+  if (vulkanSdkDir && vulkanSdkDir[0] != '\0') {
+    policy->AddTree(rdonly, nsPrintfCString("%s", vulkanSdkDir).get());
+  }
+
+  policy->AddPath(rdwr, "/dev/nvidiactl", SandboxBroker::Policy::AddAlways);
+  policy->AddPath(rdwr, "/dev/nvidia-uvm", SandboxBroker::Policy::AddAlways);
+  policy->AddPath(rdwr, "/dev/nvidia-modeset",
+                  SandboxBroker::Policy::AddAlways);
+  policy->AddTree(rdonly, "/dev/nvidia-caps");
+  for (int i = 0; i < 8; i++) {
+    policy->AddPath(rdwr, nsPrintfCString("/dev/nvidia%d", i).get(),
+                    SandboxBroker::Policy::AddIfExistsNow);
+  }
+}
+#endif  // MOZ_ENABLE_VULKAN_VIDEO
+
 /* static */ UniquePtr<SandboxBroker::Policy>
 SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
   auto policy = MakeUnique<SandboxBroker::Policy>();
@@ -978,6 +1023,10 @@ SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
   // FFmpeg and GPU drivers may need general-case library loading
   AddLdconfigPaths(policy.get());
   AddLdLibraryEnvPaths(policy.get());
+
+#ifdef MOZ_ENABLE_VULKAN_VIDEO
+  AddVulkanDependencies(policy.get());
+#endif  // MOZ_ENABLE_VULKAN_VIDEO
 
 #ifdef MOZ_ENABLE_V4L2
   AddV4l2Dependencies(policy.get());

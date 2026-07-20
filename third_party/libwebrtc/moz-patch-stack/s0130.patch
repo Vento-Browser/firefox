@@ -1,42 +1,23 @@
-From: =?UTF-8?q?Emilio=20Cobos=20=C3=81lvarez?= <emilio@crisal.io>
-Date: Wed, 12 Nov 2025 05:17:00 +0000
-Subject: Bug 1768116 - Compile as C++20. r=glandium,webrtc-reviewers,mjf
+From: Michael Froman <mfroman@mozilla.com>
+Date: Mon, 6 Apr 2026 14:37:00 -0500
+Subject: Bug 2029247 - (fix-0fc5aeecfb) base-toolchains build fix
 
-Co-authored-by: Chris Peterson <cpeterson@mozilla.com>
-
-Differential Revision: https://phabricator.services.mozilla.com/D271779
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/a076ddec60822b1d20f39dd468e025f712b3ba4d
+Upstream was assigning a -2 to a uint16_t.
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f5dfd2e6901c9d79ee528bf3801ded81b6dd65c9
 ---
- BUILD.gn | 12 +-----------
- 1 file changed, 1 insertion(+), 11 deletions(-)
+ rtc_base/network_constants.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/BUILD.gn b/BUILD.gn
-index c24f5c186e..487897df7a 100644
---- a/BUILD.gn
-+++ b/BUILD.gn
-@@ -316,16 +316,6 @@ config("common_config") {
-   cflags_objc = []
-   defines = []
+diff --git a/rtc_base/network_constants.h b/rtc_base/network_constants.h
+index 0b7ae9d567..8df31b683b 100644
+--- a/rtc_base/network_constants.h
++++ b/rtc_base/network_constants.h
+@@ -40,7 +40,7 @@ constexpr uint16_t kNetworkCostVpn = 1;
  
--  # We should be able to remove this after c++20 is enabled
--  # across the Mozilla tree.
--  if (build_with_mozilla) {
--    if (is_win) {
--      cflags_cc += [ "-std:c++20" ]
--    } else {
--      cflags_cc += [ "-std=gnu++20" ]
--    }
--  }
--
-   if (rtc_enable_protobuf) {
-     defines += [ "WEBRTC_ENABLE_PROTOBUF=1" ]
-   } else {
-@@ -431,7 +421,7 @@ config("common_config") {
-         # "-Wnested-externs",  (C/Obj-C only)
-       ]
-       cflags_objc += [ "-Wstrict-prototypes" ]
--      cflags_cc += [
-+      cflags_cc = [
-         "-Wnon-virtual-dtor",
+ // Add -2 to the network cost when using network slicing so that e.g. premium 5G
+ // slice is preferred over regular 5G, everything else being equal.
+-constexpr uint16_t kNetworkCostSlice = -2;
++constexpr int16_t kNetworkCostSlice = -2;
  
-         # This is enabled for clang; enable for gcc as well.
+ // Aliases for correct wrap-around with network slice cost.
+ constexpr uint16_t kNetworkCostCellular5GSlice =  // 248

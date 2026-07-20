@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -37,6 +35,23 @@ inline double NumberMod(double a, double b) {
   if (b == 0) {
     return JS::GenericNaN();
   }
+
+  // Fast path: both operands are integer-valued and fit in Int32.
+  int32_t ai, bi;
+  if (mozilla::NumberEqualsInt32(a, &ai) &&
+      mozilla::NumberEqualsInt32(b, &bi)) {
+    // N % -1 == 0
+    if (bi != -1) {
+      int32_t m = ai % bi;
+      if (m != 0) {
+        return double(m);
+      }
+    }
+
+    // Zero remainder takes the sign of a
+    return mozilla::IsNegative(a) ? -0.0 : 0.0;
+  }
+
   double r = fmod(a, b);
 #if defined(XP_WIN)
   // Some versions of Windows (Win 10 v1803, v1809) miscompute the sign of zero

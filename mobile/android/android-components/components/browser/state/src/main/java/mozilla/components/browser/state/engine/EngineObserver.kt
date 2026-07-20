@@ -5,7 +5,6 @@
 package mozilla.components.browser.state.engine
 
 import android.content.Intent
-import android.os.Environment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.BrowserAction
@@ -241,7 +240,6 @@ internal class EngineObserver(
             0,
             INITIATED,
             userAgent,
-            Environment.DIRECTORY_DOWNLOADS,
             private = isPrivate,
             skipConfirmation = skipConfirmation,
             openInApp = openInApp,
@@ -370,6 +368,10 @@ internal class EngineObserver(
 
     override fun onMediaMetadataChanged(metadata: MediaSession.Metadata) {
         dispatchAsync(MediaSessionAction.UpdateMediaMetadataAction(tabId, metadata))
+    }
+
+    override fun onMediaAudioSessionTypeChanged(type: MediaSession.AudioSessionType) {
+        dispatchAsync(MediaSessionAction.UpdateMediaAudioSessionTypeAction(tabId, type))
     }
 
     override fun onMediaPlaybackStateChanged(playbackState: MediaSession.PlaybackState) {

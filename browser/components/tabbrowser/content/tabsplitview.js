@@ -39,6 +39,12 @@
     /** @type {MozTabbrowserTab[]} */
     #tabs = [];
 
+    #isClosing = false;
+
+    #isUnsplitting = false;
+
+    #shouldMoveAllTabsAtOnce = true;
+
     #storedPanelWidths = new WeakMap();
 
     /**
@@ -46,6 +52,10 @@
      */
     get hasActiveTab() {
       return this.hasAttribute("hasactivetab");
+    }
+
+    get shouldMoveAllTabsAtOnce() {
+      return this.#shouldMoveAllTabsAtOnce;
     }
 
     /**
@@ -101,7 +111,7 @@
     connectedCallback() {
       // Set up TabSelect listener, as this gets
       // removed in disconnectedCallback
-      this.ownerGlobal.addEventListener("TabSelect", this);
+      this.documentGlobal.addEventListener("TabSelect", this);
 
       this.#observeTabChanges();
       this.#restorePanelWidths();
@@ -128,7 +138,7 @@
 
     disconnectedCallback() {
       this.#tabChangeObserver?.disconnect();
-      this.ownerGlobal.removeEventListener("TabSelect", this);
+      this.documentGlobal.removeEventListener("TabSelect", this);
       this.#deactivate();
       this.#resetPanelWidths();
       this.container.dispatchEvent(
@@ -141,7 +151,7 @@
 
     #observeTabChanges() {
       if (!this.#tabChangeObserver) {
-        this.#tabChangeObserver = new window.MutationObserver(() => {
+        this.#tabChangeObserver = new window.MutationObserver(mutations => {
           if (this.tabs.length) {
             this.hasActiveTab = this.tabs.some(tab => tab.selected);
             this.tabs.forEach((tab, index) => {
@@ -160,8 +170,14 @@
             this.remove();
           }
 
-          if (this.tabs.length < 2) {
-            this.unsplitTabs();
+          if (
+            this.tabs.length == 1 &&
+            mutations.length &&
+            mutations[0].removedNodes.length == 1
+          ) {
+            // We assume you end up with only one tab in a splitview when the other tab is closed,
+            // in which case, move the remaining tab out via this.unsplitTabs.
+            this.unsplitTabs("tab_close");
           }
         });
       }
@@ -212,11 +228,9 @@
     /**
      * Show all Split View tabs in the content area.
      */
-    #activate(skipShowPanels = false) {
+    #activate() {
       updateUrlbarButton.arm();
-      if (!skipShowPanels) {
-        gBrowser.showSplitViewPanels(this.#tabs);
-      }
+      gBrowser.showSplitViewPanels(this.#tabs);
       this.container.dispatchEvent(
         new CustomEvent("TabSplitViewActivate", {
           detail: { tabs: this.#tabs, splitview: this },
@@ -226,12 +240,32 @@
     }
 
     /**
-     * Remove Split View tabs from the content area.
+     * Remove Split View tabs from the content area, which in turn resets
+     * various attributes on tabpanels.
      */
-    #deactivate(skipHidePanels = false) {
-      if (!skipHidePanels) {
-        gBrowser.hideSplitViewPanels(this.#tabs);
-      }
+    #deactivate() {
+      gBrowser.tabpanels.removeTabsFromSplitview(
+        this.#tabs.filter(tab => !tab.splitview || tab.splitview === this)
+      );
+      updateUrlbarButton.arm();
+      this.container.dispatchEvent(
+        new CustomEvent("TabSplitViewDeactivate", {
+          detail: { tabs: this.#tabs, splitview: this },
+          bubbles: true,
+        })
+      );
+    }
+
+    /**
+     * Temporarily hide Split View panels when switching to a non-split-view tab,
+     * preserving split-view panel attributes so panels re-enter the flex layout at
+     * their correct size on reactivation, avoiding content reflow inside split-view
+     * browser elements.
+     */
+    #suspend() {
+      gBrowser.tabpanels.suspendSplitViewPanels(
+        this.#tabs.filter(tab => !tab.splitview || tab.splitview === this)
+      );
       updateUrlbarButton.arm();
       this.container.dispatchEvent(
         new CustomEvent("TabSplitViewDeactivate", {
@@ -294,7 +328,7 @@
           return;
         }
         let tabToMove =
-          this.ownerGlobal === tab.ownerGlobal
+          this.documentGlobal === tab.documentGlobal
             ? tab
             : gBrowser.adoptTab(tab, {
                 tabIndex: gBrowser.tabs.at(-1)._tPos + 1,
@@ -313,9 +347,8 @@
         }
       }
 
-      if (this.hasActiveTab || isSessionRestore) {
+      if (this.hasActiveTab) {
         this.#activate();
-        gBrowser.setIsSplitViewActive(this.hasActiveTab, this.#tabs);
       }
       // Attempt to update uriCount metric using the resulting tabs collection,
       // as tabs may not be added to the splitview if they are pinned etc.
@@ -331,11 +364,47 @@
     }
 
     /**
-     * Remove all tabs from the split view wrapper and delete the split view.
+     * Close about:openTabs and move all tabs out of the split view wrapper;
+     * splitview removal is handled by #observeTabChanges.
+     *
+     * @param {string} [trigger]
+     *   The trigger method for ending the split view. Used for telemetry.
+     *   Valid values: "menu_separate", "icon_separate", "icon_close", "tab_close", "footer_separate".
      */
-    unsplitTabs() {
-      gBrowser.unsplitTabs(this);
-      gBrowser.setIsSplitViewActive(false, this.#tabs);
+    unsplitTabs(trigger = null) {
+      if (this.#isUnsplitting) {
+        return;
+      }
+      this.#isUnsplitting = true;
+      let telemetryTrigger = this.#isClosing ? null : trigger;
+      // Record telemetry for split view end
+      if (telemetryTrigger) {
+        const tab_layout = gBrowser.tabContainer.verticalMode
+          ? "vertical"
+          : "horizontal";
+
+        Glean.splitview.end.record({
+          tab_layout,
+          trigger: telemetryTrigger,
+        });
+      }
+
+      // If the split view has about:opentabs open, remove that tab
+      let aboutOpenTabs = this.#tabs.filter(
+        tab => tab?.linkedBrowser?.currentURI?.spec === "about:opentabs"
+      );
+      aboutOpenTabs.forEach(aboutOpenTab => {
+        gBrowser.removeTab(aboutOpenTab);
+      });
+
+      for (let i = this.tabs.length - 1; i >= 0; i--) {
+        gBrowser.handleTabMove(this.tabs[i], () =>
+          gBrowser.tabContainer.insertBefore(
+            this.tabs[i],
+            this.nextElementSibling
+          )
+        );
+      }
     }
 
     /**
@@ -343,41 +412,60 @@
      */
     replaceTab(tabToReplace, newTab) {
       let indexOfReplacedTab = this.tabs.indexOf(tabToReplace);
-      this.addTabs([newTab], { isSessionRestore: false, indexOfReplacedTab });
-
-      // Get the adopted tab reference from the split view's internal tabs array.
-      // If the tab was adopted from another window, the original newTab reference
-      // is stale and points to the tab in the old window.
-      let adoptedTab = this.#tabs[indexOfReplacedTab];
 
       // Select the adopted tab BEFORE removing the old one to prevent Firefox
       // from auto-selecting the wrong tab when the old selected tab is removed.
       if (tabToReplace.selected) {
-        gBrowser.selectedTab = adoptedTab;
+        gBrowser.selectedTab = newTab;
       }
-
       gBrowser.removeTab(tabToReplace);
+      this.addTabs([newTab], { isSessionRestore: false, indexOfReplacedTab });
 
       // We need to re-activate after removing one of the split view tabs
       this.#activate();
-      gBrowser.setIsSplitViewActive(true, this.#tabs);
     }
 
     /**
      * Reverse order of the tabs in the split view wrapper.
+     *
+     * @param {string} [trigger]
+     *   The trigger method for reversing tabs. Used for telemetry.
      */
-    reverseTabs() {
+    reverseTabs(trigger = null) {
       const [firstTab, secondTab] = this.#tabs;
+      this.#shouldMoveAllTabsAtOnce = false;
       gBrowser.moveTabBefore(secondTab, firstTab);
+      this.#shouldMoveAllTabsAtOnce = true;
       this.#tabs = [secondTab, firstTab];
-      gBrowser.showSplitViewPanels(this.#tabs);
-      updateUrlbarButton.arm();
+      if (this.hasActiveTab) {
+        gBrowser.showSplitViewPanels(this.#tabs);
+        updateUrlbarButton.arm();
+      }
+
+      // Record telemetry
+      if (trigger) {
+        Glean.splitview.reverse.record({ trigger });
+      }
     }
 
     /**
      * Close all tabs in the split view wrapper and delete the split view.
+     *
+     * @param {string} [trigger]
+     *   The trigger method for ending the split view. Used for telemetry.
      */
-    close() {
+    close(trigger = null) {
+      // Record telemetry before closing
+      if (trigger) {
+        const tab_layout = gBrowser.tabContainer.verticalMode
+          ? "vertical"
+          : "horizontal";
+        Glean.splitview.end.record({
+          tab_layout,
+          trigger,
+        });
+      }
+      this.#isClosing = true;
       gBrowser.removeTabs(this.#tabs);
     }
 
@@ -385,12 +473,17 @@
      * @param {CustomEvent} event
      */
     on_TabSelect(event) {
+      const wasActive = this.hasActiveTab;
       this.hasActiveTab = event.target.splitview === this;
-      gBrowser.setIsSplitViewActive(this.hasActiveTab, this.#tabs);
       if (this.hasActiveTab) {
         this.#activate();
-      } else {
-        this.#deactivate(true);
+        // This check ensures we don't call suspend for every tab selection
+        // or for a selected tab in a splitview that is being dragged to another window,
+        // as this event fires as part of updateCurrentBrowser; we
+        // utilize this temporary property - removedByAdoption -
+        // that is added in adoptSplitView.
+      } else if (wasActive && !event.detail.previousTab?.removedByAdoption) {
+        this.#suspend();
       }
     }
   }

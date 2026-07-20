@@ -8,12 +8,13 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = XPCOMUtils.declareLazy({
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
   UrlbarUtils: "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs",
 });
 
 /**
  * @import {LegacySearchOneOffButton} from "moz-src:///browser/components/search/SearchOneOffs.sys.mjs"
- * @import {UrlbarView} from "moz-src:///browser/components/urlbar/UrlbarView.sys.mjs"
+ * @import {UrlbarView} from "chrome://browser/content/urlbar/UrlbarView.mjs"
  */
 
 /**
@@ -27,7 +28,7 @@ export class UrlbarSearchOneOffs extends SearchOneOffs {
    *   The parent UrlbarView.
    */
   constructor(view) {
-    super(view.panel.querySelector(".search-one-offs"));
+    super(view.input.querySelector(".search-one-offs"));
     this.view = view;
     this.input = view.input;
     lazy.UrlbarPrefs.addObserver(this);
@@ -195,7 +196,7 @@ export class UrlbarSearchOneOffs extends SearchOneOffs {
     let startQueryParams = {
       allowAutofill:
         !searchMode.engineName &&
-        searchMode.source != lazy.UrlbarUtils.RESULT_SOURCE.SEARCH,
+        searchMode.source != lazy.UrlbarShared.RESULT_SOURCE.SEARCH,
       event,
     };
 
@@ -245,7 +246,7 @@ export class UrlbarSearchOneOffs extends SearchOneOffs {
         }
         if (!params?.inBackground) {
           this.input.window.gBrowser.selectedTab = newTab;
-          newTab.ownerGlobal.gURLBar.startQuery(startQueryParams);
+          newTab.documentGlobal.gURLBar.startQuery(startQueryParams);
         }
         break;
       }

@@ -1,5 +1,4 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -202,7 +201,8 @@ document.addEventListener(
         #identity-permission-box,
         #translations-button,
         #split-view-button,
-        #smartwindow-ask-button
+        #smartwindow-ask-button,
+        #smartwindow-group-tabs-button
         `);
       if (!element) {
         return;
@@ -303,13 +303,21 @@ document.addEventListener(
           }
           break;
 
+        case "smartwindow-group-tabs-button":
+          if (isLeftClick) {
+            AIWindowUI.toggleGroupTabsPanel(window);
+          }
+          break;
+
         default:
           throw new Error(`Missing case for #${element.id}`);
       }
     }
     navigatorToolbox.addEventListener("click", onClick);
     widgetOverflow.addEventListener("click", onClick);
-    document.getElementById("sidebar-main").addEventListener("click", onClick);
+    document
+      .getElementById("sidebar-container")
+      .addEventListener("click", onClick);
 
     function onKeyPress(event) {
       const isLikeLeftClick = event.key === "Enter" || event.key === " ";
@@ -322,6 +330,7 @@ document.addEventListener(
         #personal-toolbar-empty-description,
         #home-button,
         #tracking-protection-icon-container,
+        #trust-icon-container,
         #identity-icon-box,
         #identity-permission-box,
         #translations-button,
@@ -331,8 +340,10 @@ document.addEventListener(
         #fxa-toolbar-menu-button,
         #unified-extensions-button,
         #library-button,
+        #ipprotection-button,
         #split-view-button,
-        #smartwindow-ask-button
+        #smartwindow-ask-button,
+        #smartwindow-group-tabs-button
       `);
       if (!element) {
         return;
@@ -382,6 +393,10 @@ document.addEventListener(
           gProtectionsHandler.handleProtectionsButtonEvent(event);
           break;
 
+        case "trust-icon-container":
+          gTrustPanelHandler.handleProtectionsButtonEvent(event);
+          break;
+
         case "identity-icon-box":
           gIdentityHandler.handleIdentityButtonEvent(event);
           break;
@@ -418,6 +433,10 @@ document.addEventListener(
           PanelUI.showSubView("appMenu-libraryView", element, event);
           break;
 
+        case "ipprotection-button":
+          PanelUI.showSubView("PanelUI-ipprotection", element, event);
+          break;
+
         case "split-view-button":
           if (isLikeLeftClick) {
             gBrowser.openSplitViewMenu(element);
@@ -427,6 +446,12 @@ document.addEventListener(
         case "smartwindow-ask-button":
           if (isLikeLeftClick) {
             AIWindowUI.toggleSidebar(window);
+          }
+          break;
+
+        case "smartwindow-group-tabs-button":
+          if (isLikeLeftClick) {
+            AIWindowUI.toggleGroupTabsPanel(window);
           }
           break;
 

@@ -1,13 +1,13 @@
-/* -*- Mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2; -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "AndroidAlerts.h"
+
 #include "mozilla/dom/notification/NotificationHandler.h"
 #include "mozilla/java/GeckoRuntimeWrappers.h"
-#include "mozilla/java/WebNotificationWrappers.h"
 #include "mozilla/java/WebNotificationActionWrappers.h"
+#include "mozilla/java/WebNotificationWrappers.h"
 #include "nsContentUtils.h"
 #include "nsIPrincipal.h"
 #include "nsIScriptSecurityManager.h"
@@ -185,6 +185,11 @@ NS_IMETHODIMP AndroidAlerts::Teardown() {
 }
 
 NS_IMETHODIMP AndroidAlerts::PbmTeardown() { return NS_ERROR_NOT_IMPLEMENTED; }
+
+NS_IMETHODIMP AndroidAlerts::IsFullscreen(bool* aRetVal) {
+  *aRetVal = false;
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
 
 nsresult RespondViaNotificationHandler(const nsAString& aName,
                                        const nsACString& aTopic,

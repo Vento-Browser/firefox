@@ -574,24 +574,53 @@ add_task(async function tabNotesTests() {
 
   info("validate the presentation of an eligible tab with no note");
   await openTabPreview(tab);
-  Assert.equal(
-    previewPanel.querySelector(".tab-preview-note-text").innerText,
-    "",
-    "Preview panel contains no tab note"
-  );
   let addNoteButton = previewPanel.querySelector(".tab-preview-add-note");
-  Assert.ok(
-    !addNoteButton.hasAttribute("hidden"),
-    "add note button should be visible on an eligible tab without a tab note"
+  Assert.ok(addNoteButton, "add note button exists in the DOM");
+
+  info(
+    "validate that hovering over the add note button does not hide the preview panel"
   );
+  EventUtils.synthesizeMouseAtCenter(
+    addNoteButton,
+    { type: "mouseover" },
+    window
+  );
+
+  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  Assert.ok(
+    previewPanel.hasAttribute("panelopen"),
+    "Preview panel is still open"
+  );
+
+  info(
+    "validate that hovering over the panel outside of the add note button hides the panel"
+  );
+  let previewHidden = BrowserTestUtils.waitForPopupEvent(
+    previewPanel,
+    "hidden"
+  );
+  let nonhoverableArea = document.querySelector(".tab-preview-content-main");
+  EventUtils.synthesizeMouseAtCenter(
+    nonhoverableArea,
+    {
+      type: "mouseover",
+    },
+    window
+  );
+  await previewHidden;
+  Assert.ok(
+    !previewPanel.hasAttribute("panelopen"),
+    "Preview panel was hidden"
+  );
+
+  await openTabPreview(tab);
 
   info("choose to add a note from the tab hover preview panel");
   let tabNotePanel = document.getElementById("tabNotePanel");
   let panelShown = BrowserTestUtils.waitForPopupEvent(tabNotePanel, "shown");
-  const previewHidden = BrowserTestUtils.waitForPopupEvent(
-    previewPanel,
-    "hidden"
-  );
+  previewHidden = BrowserTestUtils.waitForPopupEvent(previewPanel, "hidden");
   addNoteButton.click();
   await Promise.all([panelShown, previewHidden]);
 
@@ -609,7 +638,7 @@ add_task(async function tabNotesTests() {
   tabNotePanel.querySelector("#tab-note-editor-button-save").click();
   await Promise.all([menuHidden, tabNoteCreated]);
 
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => Glean.tabNotes.added.testGetValue()?.length,
     "wait for event to be recorded"
   );
@@ -617,8 +646,11 @@ add_task(async function tabNotesTests() {
   const [addedEvent] = Glean.tabNotes.added.testGetValue();
   Assert.deepEqual(
     addedEvent.extra,
-    { source: "hover_menu" },
-    "added event extra data should say the tab note was added from the tab hover preview menu"
+    {
+      source: "hover_menu",
+      note_length: noteText.length,
+    },
+    "added event extra data should include length and say the tab note was added from the tab hover preview menu"
   );
 
   await closeTabPreviews();
@@ -626,67 +658,8 @@ add_task(async function tabNotesTests() {
   info("validate the presentation of an eligible tab with a tab note");
   await openTabPreview(tab);
 
-  Assert.equal(
-    previewPanel.querySelector(".tab-preview-note-text").innerText,
-    noteText,
-    "New tab note is visible in preview panel"
-  );
   addNoteButton = previewPanel.querySelector(".tab-preview-add-note");
-  Assert.ok(
-    addNoteButton.hasAttribute("hidden"),
-    "add note button should be hidden on an eligible tab with a tab note"
-  );
-  await closeTabPreviews();
-
-  info(
-    "test that notes beyond a specified length trigger truncation and a 'read more' button"
-  );
-  Assert.ok(
-    !previewPanel.hasAttribute("note-overflow"),
-    "Sanity check: panel does not have note-overflow attribute"
-  );
-  Assert.ok(
-    !previewPanel.hasAttribute("note-expanded"),
-    "Sanity check: panel does not have note-expanded attribute"
-  );
-
-  const tabNoteEdited = BrowserTestUtils.waitForEvent(tab, "TabNote:Edited");
-  TabNotes.set(tab, "x".repeat(999));
-  await tabNoteEdited;
-
-  await openTabPreview(tab);
-
-  Assert.ok(
-    previewPanel.hasAttribute("note-overflow"),
-    "Panel has note-overflow attribute when note is too long to display in non-expanded mode"
-  );
-  Assert.ok(
-    !previewPanel.hasAttribute("note-expanded"),
-    "Sanity check: panel does not have note-expanded attribute"
-  );
-
-  previewPanel.querySelector(".tab-preview-note-expand").click();
-
-  await BrowserTestUtils.waitForCondition(() => {
-    return previewPanel.hasAttribute("note-expanded");
-  }, "Waiting for note-expanded attribute to be set");
-  Assert.ok(
-    previewPanel.hasAttribute("note-expanded"),
-    "Panel has been expanded"
-  );
-
-  await BrowserTestUtils.waitForCondition(
-    () => Glean.tabNotes.expanded.testGetValue()?.length,
-    "wait for event to be recorded"
-  );
-
-  const [expandedEvent] = Glean.tabNotes.expanded.testGetValue();
-  Assert.deepEqual(
-    expandedEvent.extra,
-    { note_length: "999" },
-    "expanded event extra data should say the tab note text is 999 characters long"
-  );
-
+  Assert.ok(!addNoteButton, "add note button does not exist in the DOM");
   await closeTabPreviews();
 
   info(
@@ -700,11 +673,6 @@ add_task(async function tabNotesTests() {
     "validate the presentation of an eligible tab after its note has been deleted"
   );
   await openTabPreview(tab);
-  Assert.equal(
-    previewPanel.querySelector(".tab-preview-note-text").innerText,
-    "",
-    "Preview panel contains no tab note after delete"
-  );
   addNoteButton = previewPanel.querySelector(".tab-preview-add-note");
   Assert.ok(
     !addNoteButton.hasAttribute("hidden"),
@@ -715,6 +683,101 @@ add_task(async function tabNotesTests() {
   BrowserTestUtils.removeTab(tab);
   await resetState();
   await TabNotes.reset();
+});
+
+/**
+ * Test that the "New" badge in the hover preview panel is displayed when
+ * browser.tabs.notes.newBadge.enabled is true.
+ */
+add_task(async function tabNotesNewBadgeVisibilityTests() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.tabs.notes.enabled", true]],
+  });
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.tabs.notes.newBadge.enabled", true]],
+  });
+
+  const previewPanel = document.getElementById(TAB_PREVIEW_PANEL_ID);
+  const tab = await addTabTo(gBrowser, "https://example.com/");
+
+  await openTabPreview(tab);
+  const badge = previewPanel.querySelector(".tab-preview-add-note moz-badge");
+  Assert.ok(
+    !badge.hasAttribute("hidden"),
+    "badge is visible when newBadge pref is true"
+  );
+  await closeTabPreviews();
+  await SpecialPowers.popPrefEnv();
+
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.tabs.notes.newBadge.enabled", false]],
+  });
+  await openTabPreview(tab);
+  Assert.ok(
+    badge.hasAttribute("hidden"),
+    "badge is hidden when newBadge pref is false"
+  );
+  await closeTabPreviews();
+
+  await SpecialPowers.popPrefEnv();
+  await SpecialPowers.popPrefEnv();
+  BrowserTestUtils.removeTab(tab);
+  await resetState();
+});
+
+/**
+ * Test that clicking "Add Note" in the hover preview panel sets the
+ * browser.tabs.notes.newBadge.enabled pref to false, and that the badge
+ * is hidden on the next hover
+ */
+add_task(async function tabNotesNewBadgeDismissedByPreviewPanelTests() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.tabs.notes.enabled", true],
+      ["browser.tabs.notes.newBadge.enabled", true],
+    ],
+  });
+
+  const previewPanel = document.getElementById(TAB_PREVIEW_PANEL_ID);
+
+  const tab = await addTabTo(gBrowser, "https://example.com/");
+
+  await openTabPreview(tab);
+
+  const addNoteButton = previewPanel.querySelector(".tab-preview-add-note");
+  const tabNotePanel = document.getElementById("tabNotePanel");
+  const panelShown = BrowserTestUtils.waitForPopupEvent(tabNotePanel, "shown");
+  const previewHidden = BrowserTestUtils.waitForPopupEvent(
+    previewPanel,
+    "hidden"
+  );
+  addNoteButton.click();
+  await Promise.all([panelShown, previewHidden]);
+
+  Assert.ok(
+    !Services.prefs.getBoolPref("browser.tabs.notes.newBadge.enabled"),
+    "pref is set to false after clicking Add Note in the preview panel"
+  );
+
+  const panelHidden = BrowserTestUtils.waitForPopupEvent(
+    tabNotePanel,
+    "hidden"
+  );
+  tabNotePanel.hidePopup();
+  await panelHidden;
+  await closeTabPreviews();
+
+  await openTabPreview(tab);
+  const badge = previewPanel.querySelector(".tab-preview-add-note moz-badge");
+  Assert.ok(
+    badge.hasAttribute("hidden"),
+    "badge is hidden on subsequent hover after dismissal"
+  );
+  await closeTabPreviews();
+
+  BrowserTestUtils.removeTab(tab);
+  await resetState();
+  await SpecialPowers.popPrefEnv();
 });
 
 /*
@@ -821,7 +884,7 @@ add_task(async function tabGroupPanelDoesNotAppearForExpandedTabGroups() {
     { type: "mouseover" },
     window
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return previewPanelComponent.activate.calledOnce;
   }, "Waiting for activate to be called");
 
@@ -914,7 +977,7 @@ add_task(async function moveBetweenTabGroupsTests() {
   const group1 = gBrowser.addTabGroup([tab1]);
   group1.collapsed = true;
 
-  const tab2 = await addTabTo(gBrowser, "about:logo");
+  const tab2 = await addTabTo(gBrowser, "about:blank");
   const group2 = gBrowser.addTabGroup([tab2]);
   group2.collapsed = true;
 
@@ -923,7 +986,7 @@ add_task(async function moveBetweenTabGroupsTests() {
   );
 
   await openGroupPreview(group1);
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => previewPanel.anchorNode.parentElement == group1,
     "Panel is anchored to group 1"
   );
@@ -934,7 +997,7 @@ add_task(async function moveBetweenTabGroupsTests() {
   );
 
   await openGroupPreview(group2);
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => previewPanel.anchorNode.parentElement == group2,
     "Panel is anchored to group 2"
   );
@@ -1138,7 +1201,7 @@ add_task(async function noPreviewInBackgroundWindowTests() {
     { type: "mouseover" },
     bgWindow
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return bgPreviewComponent.activate.calledOnce;
   }, "Waiting for activate to be called on bgPreviewComponent after hovering ungrouped tab");
   Assert.equal(
@@ -1159,7 +1222,7 @@ add_task(async function noPreviewInBackgroundWindowTests() {
     { type: "mouseover" },
     bgWindow
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return bgPreviewComponent.activate.calledOnce;
   }, "Waiting for activate to be called on bgPreviewComponent after hovering grouped tab label");
   Assert.equal(
@@ -1318,8 +1381,11 @@ add_task(async function testDragToCancelPreview() {
     "hidden"
   );
   dragend = BrowserTestUtils.waitForEvent(group.labelElement, "dragend");
+  const groupLabelRect = group.labelElement.getBoundingClientRect();
   EventUtils.synthesizePlainDragAndDrop({
     srcElement: group.labelElement,
+    srcX: Math.floor(groupLabelRect.width / 2),
+    srcY: Math.floor(groupLabelRect.height / 2),
     destElement: null,
     stepX: 10,
     stepY: 0,
@@ -1333,7 +1399,7 @@ add_task(async function testDragToCancelPreview() {
   );
 
   // TODO not sure why I need to explicitly wait for this, but the drag tests fail without it
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => !previewElement.getAttribute("animating")
   );
 
@@ -1453,7 +1519,7 @@ add_task(async function panelSuppressionOnPanelTests() {
     { type: "mouseover" },
     window
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return previewComponent.activate.calledOnce;
   });
   Assert.equal(previewComponent.tabPanel.panelElement.state, "closed", "");
@@ -1470,7 +1536,7 @@ add_task(async function panelSuppressionOnPanelTests() {
     { type: "mouseover" },
     window
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return previewComponent.activate.calledOnce;
   });
   Assert.equal(previewComponent.tabPanel.panelElement.state, "closed", "");
@@ -1533,7 +1599,7 @@ add_task(async function panelSuppressionOnContextMenuTests() {
     { type: "mouseover" },
     window
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return previewComponent.activate.called;
   });
   Assert.equal(previewComponent.tabPanel.panelElement.state, "closed", "");
@@ -1551,7 +1617,7 @@ add_task(async function panelSuppressionOnContextMenuTests() {
     { type: "mouseover" },
     window
   );
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     return previewComponent.activate.called;
   });
   Assert.equal(previewComponent.tabPanel.panelElement.state, "closed", "");
@@ -1591,7 +1657,7 @@ add_task(async function panelSuppressionOnPanelLazyLoadTests() {
 
   EventUtils.synthesizeMouseAtCenter(fgTab, { type: "mouseover" }, fgWindow);
 
-  await BrowserTestUtils.waitForCondition(() => {
+  await TestUtils.waitForCondition(() => {
     // Sometimes the tests run slower than the test browser -- it's not always possible
     // to catch the panel in its opening state, so we have to check for both states.
     return (
@@ -1669,7 +1735,7 @@ add_task(
     // Start the timer...
     EventUtils.synthesizeMouseAtCenter(tab, { type: "mouseover" });
 
-    await BrowserTestUtils.waitForCondition(
+    await TestUtils.waitForCondition(
       () => previewComponent.panelOpener.execute.calledOnce,
       "panelOpener execute called"
     );
@@ -1684,7 +1750,7 @@ add_task(
     await popupShownEvent;
 
     // Wait for timer to finish...
-    await BrowserTestUtils.waitForCondition(() => {
+    await TestUtils.waitForCondition(() => {
       return previewComponent.panelOpener._timer == null;
     }, "panelOpener timer finished");
     await TestUtils.waitForTick();
@@ -1886,11 +1952,11 @@ add_task(async function testTabGroupHoverPreviewTelemetry() {
 
   for (const tabGroup of tabGroups) {
     await openGroupPreview(tabGroup);
-    await BrowserTestUtils.waitForCondition(
+    await TestUtils.waitForCondition(
       () => previewPanel.anchorNode?.parentElement == tabGroup,
       "panel re-anchored to the next tab group"
     );
-    await BrowserTestUtils.waitForCondition(
+    await TestUtils.waitForCondition(
       () =>
         Glean.tabgroup.groupInteractions.hover_preview.testGetValue() ==
         interactionCount,

@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -48,7 +46,6 @@
 #include "vm/NativeObject.h"   // NativeDefineDataProperty
 #include "vm/PlainObject.h"    // NewPlainObjectWithProto
 #include "vm/Time.h"           // AutoIncrementalTimer
-#include "wasm/AsmJS.h"
 
 #include "vm/Compartment-inl.h"  // JS::Compartment::wrap
 #include "vm/GeckoProfiler-inl.h"
@@ -350,21 +347,6 @@ template <typename Unit>
 
   assertException.reset();
   return true;
-}
-
-template <typename Unit>
-static already_AddRefed<CompilationStencil>
-CompileGlobalScriptToStencilWithInputImpl(
-    JSContext* maybeCx, FrontendContext* fc, js::LifoAlloc& tempLifoAlloc,
-    CompilationInput& input, ScopeBindingCache* scopeCache,
-    JS::SourceText<Unit>& srcBuf, ScopeKind scopeKind) {
-  RefPtr<CompilationStencil> stencil;
-  if (!CompileGlobalScriptToStencilAndMaybeInstantiate(
-          maybeCx, fc, tempLifoAlloc, input, scopeCache, srcBuf, scopeKind,
-          NoExtraBindings, getter_AddRefs(stencil), NoGCOutput)) {
-    return nullptr;
-  }
-  return stencil.forget();
 }
 
 already_AddRefed<CompilationStencil>
@@ -868,7 +850,6 @@ void SourceAwareCompiler<Unit>::handleParseFailure(
 
   // Assignment must be monotonic to prevent reparsing iloops
   MOZ_ASSERT_IF(compilationState_.directives.strict(), newDirectives.strict());
-  MOZ_ASSERT_IF(compilationState_.directives.asmJS(), newDirectives.asmJS());
   compilationState_.directives = newDirectives;
 }
 
@@ -880,8 +861,8 @@ static bool UsesExtraBindings(GlobalSharedContext* globalsc,
       continue;
     }
 
-    for (auto r = usedNameMap.all(); !r.empty(); r.popFront()) {
-      const auto& item = r.front();
+    for (auto iter = usedNameMap.iter(); !iter.done(); iter.next()) {
+      const auto& item = iter.get();
       const auto& name = item.key();
       if (bindingInfo.nameIndex != name) {
         continue;
@@ -1112,37 +1093,29 @@ bool StandaloneFunctionCompiler<Unit>::compile(
 
   FunctionBox* funbox = parsedFunction->funbox();
 
-  if (funbox->isInterpreted()) {
-    Maybe<BytecodeEmitter> emitter;
-    if (!emplaceEmitter(emitter, funbox)) {
-      return false;
-    }
-
-    if (!emitter->emitFunctionScript(parsedFunction)) {
-      return false;
-    }
-
-    // The parser extent has stripped off the leading `function...` but
-    // we want the SourceExtent used in the final standalone script to
-    // start from the beginning of the buffer, and use the provided
-    // line and column.
-    const auto& options = compilationState_.input.options;
-    compilationState_.scriptExtra[CompilationStencil::TopLevelIndex].extent =
-        SourceExtent{/* sourceStart = */ 0,
-                     sourceBuffer_.length(),
-                     funbox->extent().toStringStart,
-                     funbox->extent().toStringEnd,
-                     options.lineno,
-                     JS::LimitedColumnNumberOneOrigin::fromUnlimited(
-                         JS::ColumnNumberOneOrigin(options.column))};
-  } else {
-    // The asm.js module was created by parser. Instantiation below will
-    // allocate the JSFunction that wraps it.
-    MOZ_ASSERT(funbox->isAsmJSModule());
-    MOZ_ASSERT(compilationState_.asmJS->moduleMap.has(funbox->index()));
-    MOZ_ASSERT(compilationState_.scriptData[CompilationStencil::TopLevelIndex]
-                   .functionFlags.isAsmJSNative());
+  MOZ_ASSERT(funbox->isInterpreted());
+  Maybe<BytecodeEmitter> emitter;
+  if (!emplaceEmitter(emitter, funbox)) {
+    return false;
   }
+
+  if (!emitter->emitFunctionScript(parsedFunction)) {
+    return false;
+  }
+
+  // The parser extent has stripped off the leading `function...` but
+  // we want the SourceExtent used in the final standalone script to
+  // start from the beginning of the buffer, and use the provided
+  // line and column.
+  const auto& options = compilationState_.input.options;
+  compilationState_.scriptExtra[CompilationStencil::TopLevelIndex].extent =
+      SourceExtent{/* sourceStart = */ 0,
+                   sourceBuffer_.length(),
+                   funbox->extent().toStringStart,
+                   funbox->extent().toStringEnd,
+                   options.lineno,
+                   JS::LimitedColumnNumberOneOrigin::fromUnlimited(
+                       JS::ColumnNumberOneOrigin(options.column))};
 
   return true;
 }
@@ -1337,6 +1310,10 @@ ModuleObject* frontend::CompileModule(JSContext* cx, FrontendContext* fc,
 
 static bool InstantiateLazyFunction(JSContext* cx, CompilationInput& input,
                                     const CompilationStencil& stencil) {
+  MOZ_ASSERT(
+      input.options.eagerBaselineStrategy() == JS::EagerBaselineOption::None,
+      "No current support for eager baseline during delazifications.");
+
   mozilla::DebugOnly<uint32_t> lazyFlags =
       static_cast<uint32_t>(input.immutableFlags());
 
@@ -1723,17 +1700,15 @@ static JSFunction* CompileStandaloneFunction(
 
     fun = gcOutput.get().getFunctionNoBaseIndex(
         CompilationStencil::TopLevelIndex);
-    MOZ_ASSERT(fun->hasBytecode() || IsAsmJSModule(fun));
+    MOZ_ASSERT(fun->hasBytecode());
 
     // Enqueue an off-thread source compression task after finishing parsing.
     if (!source->tryCompressOffThread(cx)) {
       return nullptr;
     }
 
-    // Note: If AsmJS successfully compiles, the into.script will still be
-    // nullptr. In this case we have compiled to a native function instead of an
-    // interpreted script.
-    if (gcOutput.get().script) {
+    MOZ_ASSERT(gcOutput.get().script);
+    {
       if (parameterListEnd) {
         source->setParameterListEnd(*parameterListEnd);
       }

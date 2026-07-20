@@ -1,25 +1,26 @@
-/* -*- Mode: C; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/TextUtils.h"
 #include "mozTXTToHTMLConv.h"
-#include "mozilla/intl/Segmenter.h"
-#include "mozilla/Maybe.h"
-#include "nsIThreadRetargetableStreamListener.h"
-#include "nsNetUtil.h"
-#include "nsUnicharUtils.h"
-#include "nsUnicodeProperties.h"
-#include "nsCRT.h"
-#include "nsIExternalProtocolHandler.h"
-#include "nsIURI.h"
 
 #include <algorithm>
 
+#include "mozilla/Maybe.h"
+#include "mozilla/TextUtils.h"
+#include "mozilla/Utf16.h"
+#include "mozilla/intl/Segmenter.h"
+#include "nsCRT.h"
+#include "nsIExternalProtocolHandler.h"
+#include "nsIThreadRetargetableStreamListener.h"
+#include "nsIURI.h"
+#include "nsNetUtil.h"
+#include "nsUnicharUtils.h"
+#include "nsUnicodeProperties.h"
+
 #ifdef DEBUG_BenB_Perf
-#  include "prtime.h"
 #  include "prinrval.h"
+#  include "prtime.h"
 #endif
 
 using mozilla::IsAscii;
@@ -39,6 +40,14 @@ const double growthRate = 1.2;
 // Also recognize the Japanese ideographic space 0x3000 as a space.
 static inline bool IsSpace(const char16_t aChar) {
   return (nsCRT::IsAsciiSpace(aChar) || aChar == 0xA0 || aChar == 0x3000);
+}
+
+// https://url.spec.whatwg.org/#url-rendering-i18n
+// https://www.unicode.org/reports/tr9/#Directional_Formatting_Characters
+static inline bool IsBidiFormattingChar(const char16_t aChar) {
+  return aChar == 0x061C || aChar == 0x200E || aChar == 0x200F ||
+         (aChar >= 0x202A && aChar <= 0x202E) ||
+         (aChar >= 0x2066 && aChar <= 0x2069);
 }
 
 // Escape Char will take ch, escape it and append the result to
@@ -249,7 +258,12 @@ bool mozTXTToHTMLConv::FindURLEnd(const char16_t* aInString,
     case RFC2396E: {
       nsDependentSubstring temp(aInString, aInStringLength);
 
-      int32_t i = temp.FindCharInSet(u"<>\"", pos + 1);
+      // Bidi chars are treated as unmatched delimiters here
+      int32_t i = temp.FindCharInSet(
+          u"<>\""
+          u"\u061C\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067"
+          u"\u2068\u2069",
+          pos + 1);
       if (i != kNotFound &&
           temp[uint32_t(i--)] ==
               (check == RFC1738 || temp[start - 1] == '<' ? '>' : '"')) {
@@ -274,7 +288,7 @@ bool mozTXTToHTMLConv::FindURLEnd(const char16_t* aInString,
             // Allow IPv6 adresses like http://[1080::8:800:200C:417A]/foo.
             (aInString[i] == '[' && i > 2 &&
              (aInString[i - 1] != '/' || aInString[i - 2] != '/')) ||
-            IsSpace(aInString[i])) {
+            IsSpace(aInString[i]) || IsBidiFormattingChar(aInString[i])) {
           break;
         }
         // Disallow non-ascii-characters for email.
@@ -557,8 +571,8 @@ bool mozTXTToHTMLConv::ItMatchesDelimited(const char16_t* aInString,
   }
 
   uint32_t text0 = aInString[0];
-  if (aInLength > 1 && NS_IS_SURROGATE_PAIR(text0, aInString[1])) {
-    text0 = SURROGATE_TO_UCS4(text0, aInString[1]);
+  if (aInLength > 1 && mozilla::IsSurrogatePair(text0, aInString[1])) {
+    text0 = mozilla::SurrogateToUCS4(text0, aInString[1]);
   }
   // find length of the char/cluster to be ignored
   int32_t ignoreLen = before == LT_IGNORE ? 0 : 1;
@@ -569,10 +583,14 @@ bool mozTXTToHTMLConv::ItMatchesDelimited(const char16_t* aInString,
   }
 
   int32_t afterIndex = aRepLen + ignoreLen;
-  uint32_t textAfterPos = aInString[afterIndex];
-  if (aInLength > afterIndex + 1 &&
-      NS_IS_SURROGATE_PAIR(textAfterPos, aInString[afterIndex + 1])) {
-    textAfterPos = SURROGATE_TO_UCS4(textAfterPos, aInString[afterIndex + 1]);
+  uint32_t textAfterPos = 0;
+  if (afterIndex < aInLength) {
+    textAfterPos = aInString[afterIndex];
+    if (aInLength > afterIndex + 1 &&
+        mozilla::IsSurrogatePair(textAfterPos, aInString[afterIndex + 1])) {
+      textAfterPos =
+          mozilla::SurrogateToUCS4(textAfterPos, aInString[afterIndex + 1]);
+    }
   }
 
   return !((before == LT_ALPHA && !IsAlpha(text0)) ||

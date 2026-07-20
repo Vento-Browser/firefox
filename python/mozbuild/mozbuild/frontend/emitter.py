@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import functools
 import logging
 import os
 import sys
@@ -14,9 +15,10 @@ import mozpack.path as mozpath
 import toml
 from mach.mixin.logging import LoggingMixin
 from mozpack.chrome.manifest import Manifest
+from mozshellutil import quote
 
 from mozbuild.base import ExecutionSummary
-from mozbuild.util import HierarchicalStringList, memoize
+from mozbuild.util import HierarchicalStringList
 
 from ..testing import REFTEST_FLAVORS, TEST_MANIFESTS, SupportFilesConverter
 from .context import Context, ObjDirPath, Path, SourcePath, SubContext
@@ -44,6 +46,7 @@ from .data import (
     InstallationTarget,
     IPDLCollection,
     JARManifest,
+    JsShellArchive,
     LegacyRunTests,
     Library,
     Linkable,
@@ -273,7 +276,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     contexts[os.path.normcase(lib.objdir)],
                 )
 
-        @memoize
+        @functools.cache
         def rust_libraries(obj):
             libs = []
             for o in obj.linked_libraries:
@@ -497,7 +500,7 @@ class TreeMetadataEmitter(LoggingMixin):
             self._static_linking_shared.add(obj)
         obj.link_library(candidates[0])
 
-    @memoize
+    @functools.cache
     def _get_external_library(self, dir, name, force_static):
         # Create ExternalStaticLibrary or ExternalSharedLibrary object with a
         # context more or less truthful about where the external library is.
@@ -1009,6 +1012,30 @@ class TreeMetadataEmitter(LoggingMixin):
                     )
                 seen[basename] = (src, symbol)
 
+        extra_link_deps = context.get("EXTRA_LINK_DEPS")
+        if extra_link_deps:
+            link_targets = [
+                l
+                for l in linkables
+                if isinstance(l, (Program, SimpleProgram, SharedLibrary))
+            ]
+            if not link_targets:
+                raise SandboxValidationError(
+                    "EXTRA_LINK_DEPS is set but no program or shared library "
+                    "is defined in this directory.",
+                    context,
+                )
+            for dep in extra_link_deps:
+                if isinstance(dep, SourcePath) and not os.path.exists(dep.full_path):
+                    raise SandboxValidationError(
+                        f"Path specified in EXTRA_LINK_DEPS does not exist: {dep} "
+                        f"(resolved to {dep.full_path})",
+                        context,
+                    )
+            deps = list(extra_link_deps)
+            for linkable in link_targets:
+                linkable.extra_link_deps = deps
+
         # Only emit sources if we have linkables defined in the same context.
         # Note the linkables are not emitted in this function, but much later,
         # after aggregation (because of e.g. USE_LIBS processing).
@@ -1458,6 +1485,21 @@ class TreeMetadataEmitter(LoggingMixin):
                 else:
                     processed_moz_src_files += [file]
 
+        if context.get("PP_FILES_EXTRA_DEPS") and not any(
+            context.get(v)
+            for v in (
+                "FINAL_TARGET_PP_FILES",
+                "OBJDIR_PP_FILES",
+                "LOCALIZED_PP_FILES",
+            )
+        ):
+            raise SandboxValidationError(
+                "PP_FILES_EXTRA_DEPS is set but no preprocessed files "
+                "(FINAL_TARGET_PP_FILES, OBJDIR_PP_FILES, LOCALIZED_PP_FILES, "
+                "or an EXTRA_PP_* variant) are defined in this directory.",
+                context,
+            )
+
         components = []
         for var, cls in (
             ("EXPORTS", Exports),
@@ -1526,12 +1568,16 @@ class TreeMetadataEmitter(LoggingMixin):
                                 context,
                             )
                     else:
+                        # The file is matched against GENERATED_FILES by its
+                        # source name, which is unaffected by a rename at install
+                        # time (a (source, target_basename) tuple).
+                        source_basename = mozpath.basename(f.full_path)
                         # TODO: Bug 1254682 - The '/' check is to allow
                         # installing files generated from other directories,
                         # which is done occasionally for tests. However, it
                         # means we don't fail early if the file isn't actually
                         # created by the other moz.build file.
-                        if f.target_basename not in generated_files and "/" not in f:
+                        if source_basename not in generated_files and "/" not in f:
                             raise SandboxValidationError(
                                 (
                                     "Objdir file listed in %s not in "
@@ -1544,7 +1590,7 @@ class TreeMetadataEmitter(LoggingMixin):
                         if var.startswith("LOCALIZED_"):
                             # Further require that LOCALIZED_FILES are from
                             # LOCALIZED_GENERATED_FILES.
-                            if f.target_basename not in localized_generated_files:
+                            if source_basename not in localized_generated_files:
                                 raise SandboxValidationError(
                                     (
                                         "Objdir file listed in %s not in "
@@ -1555,7 +1601,7 @@ class TreeMetadataEmitter(LoggingMixin):
                                 )
                         # Additionally, don't allow LOCALIZED_GENERATED_FILES to be used
                         # in anything *but* LOCALIZED_FILES.
-                        elif f.target_basename in localized_generated_files:
+                        elif source_basename in localized_generated_files:
                             raise SandboxValidationError(
                                 (
                                     "Outputs of LOCALIZED_GENERATED_FILES cannot "
@@ -1582,7 +1628,23 @@ class TreeMetadataEmitter(LoggingMixin):
                     context,
                 )
 
-            yield cls(context, all_files)
+            kwargs = {}
+            if cls in (
+                FinalTargetPreprocessedFiles,
+                LocalizedPreprocessedFiles,
+                ObjdirPreprocessedFiles,
+            ):
+                pp_extra_deps = context.get("PP_FILES_EXTRA_DEPS") or []
+                for d in pp_extra_deps:
+                    if isinstance(d, SourcePath) and not os.path.exists(d.full_path):
+                        raise SandboxValidationError(
+                            f"Path specified in PP_FILES_EXTRA_DEPS does not "
+                            f"exist: {d} (resolved to {d.full_path})",
+                            context,
+                        )
+                kwargs["extra_deps"] = list(pp_extra_deps)
+
+            yield cls(context, all_files, **kwargs)
 
         for c in components:
             if c.endswith(".manifest"):
@@ -1594,6 +1656,9 @@ class TreeMetadataEmitter(LoggingMixin):
 
         if run_tests := context.get("LEGACY_RUN_TESTS", []):
             yield LegacyRunTests(context, run_tests)
+
+        if jsshell_files := context.get("JS_SHELL_ARCHIVE_FILES", []):
+            yield JsShellArchive(context, jsshell_files)
 
         rust_tests = context.get("RUST_TESTS", [])
         if rust_tests:
@@ -1625,7 +1690,7 @@ class TreeMetadataEmitter(LoggingMixin):
         if context.get("USE_INTEGRATED_CLANGCL_AS") is True:
             if context.config.substs.get("CC_TYPE") != "clang-cl":
                 raise SandboxValidationError("clang-cl is not available", context)
-            passthru.variables["AS"] = context.config.substs.get("CC")
+            passthru.variables["AS"] = quote(*context.config.substs.get("CC"))
             passthru.variables["AS_DASH_C_FLAG"] = "-c"
             passthru.variables["ASOUTOPTION"] = "-o "
 
@@ -1754,6 +1819,16 @@ class TreeMetadataEmitter(LoggingMixin):
                         )
                     inputs.append(p)
 
+                extra_deps = []
+                for d in flags.extra_deps:
+                    p = Path(context, d)
+                    if isinstance(p, SourcePath) and not os.path.exists(p.full_path):
+                        raise SandboxValidationError(
+                            f"extra_dep for generating {f} does not exist: {p.full_path}",
+                            context,
+                        )
+                    extra_deps.append(p)
+
                 yield GeneratedFile(
                     context,
                     script,
@@ -1763,6 +1838,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     flags.flags,
                     localized=localized,
                     force=flags.force,
+                    extra_deps=extra_deps,
                 )
 
     def _process_test_manifests(self, context):

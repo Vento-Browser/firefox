@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,15 +5,17 @@
 #ifndef MOZILLA_GFX_RECT_H_
 #define MOZILLA_GFX_RECT_H_
 
-#include "BaseRect.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <iterator>
+
 #include "BaseMargin.h"
+#include "BaseRect.h"
 #include "NumericTools.h"
 #include "Point.h"
 #include "Tools.h"
 #include "mozilla/Maybe.h"
-
-#include <cmath>
-#include <cstdint>
 
 namespace mozilla {
 
@@ -61,7 +61,7 @@ struct MOZ_EMPTY_BASES IntMarginTyped
 typedef IntMarginTyped<UnknownUnits> IntMargin;
 
 template <class Units, class F = Float>
-struct MarginTyped
+struct MOZ_EMPTY_BASES MarginTyped
     : public BaseMargin<F, MarginTyped<Units, F>, CoordTyped<Units, F> >,
       public Units {
   static_assert(IsPixel<Units>::value,
@@ -172,6 +172,11 @@ struct MOZ_EMPTY_BASES IntRectTyped
   static IntRectTyped<Units> Truncate(const RectTyped<Units, float>& aRect) {
     return IntRectTyped::Truncate(aRect.X(), aRect.Y(), aRect.Width(),
                                   aRect.Height());
+  }
+
+  static IntRectTyped<Units> Truncate(const RectTyped<Units, double>& aRect) {
+    return IntRectTyped(int32_t(aRect.X()), int32_t(aRect.Y()),
+                        int32_t(aRect.Width()), int32_t(aRect.Height()));
   }
 
   // Rounding isn't meaningful on an integer rectangle.
@@ -343,10 +348,10 @@ IntRectTyped<Units> RoundedToInt(const RectTyped<Units>& aRect) {
                              int32_t(copy.Width()), int32_t(copy.Height()));
 }
 
-template <class Units>
-bool RectIsInt32Safe(const RectTyped<Units>& aRect) {
-  float min = (float)std::numeric_limits<std::int32_t>::min();
-  float max = (float)std::numeric_limits<std::int32_t>::max();
+template <class Units, class F>
+bool RectIsInt32Safe(const RectTyped<Units, F>& aRect) {
+  F min = (F)std::numeric_limits<int32_t>::min();
+  F max = (F)std::numeric_limits<int32_t>::max();
   return aRect.x > min && aRect.y > min && aRect.width < max &&
          aRect.height < max && aRect.XMost() < max && aRect.YMost() < max;
 }
@@ -361,8 +366,8 @@ IntRectTyped<Units> RoundedOut(const RectTyped<Units>& aRect) {
   return IntRectTyped<Units>::RoundOut(aRect);
 }
 
-template <class Units>
-IntRectTyped<Units> TruncatedToInt(const RectTyped<Units>& aRect) {
+template <class Units, class F>
+IntRectTyped<Units> TruncatedToInt(const RectTyped<Units, F>& aRect) {
   return IntRectTyped<Units>::Truncate(aRect);
 }
 
@@ -397,6 +402,7 @@ Maybe<Rect> UnionMaybeRects(const Maybe<Rect>& a, const Maybe<Rect>& b) {
 template <typename Coord, typename Size, typename Margin>
 struct BaseRectCornerRadii {
   Size radii[eCornerCount];
+  float mShapeK[eCornerCount] = {1.0f, 1.0f, 1.0f, 1.0f};
 
   BaseRectCornerRadii() = default;
 
@@ -444,7 +450,15 @@ struct BaseRectCornerRadii {
   bool operator==(const BaseRectCornerRadii& aOther) const {
     return TopLeft() == aOther.TopLeft() && TopRight() == aOther.TopRight() &&
            BottomRight() == aOther.BottomRight() &&
-           BottomLeft() == aOther.BottomLeft();
+           BottomLeft() == aOther.BottomLeft() &&
+           std::equal(std::begin(mShapeK), std::end(mShapeK),
+                      std::begin(aOther.mShapeK));
+  }
+
+  // True if every corner uses the default round (K=1) shape.
+  bool AreShapesAllRound() const {
+    return std::all_of(std::begin(mShapeK), std::end(mShapeK),
+                       [](float k) { return k == 1.0f; });
   }
 
   bool AreRadiiSame() const {

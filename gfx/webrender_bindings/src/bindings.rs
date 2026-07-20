@@ -23,7 +23,8 @@ use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{env, mem, ptr, slice};
 use thin_vec::ThinVec;
@@ -480,7 +481,6 @@ pub enum WrAnimationType {
 pub struct WrAnimationProperty {
     effect_type: WrAnimationType,
     id: u64,
-    key: SpatialTreeItemKey,
 }
 
 /// cbindgen:derive-eq=false
@@ -508,13 +508,11 @@ pub struct WrComputedTransformData {
     pub scale_from: LayoutSize,
     pub vertical_flip: bool,
     pub rotation: WrRotation,
-    pub key: SpatialTreeItemKey,
 }
 
 #[repr(C)]
 pub struct WrTransformInfo {
     pub transform: LayoutTransform,
-    pub key: SpatialTreeItemKey,
 }
 
 fn get_proc_address(glcontext_ptr: *mut c_void, name: &str) -> *const c_void {
@@ -754,12 +752,19 @@ pub extern "C" fn wr_renderer_map_and_recycle_screenshot(
     dst_buffer: *mut u8,
     dst_buffer_len: usize,
     dst_stride: usize,
+    dest_format: ImageFormat,
 ) -> bool {
     renderer.map_and_recycle_screenshot(
         handle,
         unsafe { make_slice_mut(dst_buffer, dst_buffer_len) },
         dst_stride,
+        dest_format,
     )
+}
+
+#[no_mangle]
+pub extern "C" fn wr_renderer_supports_bgra_readback(renderer: &Renderer) -> bool {
+    renderer.supports_bgra_readback()
 }
 
 #[no_mangle]
@@ -1123,7 +1128,10 @@ extern "C" {
     fn wr_register_thread_local_arena();
 }
 
-pub struct WrThreadPool(Arc<rayon::ThreadPool>);
+pub struct WrThreadPool {
+    workers: Arc<rayon::ThreadPool>,
+    join_handles: Mutex<Vec<JoinHandle<()>>>,
+}
 
 #[no_mangle]
 pub extern "C" fn wr_thread_pool_new(low_priority: bool) -> *mut WrThreadPool {
@@ -1137,19 +1145,33 @@ pub extern "C" fn wr_thread_pool_new(low_priority: bool) -> *mut WrThreadPool {
     let num_threads = num_cpus::get().min(max);
 
     let priority_tag = if low_priority { "LP" } else { "" };
+    let thread_name = move |idx| format!("WRWorker{}#{}", priority_tag, idx);
 
     let use_thread_local_arena = static_prefs::pref!("gfx.webrender.worker-thread-local-arena");
+    let join_handles = Mutex::new(Vec::new());
 
     let worker = rayon::ThreadPoolBuilder::new()
-        .thread_name(move |idx| format!("WRWorker{}#{}", priority_tag, idx))
+        .thread_name(move |idx| thread_name(idx))
         .num_threads(num_threads)
+        .spawn_handler(|thread| {
+            let mut builder = std::thread::Builder::new();
+            if let Some(name) = thread.name() {
+                builder = builder.name(name.to_string());
+            }
+            if let Some(stack_size) = thread.stack_size() {
+                builder = builder.stack_size(stack_size);
+            }
+            let handle = builder.spawn(|| thread.run())?;
+            join_handles.lock().unwrap().push(handle);
+            Ok(())
+        })
         .start_handler(move |idx| {
             if use_thread_local_arena {
                 unsafe {
                     wr_register_thread_local_arena();
                 }
             }
-            let name = format!("WRWorker{}#{}", priority_tag, idx);
+            let name = thread_name(idx);
             register_thread_with_profiler(name.clone());
             gecko_profiler::register_thread(&name);
         })
@@ -1160,12 +1182,26 @@ pub extern "C" fn wr_thread_pool_new(low_priority: bool) -> *mut WrThreadPool {
 
     let workers = Arc::new(worker.unwrap());
 
-    Box::into_raw(Box::new(WrThreadPool(workers)))
+    Box::into_raw(Box::new(WrThreadPool { workers, join_handles }))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wr_thread_pool_delete(thread_pool: *mut WrThreadPool) {
-    mem::drop(Box::from_raw(thread_pool));
+pub unsafe extern "C" fn wr_thread_pool_delete(thread_pool: *mut WrThreadPool, join_workers: bool) {
+    let WrThreadPool { workers, join_handles } = *Box::from_raw(thread_pool);
+
+    if !join_workers {
+        return;
+    }
+
+    let Some(workers) = Arc::into_inner(workers) else {
+        panic!("All other references to workers must be dropped before calling wr_thread_pool_delete");
+    };
+    mem::drop(workers);
+
+    let join_handles = join_handles.into_inner().unwrap();
+    for join_handle in join_handles {
+        let _ = join_handle.join();
+    }
 }
 
 pub struct WrChunkPool(Arc<ChunkPool>);
@@ -1190,7 +1226,7 @@ pub unsafe extern "C" fn wr_program_cache_new(
     prof_path: &nsAString,
     thread_pool: *mut WrThreadPool,
 ) -> *mut WrProgramCache {
-    let workers = &(*thread_pool).0;
+    let workers = &(*thread_pool).workers;
     let program_cache = WrProgramCache::new(prof_path, workers);
     Box::into_raw(Box::new(program_cache))
 }
@@ -1328,7 +1364,6 @@ extern "C" {
         num_opaque_rects: usize,
     );
     fn wr_compositor_end_frame(compositor: *mut c_void);
-    fn wr_compositor_enable_native_compositor(compositor: *mut c_void, enable: bool);
     fn wr_compositor_deinit(compositor: *mut c_void);
     fn wr_compositor_get_capabilities(compositor: *mut c_void, caps: *mut CompositorCapabilities);
     fn wr_compositor_get_window_visibility(compositor: *mut c_void, caps: *mut WindowVisibility);
@@ -1500,11 +1535,7 @@ impl Compositor for WrCompositor {
         }
     }
 
-    fn enable_native_compositor(&mut self, _device: &mut Device, enable: bool) {
-        unsafe {
-            wr_compositor_enable_native_compositor(self.0, enable);
-        }
-    }
+    fn enable_native_compositor(&mut self, _device: &mut Device, _enable: bool) {}
 
     fn deinit(&mut self, _device: &mut Device) {
         unsafe {
@@ -2033,12 +2064,12 @@ pub extern "C" fn wr_window_new(
 
     info!("WebRender - OpenGL version new {}", version);
 
-    let workers = unsafe { Arc::clone(&(*thread_pool).0) };
+    let workers = unsafe { Arc::clone(&(*thread_pool).workers) };
     let workers_low_priority = unsafe {
         if support_low_priority_threadpool {
-            Arc::clone(&(*thread_pool_low_priority).0)
+            Arc::clone(&(*thread_pool_low_priority).workers)
         } else {
-            Arc::clone(&(*thread_pool).0)
+            Arc::clone(&(*thread_pool).workers)
         }
     };
 
@@ -2116,12 +2147,6 @@ pub extern "C" fn wr_window_new(
         false
     };
 
-    let precise_linear_gradients = if software {
-        static_prefs::pref!("gfx.webrender.precise-linear-gradients-swgl")
-    } else {
-        static_prefs::pref!("gfx.webrender.precise-linear-gradients")
-    };
-
     let opts = WebRenderOptions {
         enable_aa: true,
         enable_subpixel_aa,
@@ -2177,7 +2202,6 @@ pub extern "C" fn wr_window_new(
         low_quality_pinch_zoom,
         max_shared_surface_size,
         enable_dithering,
-        precise_linear_gradients,
         ..Default::default()
     };
 
@@ -2296,11 +2320,6 @@ pub unsafe extern "C" fn wr_api_clear_all_caches(dh: &mut DocumentHandle) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wr_api_enable_native_compositor(dh: &mut DocumentHandle, enable: bool) {
-    dh.api.send_debug_cmd(DebugCommand::EnableNativeCompositor(enable));
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn wr_api_set_batching_lookback(dh: &mut DocumentHandle, count: u32) {
     dh.api.send_debug_cmd(DebugCommand::SetBatchingLookback(count));
 }
@@ -2387,12 +2406,10 @@ pub extern "C" fn wr_transaction_set_display_list(
     pipeline_id: WrPipelineId,
     dl_descriptor: BuiltDisplayListDescriptor,
     dl_items_data: &mut WrVecU8,
-    dl_cache_data: &mut WrVecU8,
     dl_spatial_tree_data: &mut WrVecU8,
 ) {
     let payload = DisplayListPayload {
         items_data: dl_items_data.flush_into_vec(),
-        cache_data: dl_cache_data.flush_into_vec(),
         spatial_tree: dl_spatial_tree_data.flush_into_vec(),
     };
 
@@ -2756,12 +2773,11 @@ pub extern "C" fn wr_resource_updates_add_raw_font(
     txn.add_raw_font(key, bytes.flush_into_vec(), index);
 }
 
-fn generate_capture_path(path: *const c_char, moz_revision: *const c_char) -> Option<PathBuf> {
+fn generate_capture_path(moz_revision: *const c_char) -> Option<PathBuf> {
     use std::fs::{create_dir_all, File};
     use std::io::Write;
 
-    let cstr = unsafe { CStr::from_ptr(path) };
-    let local_dir = PathBuf::from(&*cstr.to_string_lossy());
+    let local_dir = PathBuf::from("wr-capture");
 
     // On Android we need to write into a particular folder on external
     // storage so that (a) it can be written without requiring permissions
@@ -2812,26 +2828,16 @@ fn generate_capture_path(path: *const c_char, moz_revision: *const c_char) -> Op
 }
 
 #[no_mangle]
-pub extern "C" fn wr_api_capture(
-    dh: &mut DocumentHandle,
-    path: *const c_char,
-    moz_revision: *const c_char,
-    bits_raw: u32,
-) {
-    if let Some(path) = generate_capture_path(path, moz_revision) {
+pub extern "C" fn wr_api_capture(dh: &mut DocumentHandle, moz_revision: *const c_char, bits_raw: u32) {
+    if let Some(path) = generate_capture_path(moz_revision) {
         let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
         dh.api.save_capture(path, bits);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn wr_api_start_capture_sequence(
-    dh: &mut DocumentHandle,
-    path: *const c_char,
-    moz_revision: *const c_char,
-    bits_raw: u32,
-) {
-    if let Some(path) = generate_capture_path(path, moz_revision) {
+pub extern "C" fn wr_api_start_capture_sequence(dh: &mut DocumentHandle, moz_revision: *const c_char, bits_raw: u32) {
+    if let Some(path) = generate_capture_path(moz_revision) {
         let bits = CaptureBits::from_bits(bits_raw as _).unwrap();
         dh.api.start_capture_sequence(path, bits);
     }
@@ -3091,7 +3097,7 @@ pub extern "C" fn wr_dp_push_stacking_context(
         .collect();
 
     let transform_ref = unsafe { transform.as_ref() };
-    let mut transform_binding = transform_ref.map(|info| (PropertyBinding::Value(info.transform), info.key));
+    let mut transform_binding = transform_ref.map(|info| PropertyBinding::Value(info.transform));
 
     let computed_ref = unsafe { params.computed_transform.as_ref() };
     let opacity_ref = unsafe { params.opacity.as_ref() };
@@ -3115,15 +3121,12 @@ pub extern "C" fn wr_dp_push_stacking_context(
                 has_opacity_animation = true;
             },
             WrAnimationType::Transform => {
-                transform_binding = Some((
-                    PropertyBinding::Binding(
-                        PropertyBindingKey::new(anim.id),
-                        // Same as above opacity case.
-                        transform_ref
-                            .map(|info| info.transform)
-                            .unwrap_or_else(LayoutTransform::identity),
-                    ),
-                    anim.key,
+                transform_binding = Some(PropertyBinding::Binding(
+                    PropertyBindingKey::new(anim.id),
+                    // Same as above opacity case.
+                    transform_ref
+                        .map(|info| info.transform)
+                        .unwrap_or_else(LayoutTransform::identity),
                 ));
             },
             _ => unreachable!("{:?} should not create a stacking context", anim.effect_type),
@@ -3138,8 +3141,6 @@ pub extern "C" fn wr_dp_push_stacking_context(
 
     let mut wr_spatial_id = spatial_id.to_webrender(state.pipeline_id);
     let wr_clip_id = params.clip.to_webrender(state.pipeline_id);
-
-    let mut origin = bounds.min;
 
     // Note: 0 has special meaning in WR land, standing for ROOT_REFERENCE_FRAME.
     // However, it is never returned by `push_reference_frame`, and we need to return
@@ -3164,15 +3165,13 @@ pub extern "C" fn wr_dp_push_stacking_context(
             WrReferenceFrameKind::Perspective => ReferenceFrameKind::Perspective { scrolling_relative_to },
         };
         wr_spatial_id = state.frame_builder.dl_builder.push_reference_frame(
-            origin,
+            bounds.min,
             wr_spatial_id,
             params.transform_style,
-            transform_binding.0,
+            transform_binding,
             reference_frame_kind,
-            transform_binding.1,
         );
 
-        origin = LayoutPoint::zero();
         result.id = wr_spatial_id.0;
         assert_ne!(wr_spatial_id.0, 0);
     } else if let Some(data) = computed_ref {
@@ -3183,21 +3182,35 @@ pub extern "C" fn wr_dp_push_stacking_context(
             WrRotation::Degree270 => Rotation::Degree270,
         };
         wr_spatial_id = state.frame_builder.dl_builder.push_computed_frame(
-            origin,
+            bounds.min,
             wr_spatial_id,
             Some(data.scale_from),
             data.vertical_flip,
             rotation,
-            data.key,
         );
 
-        origin = LayoutPoint::zero();
+        result.id = wr_spatial_id.0;
+        assert_ne!(wr_spatial_id.0, 0);
+    } else if bounds.min != LayoutPoint::zero() {
+        // Inherit the stacking context's transform style so this translate-only
+        // reference frame doesn't introduce a 3D flattening boundary for
+        // preserve-3d contexts.
+        wr_spatial_id = state.frame_builder.dl_builder.push_reference_frame(
+            bounds.min,
+            wr_spatial_id,
+            params.transform_style,
+            PropertyBinding::Value(LayoutTransform::identity()),
+            ReferenceFrameKind::Transform {
+                is_2d_scale_translation: true,
+                should_snap: false,
+                paired_with_perspective: false,
+            },
+        );
         result.id = wr_spatial_id.0;
         assert_ne!(wr_spatial_id.0, 0);
     }
 
     state.frame_builder.dl_builder.push_stacking_context(
-        origin,
         wr_spatial_id,
         params.prim_flags,
         wr_clip_id,
@@ -3308,7 +3321,6 @@ pub extern "C" fn wr_dp_define_sticky_frame(
     vertical_bounds: StickyOffsetBounds,
     horizontal_bounds: StickyOffsetBounds,
     applied_offset: LayoutVector2D,
-    key: SpatialTreeItemKey,
     animation: *const WrAnimationProperty,
 ) -> WrSpatialId {
     assert!(unsafe { is_in_main_thread() });
@@ -3334,7 +3346,6 @@ pub extern "C" fn wr_dp_define_sticky_frame(
         vertical_bounds,
         horizontal_bounds,
         applied_offset,
-        key,
         transform,
     );
 
@@ -3351,7 +3362,6 @@ pub extern "C" fn wr_dp_define_scroll_layer(
     scroll_offset: LayoutVector2D,
     scroll_offset_generation: APZScrollGeneration,
     has_scroll_linked_effect: HasScrollLinkedEffect,
-    key: SpatialTreeItemKey,
 ) -> WrSpatialId {
     assert!(unsafe { is_in_main_thread() });
 
@@ -3363,7 +3373,6 @@ pub extern "C" fn wr_dp_define_scroll_layer(
         scroll_offset,
         scroll_offset_generation,
         has_scroll_linked_effect,
-        key,
     );
 
     WrSpatialId::from_webrender(space_and_clip)
@@ -3834,6 +3843,49 @@ pub extern "C" fn wr_dp_push_yuv_NV16_image(
         &prim_info,
         bounds,
         YuvData::NV16(image_key_0, image_key_1),
+        color_depth,
+        color_space,
+        color_range,
+        image_rendering,
+    );
+}
+
+/// Push a 2 planar P210 image.
+#[no_mangle]
+pub extern "C" fn wr_dp_push_yuv_P210_image(
+    state: &mut WrState,
+    bounds: LayoutRect,
+    clip: LayoutRect,
+    is_backface_visible: bool,
+    parent: &WrSpaceAndClipChain,
+    image_key_0: WrImageKey,
+    image_key_1: WrImageKey,
+    color_depth: WrColorDepth,
+    color_space: WrYuvColorSpace,
+    color_range: WrColorRange,
+    image_rendering: ImageRendering,
+    prefer_compositor_surface: bool,
+    supports_external_compositing: bool,
+) {
+    debug_assert!(unsafe { is_in_main_thread() || is_in_compositor_thread() });
+
+    let space_and_clip = parent.to_webrender(state.pipeline_id);
+
+    let prim_info = CommonItemProperties {
+        clip_rect: clip,
+        clip_chain_id: space_and_clip.clip_chain_id,
+        spatial_id: space_and_clip.spatial_id,
+        flags: prim_flags2(
+            is_backface_visible,
+            prefer_compositor_surface,
+            supports_external_compositing,
+        ),
+    };
+
+    state.frame_builder.dl_builder.push_yuv_image(
+        &prim_info,
+        bounds,
+        YuvData::P210(image_key_0, image_key_1),
         color_depth,
         color_space,
         color_range,
@@ -4387,31 +4439,6 @@ pub extern "C" fn wr_dp_push_box_shadow(
 }
 
 #[no_mangle]
-pub extern "C" fn wr_dp_start_item_group(state: &mut WrState) {
-    state.frame_builder.dl_builder.start_item_group();
-}
-
-#[no_mangle]
-pub extern "C" fn wr_dp_cancel_item_group(state: &mut WrState, discard: bool) {
-    state.frame_builder.dl_builder.cancel_item_group(discard);
-}
-
-#[no_mangle]
-pub extern "C" fn wr_dp_finish_item_group(state: &mut WrState, key: ItemKey) -> bool {
-    state.frame_builder.dl_builder.finish_item_group(key)
-}
-
-#[no_mangle]
-pub extern "C" fn wr_dp_push_reuse_items(state: &mut WrState, key: ItemKey) {
-    state.frame_builder.dl_builder.push_reuse_items(key);
-}
-
-#[no_mangle]
-pub extern "C" fn wr_dp_set_cache_size(state: &mut WrState, cache_size: usize) {
-    state.frame_builder.dl_builder.set_cache_size(cache_size);
-}
-
-#[no_mangle]
 pub extern "C" fn wr_dump_display_list(
     state: &mut WrState,
     indent: usize,
@@ -4458,13 +4485,11 @@ pub unsafe extern "C" fn wr_api_end_builder(
     state: &mut WrState,
     dl_descriptor: &mut BuiltDisplayListDescriptor,
     dl_items_data: &mut WrVecU8,
-    dl_cache_data: &mut WrVecU8,
     dl_spatial_tree: &mut WrVecU8,
 ) {
     let (_, dl) = state.frame_builder.dl_builder.end();
     let (payload, descriptor) = dl.into_data();
     *dl_items_data = WrVecU8::from_vec(payload.items_data);
-    *dl_cache_data = WrVecU8::from_vec(payload.cache_data);
     *dl_spatial_tree = WrVecU8::from_vec(payload.spatial_tree);
     *dl_descriptor = descriptor;
 }

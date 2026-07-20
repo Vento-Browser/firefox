@@ -72,7 +72,7 @@ class ProviderContextualSearch extends ActionsProvider {
     return (
       queryContext.trimmedSearchString &&
       lazy.UrlbarPrefs.getScotchBonnetPref(ENABLED_PREF) &&
-      !queryContext.searchMode &&
+      !queryContext.restrictInSearchMode() &&
       lazy.UrlbarPrefs.get("suggest.engines")
     );
   }
@@ -95,18 +95,19 @@ class ProviderContextualSearch extends ActionsProvider {
   async #createActionResult({ type, engine, key = "contextual-search" }) {
     let icon = engine?.icon || (await engine?.getIconURL?.()) || DEFAULT_ICON;
     let result = {
+      providerName: this.name,
       key,
       l10nId: "urlbar-result-search-with",
       l10nArgs: { engine: engine.name || engine.title },
       icon,
-      onPick: (context, controller) => {
-        this.pickAction(context, controller);
-      },
     };
 
     if (type == INSTALLED_ENGINE) {
       result.engine = engine.name;
       result.dataset = { providesSearchMode: true };
+      if (key != "matched-contextual-search") {
+        result.dataset.immediateSearch = true;
+      }
     }
 
     return new ActionsResult(result);
@@ -204,6 +205,9 @@ class ProviderContextualSearch extends ActionsProvider {
    *   Load flags. See nsIWebProgressListener.idl for possible values.
    */
   async onLocationChange(window, uri, _webProgress, _flags) {
+    if (!uri.scheme.startsWith("http")) {
+      return;
+    }
     try {
       if (this.#visitedEngineDomains.has(uri.host)) {
         this.#visitedEngineDomains.set(uri.host, true);
@@ -226,6 +230,8 @@ class ProviderContextualSearch extends ActionsProvider {
    */
   async #matchTabToSearchEngine(queryContext) {
     let searchStr = queryContext.trimmedSearchString.toLocaleLowerCase();
+    let defaultEngine = lazy.SearchService.defaultEngine;
+    let matchedEngine = null;
 
     for (let engine of await lazy.SearchService.getVisibleEngines()) {
       let engineName = engine.name.toLocaleLowerCase();
@@ -240,14 +246,29 @@ class ProviderContextualSearch extends ActionsProvider {
         ((await this.#shouldskipRecentVisitCheck(searchStr)) ||
           (await this.#engineDomainHasRecentVisits(engine.searchUrlDomain)))
       ) {
-        return {
-          type: INSTALLED_ENGINE,
-          engine,
-          key: "matched-contextual-search",
-        };
+        if (engine.name == defaultEngine.name) {
+          return {
+            type: INSTALLED_ENGINE,
+            engine,
+            key: "matched-contextual-search",
+          };
+        }
+
+        if (!matchedEngine) {
+          matchedEngine = engine;
+        }
       }
     }
-    return null;
+
+    if (!matchedEngine) {
+      return null;
+    }
+
+    return {
+      type: INSTALLED_ENGINE,
+      engine: matchedEngine,
+      key: "matched-contextual-search",
+    };
   }
 
   /*
@@ -293,6 +314,10 @@ class ProviderContextualSearch extends ActionsProvider {
     );
   }
 
+  onPick(queryContext, controller) {
+    this.pickAction(queryContext, controller);
+  }
+
   async pickAction(queryContext, controller, _element) {
     let { type, engine } = this.#resultEngine;
 
@@ -319,7 +344,7 @@ class ProviderContextualSearch extends ActionsProvider {
       engine,
       queryContext.searchString,
       controller,
-      type == INSTALLED_ENGINE
+      this.#resultEngine.key == "matched-contextual-search"
     );
 
     if (
@@ -338,7 +363,12 @@ class ProviderContextualSearch extends ActionsProvider {
   async #performSearch(engine, search, controller, enterSearchMode) {
     const [url] = UrlbarUtils.getSearchQueryUrl(engine, search);
     if (enterSearchMode) {
-      controller.input.search(search, { searchEngine: engine });
+      // Pass only the fields `search()` reads, as a plain object, so it stays
+      // structured-cloneable when this runs parent-side on the actor message
+      // path (the engine itself can't cross the boundary).
+      controller.input.search(search, {
+        searchEngine: { name: engine.name, aliases: engine.aliases },
+      });
     }
     controller.browserWindow.gBrowser.fixupAndLoadURIString(url, {
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),

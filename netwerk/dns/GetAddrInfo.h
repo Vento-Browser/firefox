@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,18 +5,18 @@
 #ifndef netwerk_dns_GetAddrInfo_h
 #define netwerk_dns_GetAddrInfo_h
 
-#include "nsError.h"
-#include "nscore.h"
-#include "nsINativeDNSResolverOverride.h"
-#include "nsHashKeys.h"
-#include "nsTHashMap.h"
-#include "mozilla/RWLock.h"
-#include "nsTArray.h"
-#include "prio.h"
-#include "mozilla/net/DNS.h"
-#include "nsIDNSByTypeRecord.h"
 #include "mozilla/Logging.h"
+#include "mozilla/RWLock.h"
+#include "mozilla/net/DNS.h"
+#include "nsError.h"
+#include "nsHashKeys.h"
+#include "nsIDNSByTypeRecord.h"
 #include "nsIDNSService.h"
+#include "nsINativeDNSResolverOverride.h"
+#include "nsTArray.h"
+#include "nsTHashMap.h"
+#include "nscore.h"
+#include "prio.h"
 
 #if defined(XP_WIN)
 #  define DNSQUERY_AVAILABLE 1

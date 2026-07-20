@@ -129,9 +129,9 @@ add_task(async function resultMenu_notInterested() {
   await QuickSuggestTestUtils.forceSync();
 });
 
-// Tests the "Not relevant" result menu dismissal command.
-add_task(async function resultMenu_notRelevant() {
-  let result = await doDismissTest("not_relevant");
+// Tests the "Dismiss" result menu dismissal command.
+add_task(async function resultMenu_dismiss() {
+  let result = await doDismissTest("dismiss");
 
   Assert.equal(UrlbarPrefs.get("suggest.mdn"), true);
   Assert.ok(
@@ -199,7 +199,7 @@ async function doDismissTest(command) {
   details = await UrlbarTestUtils.getDetailsOfResultAt(window, resultIndex);
   Assert.equal(
     details.type,
-    UrlbarUtils.RESULT_TYPE.TIP,
+    UrlbarShared.RESULT_TYPE.TIP,
     "Row should be a tip after dismissal"
   );
   Assert.equal(
@@ -234,7 +234,7 @@ async function doDismissTest(command) {
   for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
     details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.ok(
-      details.type != UrlbarUtils.RESULT_TYPE.TIP &&
+      details.type != UrlbarShared.RESULT_TYPE.TIP &&
         details.result.payload.telemetryType !== "mdn",
       "Tip result and suggestion should not be present"
     );
@@ -250,7 +250,7 @@ async function doDismissTest(command) {
   for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
     details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     Assert.ok(
-      details.type != UrlbarUtils.RESULT_TYPE.TIP &&
+      details.type != UrlbarShared.RESULT_TYPE.TIP &&
         details.result.payload.telemetryType !== "mdn",
       "Tip result and suggestion should not be present"
     );

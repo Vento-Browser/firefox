@@ -10,7 +10,7 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   ContextualIdentityService:
-    "resource://gre/modules/ContextualIdentityService.sys.mjs",
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
   TabGroupTestUtils: "resource://testing-common/TabGroupTestUtils.sys.mjs",
 });
 
@@ -40,7 +40,7 @@ add_task(async function test_with_oneoff_button() {
 
   info("Enter Tabs mode");
   await UrlbarTestUtils.enterSearchMode(window, {
-    source: UrlbarUtils.RESULT_SOURCE.TABS,
+    source: UrlbarShared.RESULT_SOURCE.TABS,
   });
 
   info("Select first popup entry");
@@ -53,7 +53,7 @@ add_task(async function test_with_oneoff_button() {
     window,
     UrlbarTestUtils.getSelectedRowIndex(window)
   );
-  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.TAB_SWITCH);
+  Assert.equal(result.type, UrlbarShared.RESULT_TYPE.TAB_SWITCH);
 
   info("Enter escape key");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -63,13 +63,13 @@ add_task(async function test_with_oneoff_button() {
     "urlbar-search-mode-indicator-title"
   );
   const switchTabLabel = document.getElementById("urlbar-label-switchtab");
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () =>
       BrowserTestUtils.isVisible(searchModeTitle) &&
       searchModeTitle.textContent === "Tabs",
     "Waiting until the search mode title will be visible"
   );
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => BrowserTestUtils.isVisible(switchTabLabel),
     "Waiting until the switch tab label will be visible"
   );
@@ -107,7 +107,7 @@ add_task(async function test_with_keytype() {
     window,
     UrlbarTestUtils.getSelectedRowIndex(window)
   );
-  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.TAB_SWITCH);
+  Assert.equal(result.type, UrlbarShared.RESULT_TYPE.TAB_SWITCH);
 
   info("Enter escape key");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -117,11 +117,11 @@ add_task(async function test_with_keytype() {
     "urlbar-search-mode-indicator-title"
   );
   const switchTabLabel = document.getElementById("urlbar-label-switchtab");
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => BrowserTestUtils.isHidden(searchModeTitle),
     "Waiting until the search mode title will be hidden"
   );
-  await BrowserTestUtils.waitForCondition(
+  await TestUtils.waitForCondition(
     () => BrowserTestUtils.isVisible(switchTabLabel),
     "Waiting until the switch tab label will be visible"
   );
@@ -159,7 +159,7 @@ add_task(async function test_chiclet_contextual_id() {
 
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+    UrlbarShared.RESULT_TYPE.TAB_SWITCH,
     "Result at index 1 should be a tab switch"
   );
 
@@ -221,7 +221,7 @@ add_task(async function test_chiclet_tab_group() {
 
   Assert.equal(
     result.type,
-    UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+    UrlbarShared.RESULT_TYPE.TAB_SWITCH,
     "Result at index 1 should be a tab switch"
   );
 
@@ -261,10 +261,63 @@ add_task(async function test_chiclet_tab_group() {
   TabGroupTestUtils.forgetSavedTabGroups();
 });
 
+add_task(async function test_chiclet_tab_group_no_stale_after_row_reuse() {
+  const TAB_URL =
+    "https://example.com/test_chiclet_tab_group_no_stale_switch_tab";
+  const HISTORY_URL =
+    "https://example.com/test_chiclet_tab_group_no_stale_history";
+
+  await PlacesTestUtils.addVisits(HISTORY_URL);
+
+  let tab = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    url: TAB_URL,
+  });
+  let tabGroup = gBrowser.addTabGroup([tab], {
+    label: "stale_chiclet_test",
+    color: "blue",
+  });
+  await BrowserTestUtils.switchTab(gBrowser, gBrowser.tabs[0]);
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "test_chiclet_tab_group_no_stale_switch_tab",
+  });
+
+  let switchTabDetails = await getDetailsOfTabSwitchResult();
+  Assert.ok(
+    switchTabDetails?.element.row.querySelector(".urlbarView-tabGroup"),
+    "Tab group chiclet should be present on the TAB_SWITCH row"
+  );
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "test_chiclet_tab_group_no_stale_history",
+  });
+
+  for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
+    let details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
+    Assert.notEqual(
+      details.type,
+      UrlbarShared.RESULT_TYPE.TAB_SWITCH,
+      `Row ${i} should not be a TAB_SWITCH result`
+    );
+    Assert.ok(
+      !details.element.row.querySelector(".urlbarView-tabGroup"),
+      `Row ${i} should not have a stale tab group chiclet`
+    );
+  }
+
+  await UrlbarTestUtils.promisePopupClose(window);
+  await TabGroupTestUtils.removeTabGroup(tabGroup);
+  TabGroupTestUtils.forgetSavedTabGroups();
+  await PlacesUtils.history.clear();
+});
+
 async function getDetailsOfTabSwitchResult() {
   for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
     let details = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
-    if (details.type == UrlbarUtils.RESULT_TYPE.TAB_SWITCH) {
+    if (details.type == UrlbarShared.RESULT_TYPE.TAB_SWITCH) {
       return details;
     }
   }

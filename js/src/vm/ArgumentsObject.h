@@ -1,17 +1,13 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef vm_ArgumentsObject_h
 #define vm_ArgumentsObject_h
 
-#include "mozilla/MemoryReporting.h"
-
+#include "ds/BitArray.h"
 #include "gc/Barrier.h"
 #include "gc/GCArray.h"
-#include "util/BitArray.h"
 #include "vm/NativeObject.h"
 
 namespace js {
@@ -33,21 +29,24 @@ class RareArgumentsData {
   // ArgumentsObject::isElementDeleted comment.
   size_t deletedBits_[1];
 
+  using BitArray = ExternalBitArray<size_t>;
+  using ConstBitArray = ExternalBitArray<const size_t>;
+
   RareArgumentsData() = default;
-  RareArgumentsData(const RareArgumentsData&) = delete;
-  void operator=(const RareArgumentsData&) = delete;
 
  public:
+  RareArgumentsData(const RareArgumentsData&) = delete;
+  void operator=(const RareArgumentsData&) = delete;
   static RareArgumentsData* create(JSContext* cx, ArgumentsObject* obj);
   static size_t bytesRequired(size_t numActuals);
 
   bool isElementDeleted(size_t len, size_t i) const {
     MOZ_ASSERT(i < len);
-    return IsBitArrayElementSet(deletedBits_, len, i);
+    return ConstBitArray(deletedBits_, len).get(i);
   }
   void markElementDeleted(size_t len, size_t i) {
     MOZ_ASSERT(i < len);
-    SetBitArrayElement(deletedBits_, len, i);
+    BitArray(deletedBits_, len).set(i);
   }
 };
 
@@ -386,13 +385,13 @@ class ArgumentsObject : public NativeObject {
   const Value& arg(unsigned i) const {
     MOZ_ASSERT(i < data()->numArgs());
     const Value& v = data()->args[i];
-    MOZ_ASSERT(!v.isMagic());
+    MOZ_RELEASE_ASSERT(!v.isMagic());
     return v;
   }
 
   void setArg(unsigned i, const Value& v) {
     MOZ_ASSERT(i < data()->numArgs());
-    MOZ_ASSERT(!data()->args[i].isMagic());
+    MOZ_RELEASE_ASSERT(!data()->args[i].isMagic());
     data()->args.setElement(this, i, v);
   }
 
@@ -438,20 +437,8 @@ class ArgumentsObject : public NativeObject {
    * Measures things hanging off this ArgumentsObject that are counted by the
    * |miscSize| argument in JSObject::sizeOfExcludingThis().
    */
-  size_t sizeOfMisc(mozilla::MallocSizeOf mallocSizeOf) const {
-    if (!data()) {  // Template arguments objects have no data.
-      return 0;
-    }
-    size_t dataSize = gc::GetAllocSize(zone(), data());
-    size_t rareDataSize =
-        !maybeRareData() ? 0 : gc::GetAllocSize(zone(), maybeRareData());
-    return dataSize + rareDataSize;
-  }
-  size_t sizeOfData() const {
-    return ArgumentsData::bytesRequired(data()->numArgs()) +
-           (maybeRareData() ? RareArgumentsData::bytesRequired(initialLength())
-                            : 0);
-  }
+  size_t sizeOfMisc() const;
+  size_t sizeOfData() const;
   static void trace(JSTracer* trc, JSObject* obj);
   static size_t objectMoved(JSObject* dst, JSObject* src);
 

@@ -22,11 +22,12 @@ import org.mozilla.fenix.GleanMetrics.Metrics
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.IntentReceiverActivity
 import org.mozilla.fenix.R
-import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.home.intent.StartSearchIntentProcessor
 import org.mozilla.fenix.iconpicker.DefaultAppIconRepository
 import org.mozilla.fenix.iconpicker.DefaultPackageManagerWrapper
 import org.mozilla.fenix.utils.IntentUtils
+import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.widget.VoiceSearchActivity
 import org.mozilla.fenix.widget.VoiceSearchActivity.Companion.SPEECH_PROCESSING
 
@@ -37,16 +38,17 @@ class SearchWidgetProvider : AppWidgetProvider() {
     // The existing name replicates the name and package we used in Fennec.
 
     override fun onEnabled(context: Context) {
-        context.settings().setSearchWidgetInstalled(true)
-        Metrics.searchWidgetInstalled.set(true)
+        recordWidgetIsInstalled(context.components.settings)
     }
 
     override fun onDisabled(context: Context) {
-        context.settings().setSearchWidgetInstalled(false)
+        context.components.settings.searchWidgetInstalled = false
         Metrics.searchWidgetInstalled.set(false)
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        recordWidgetIsInstalled(context.components.settings)
+
         val textSearchIntent = createTextSearchIntent(context)
         val voiceSearchIntent = createVoiceSearchIntent(context)
 
@@ -83,6 +85,13 @@ class SearchWidgetProvider : AppWidgetProvider() {
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
+    private fun recordWidgetIsInstalled(settings: Settings) {
+        if (!settings.searchWidgetInstalled) {
+            settings.searchWidgetInstalled = true
+            Metrics.searchWidgetInstalled.set(true)
+        }
+    }
+
     /**
      * Builds pending intent that opens the browser and starts a new text search.
      */
@@ -107,7 +116,7 @@ class SearchWidgetProvider : AppWidgetProvider() {
      */
     @VisibleForTesting
     internal fun createVoiceSearchIntent(context: Context): PendingIntent? {
-        if (!context.settings().shouldShowVoiceSearch) {
+        if (!context.components.settings.shouldShowVoiceSearch) {
             return null
         }
 

@@ -1,21 +1,19 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // HttpLog.h should generally be included first
-#include "HttpLog.h"
+#include "Http2WebTransportSession.h"
 
 #include "Capsule.h"
 #include "CapsuleEncoder.h"
-#include "Http2WebTransportSession.h"
-#include "Http2WebTransportStream.h"
 #include "Http2Session.h"
+#include "Http2WebTransportStream.h"
+#include "HttpLog.h"
 #include "mozilla/net/NeqoHttp3Conn.h"
-#include "nsIWebTransport.h"
-#include "nsIOService.h"
 #include "nsHttp.h"
+#include "nsIOService.h"
+#include "nsIWebTransport.h"
 
 namespace mozilla::net {
 
@@ -367,9 +365,12 @@ bool Http2WebTransportSessionImpl::OnCapsule(Capsule&& aCapsule) {
       LOG(("Handling DATAGRAM\n"));
       WebTransportDatagramCapsule& datagram =
           aCapsule.GetWebTransportDatagramCapsule();
-      if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
-              do_QueryInterface(mListener)) {
-        listener->OnDatagramReceivedInternal(std::move(datagram.mPayload));
+      if (RefPtr<WebTransportSessionEventListener> baseListener =
+              GetListener()) {
+        if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
+                do_QueryInterface(baseListener)) {
+          listener->OnDatagramReceivedInternal(std::move(datagram.mPayload));
+        }
       }
       break;
     }
@@ -434,8 +435,8 @@ bool Http2WebTransportSessionImpl::HandleStreamStopSendingCapsule(
 
   uint8_t wtError = Http3ErrorToWebTransportError(stopSending.mErrorCode);
   nsresult rv = GetNSResultFromWebTransportError(wtError);
-  if (mListener) {
-    mListener->OnStopSending(aId, rv);
+  if (RefPtr<WebTransportSessionEventListener> listener = GetListener()) {
+    listener->OnStopSending(aId, rv);
   }
   return true;
 }
@@ -450,12 +451,14 @@ bool Http2WebTransportSessionImpl::HandleStreamResetCapsule(
   WebTransportResetStreamCapsule& reset =
       aCapsule.GetWebTransportResetStreamCapsule();
 
-  stream->OnReset(reset.mReliableSize);
+  if (NS_FAILED(stream->OnReset(reset.mReliableSize))) {
+    return false;
+  }
 
   uint8_t wtError = Http3ErrorToWebTransportError(reset.mErrorCode);
   nsresult rv = GetNSResultFromWebTransportError(wtError);
-  if (mListener) {
-    mListener->OnResetReceived(aId, rv);
+  if (RefPtr<WebTransportSessionEventListener> listener = GetListener()) {
+    listener->OnResetReceived(aId, rv);
   }
 
   return true;
@@ -474,7 +477,8 @@ void Http2WebTransportSessionImpl::OnStreamDataSent(StreamId aId,
 void Http2WebTransportSessionImpl::OnError(uint64_t aError) {
   LOG(("Http2WebTransportSessionImpl::OnError %p aError=%" PRIu64, this,
        aError));
-  // To be implemented.
+  // XXX This should also tear down the HTTP/2 tunnel via mHandler.
+  Close(NS_ERROR_NET_RESET);
 }
 
 bool Http2WebTransportSessionImpl::ProcessIncomingStreamCapsule(
@@ -510,9 +514,11 @@ bool Http2WebTransportSessionImpl::ProcessIncomingStreamCapsule(
       return false;
     }
     mIncomingStreams.InsertOrUpdate(newStreamID, stream);
-    if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
-            do_QueryInterface(mListener)) {
-      listener->OnIncomingStreamAvailableInternal(stream);
+    if (RefPtr<WebTransportSessionEventListener> baseListener = GetListener()) {
+      if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
+              do_QueryInterface(baseListener)) {
+        listener->OnIncomingStreamAvailableInternal(stream);
+      }
     }
   }
 
@@ -565,7 +571,7 @@ void Http2WebTransportSession::CloseStream(nsresult aReason) {
 
 nsresult Http2WebTransportSession::GenerateHeaders(nsCString& aCompressedData,
                                                    uint8_t& aFirstFrameFlags) {
-  nsHttpRequestHead* head = mTransaction->RequestHead();
+  const nsHttpRequestHead* head = mTransaction->RequestHead();
 
   nsAutoCString authorityHeader;
   nsresult rv = head->GetHeader(nsHttp::Host, authorityHeader);

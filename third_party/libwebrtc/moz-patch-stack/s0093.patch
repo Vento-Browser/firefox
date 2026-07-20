@@ -1,59 +1,104 @@
 From: Michael Froman <mfroman@mozilla.com>
-Date: Fri, 21 Jun 2024 16:28:00 -0500
-Subject: Bug 1903098 - (fix-cd09858f4a) disable perfetto usage to avoid new
- third_party library.
+Date: Tue, 1 Oct 2024 21:05:00 +0000
+Subject: Bug 1921706 - use relative paths on deps in a few places to avoid
+ future issues. r=ng,webrtc-reviewers DONTBUILD
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/b050c455caa1d24a0cfa4933ac8cd82c9cd3c347
+Note: this produces no changes in the generated moz.build files.
+
+Differential Revision: https://phabricator.services.mozilla.com/D224070
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/bbec1b95ddb5e00967a0fb002f54f8f24336b904
 ---
- BUILD.gn                                |  2 ++
- modules/video_coding/generic_decoder.cc | 10 +++++-----
- 2 files changed, 7 insertions(+), 5 deletions(-)
+ modules/audio_coding/BUILD.gn  |  2 +-
+ modules/portal/BUILD.gn        |  8 ++++----
+ modules/video_capture/BUILD.gn |  2 +-
+ sdk/BUILD.gn                   | 14 ++++++++++++++
+ test/BUILD.gn                  |  6 ++++++
+ 5 files changed, 26 insertions(+), 6 deletions(-)
 
-diff --git a/BUILD.gn b/BUILD.gn
-index fdfcc347db..862f22e41d 100644
---- a/BUILD.gn
-+++ b/BUILD.gn
-@@ -281,6 +281,7 @@ config("rtc_prod_config") {
- }
- 
- group("tracing") {
-+if (!build_with_mozilla) {
-   all_dependent_configs = [ "//third_party/perfetto/gn:public_config" ]
-   if (rtc_use_perfetto) {
-     if (build_with_chromium) {
-@@ -297,6 +298,7 @@ group("tracing") {
-         [ "//third_party/perfetto/include/perfetto/tracing" ]
+diff --git a/modules/audio_coding/BUILD.gn b/modules/audio_coding/BUILD.gn
+index c759878059..dd0c5a4473 100644
+--- a/modules/audio_coding/BUILD.gn
++++ b/modules/audio_coding/BUILD.gn
+@@ -338,7 +338,7 @@ rtc_library("webrtc_opus_wrapper") {
+     deps += [ rtc_opus_dir ]
+     public_configs = [ "//third_party/opus:opus_config" ]
+   } else if (build_with_mozilla) {
+-    public_configs = [ "//third_party/opus:opus_config" ]
++    public_configs = [ "../../third_party/opus:opus_config" ]
    }
  }
-+}
  
- if (rtc_use_perfetto) {
-   rtc_library("webrtc_libperfetto") {
-diff --git a/modules/video_coding/generic_decoder.cc b/modules/video_coding/generic_decoder.cc
-index 613e77397e..109faa945e 100644
---- a/modules/video_coding/generic_decoder.cc
-+++ b/modules/video_coding/generic_decoder.cc
-@@ -120,9 +120,9 @@ void VCMDecodedFrameCallback::Decoded(VideoFrame& decodedImage,
-                                       std::optional<int32_t> decode_time_ms,
-                                       std::optional<uint8_t> qp) {
-   RTC_DCHECK(receive_callback_) << "Callback must not be null at this point";
--  TRACE_EVENT(
--      "webrtc", "VCMDecodedFrameCallback::Decoded",
--      perfetto::TerminatingFlow::ProcessScoped(decodedImage.rtp_timestamp()));
-+  TRACE_EVENT_INSTANT1("webrtc", "VCMDecodedFrameCallback::Decoded",
-+                       TRACE_EVENT_SCOPE_GLOBAL, "timestamp",
-+                       decodedImage.rtp_timestamp());
-   // TODO(holmer): We should improve this so that we can handle multiple
-   // callbacks from one call to Decode().
-   std::optional<FrameInfo> frame_info;
-@@ -325,8 +325,8 @@ int32_t VCMGenericDecoder::Decode(
-     Timestamp now,
-     int64_t render_time_ms,
-     const std::optional<FrameInstrumentationData>& frame_instrumentation_data) {
--  TRACE_EVENT("webrtc", "VCMGenericDecoder::Decode",
--              perfetto::Flow::ProcessScoped(frame.RtpTimestamp()));
-+  TRACE_EVENT1("webrtc", "VCMGenericDecoder::Decode", "timestamp",
-+               frame.RtpTimestamp());
-   FrameInfo frame_info;
-   frame_info.rtp_timestamp = frame.RtpTimestamp();
-   frame_info.decode_start = now;
+diff --git a/modules/portal/BUILD.gn b/modules/portal/BUILD.gn
+index 11c8285abe..70466453f4 100644
+--- a/modules/portal/BUILD.gn
++++ b/modules/portal/BUILD.gn
+@@ -143,10 +143,10 @@ if (!build_with_mozilla) {
+       deps -= [ ":pipewire_stubs" ]
+       defines -= [ "WEBRTC_DLOPEN_PIPEWIRE" ]
+       public_deps = [
+-        "//third_party/pipewire",
+-        "//third_party/drm",
+-        "//third_party/gbm",
+-        "//third_party/libepoxy"
++        "../../third_party/pipewire",
++        "../../third_party/drm",
++        "../../third_party/gbm",
++        "../../third_party/libepoxy"
+       ]
+     }
+   }
+diff --git a/modules/video_capture/BUILD.gn b/modules/video_capture/BUILD.gn
+index 23574d2bda..1827e601d6 100644
+--- a/modules/video_capture/BUILD.gn
++++ b/modules/video_capture/BUILD.gn
+@@ -118,7 +118,7 @@ if (!build_with_chromium || is_linux || is_chromeos) {
+         ]
+         if (build_with_mozilla) {
+           configs -= [ "../portal:pipewire_base" ]
+-          public_deps = [ "//third_party/pipewire" ]
++          public_deps = [ "../../third_party/pipewire" ]
+         }
+       }
+     }
+diff --git a/sdk/BUILD.gn b/sdk/BUILD.gn
+index 20ebf06fe9..f8f58061da 100644
+--- a/sdk/BUILD.gn
++++ b/sdk/BUILD.gn
+@@ -626,6 +626,20 @@ if (is_ios || is_mac) {
+         "CoreGraphics.framework",
+         "CoreVideo.framework",
+       ]
++      if (build_with_mozilla) {
++        deps -= [
++          "//api/video:video_frame",
++          "//api/video:video_rtp_headers",
++          "//common_video",
++          "//rtc_base:checks",
++        ]
++        deps += [
++          "../api/video:video_frame",
++          "../api/video:video_rtp_headers",
++          "../common_video",
++          "../rtc_base:checks",
++        ]
++      }
+     }
+ 
+     if (!build_with_mozilla) {
+diff --git a/test/BUILD.gn b/test/BUILD.gn
+index 456fa3dee5..deda9442ad 100644
+--- a/test/BUILD.gn
++++ b/test/BUILD.gn
+@@ -479,6 +479,12 @@ rtc_source_set("test_support") {
+     "//testing/gmock",
+     "//testing/gtest",
+   ]
++  if (build_with_mozilla) {
++    all_dependent_configs -= [
++      "//third_party/googletest:gmock_config",
++      "//third_party/googletest:gtest_config",
++    ]
++  }
+ }
+ 
+ rtc_library("fixed_fps_video_frame_writer_adapter") {

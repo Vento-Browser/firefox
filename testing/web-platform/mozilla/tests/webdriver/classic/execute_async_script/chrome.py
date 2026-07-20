@@ -1,10 +1,11 @@
 import pytest
 from support.context import using_context
 from tests.classic.execute_async_script import execute_async_script
-from tests.support.asserts import assert_success
+from tests.support.classic.asserts import assert_success
 from webdriver.client import WebFrame, WebWindow
 
 
+@pytest.mark.geckodriver(allow_system_access=True)
 @pytest.mark.parametrize(
     "expression, expected_type",
     [
@@ -13,7 +14,6 @@ from webdriver.client import WebFrame, WebWindow
     ],
     ids=["frame", "window"],
 )
-@pytest.mark.allow_system_access
 def test_web_reference(
     session, expression, default_chrome_handler, new_chrome_window, expected_type
 ):

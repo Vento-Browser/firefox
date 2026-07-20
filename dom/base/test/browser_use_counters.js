@@ -1,5 +1,3 @@
-/* -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; js-indent-level: 2 -*- */
-
 requestLongerTimeout(2);
 
 const gHttpTestRoot = "https://example.com/browser/dom/base/test/";
@@ -374,7 +372,7 @@ async function ensureData(prevSentinelValue = null) {
   // To wait for the use counters to be reported, we repeatedly flush IPC and
   // check for a change in the "sentinel" use counters
   // `use.counter.css.{page|doc}.css_marker_mid`.
-  return BrowserTestUtils.waitForCondition(
+  return TestUtils.waitForCondition(
     async () => {
       await Services.fog.testFlushAllChildren();
       return (

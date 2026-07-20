@@ -23,6 +23,7 @@ import mozilla.components.compose.base.theme.AcornTheme
 import mozilla.components.compose.browser.toolbar.concept.Action
 import mozilla.components.compose.browser.toolbar.concept.Action.ActionButton
 import mozilla.components.compose.browser.toolbar.concept.Action.ActionButtonRes
+import mozilla.components.compose.browser.toolbar.concept.Action.AnimatedPillActionRes
 import mozilla.components.compose.browser.toolbar.concept.Action.SearchSelectorAction
 import mozilla.components.compose.browser.toolbar.concept.Action.SearchSelectorAction.ContentDescription.StringContentDescription
 import mozilla.components.compose.browser.toolbar.concept.Action.SearchSelectorAction.ContentDescription.StringResContentDescription
@@ -30,6 +31,7 @@ import mozilla.components.compose.browser.toolbar.concept.Action.SearchSelectorA
 import mozilla.components.compose.browser.toolbar.concept.Action.SearchSelectorAction.Icon.DrawableResIcon
 import mozilla.components.compose.browser.toolbar.concept.Action.TabCounterAction
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarInteraction.BrowserToolbarEvent
+import mozilla.components.compose.browser.toolbar.ui.AnimatedPillButton
 import mozilla.components.compose.browser.toolbar.ui.SearchSelector
 import mozilla.components.compose.browser.toolbar.ui.TabCounter
 import mozilla.components.compose.browser.toolbar.ui.ActionButton as ActionButtonComposable
@@ -67,6 +69,7 @@ fun ActionContainer(
                             highlighted = action.highlighted,
                             onLongClick = action.onLongClick,
                             onInteraction = { onInteraction(it) },
+                            testTag = action.testTag,
                         )
                     }
                 }
@@ -81,6 +84,7 @@ fun ActionContainer(
                             highlighted = action.highlighted,
                             onLongClick = action.onLongClick,
                             onInteraction = { onInteraction(it) },
+                            testTag = action.testTag,
                         )
                     }
                 }
@@ -105,6 +109,22 @@ fun ActionContainer(
                         onInteraction = { onInteraction(it) },
                     )
                 }
+
+                is AnimatedPillActionRes -> {
+                    action.iconDrawable()?.let {
+                        AnimatedPillButton(
+                            icon = it,
+                            overlayIcon = action.overlayDrawable(),
+                            text = stringResource(action.textResId),
+                            contentDescription = stringResource(action.contentDescriptionResId),
+                            highlighted = action.highlighted,
+                            animated = action.animated,
+                            onClick = action.onClick,
+                            onInteraction = onInteraction,
+                            testTag = action.testTag,
+                        )
+                    }
+                }
             }
         }
     }
@@ -115,17 +135,32 @@ private fun ActionButtonRes.iconDrawable(): Drawable? {
     val context = LocalContext.current
     val tint = MaterialTheme.colorScheme.onSurface
 
-    return remember(this, context) {
+    return remember(this, context, tint) {
         AppCompatResources.getDrawable(context, drawableResId)
             ?.apply { mutate().setTint(tint.toArgb()) }
     }
 }
 
 @Composable
+private fun AnimatedPillActionRes.iconDrawable(): Drawable? {
+    val context = LocalContext.current
+    return remember(iconResId, context) {
+        AppCompatResources.getDrawable(context, iconResId)
+    }
+}
+
+@Composable
+private fun AnimatedPillActionRes.overlayDrawable(): Drawable? {
+    val context = LocalContext.current
+    return remember(overlayResId, context) {
+        AppCompatResources.getDrawable(context, overlayResId)
+    }
+}
+
+@Composable
 private fun ActionButton.iconDrawable(): Drawable? {
     val tint = MaterialTheme.colorScheme.onSurface
-
-    return remember(this) {
+    return remember(this, tint) {
         when (shouldTint) {
             true -> drawable?.mutate()?.apply { setTint(tint.toArgb()) }
             false -> drawable
@@ -145,7 +180,7 @@ private fun SearchSelectorAction.iconDrawable(): Drawable? {
     val context = LocalContext.current
     val tint = MaterialTheme.colorScheme.onSurface
 
-    val drawable = remember(this, context) {
+    val drawable = remember(this, context, tint) {
         when (icon) {
             is DrawableIcon -> icon.drawable
             is DrawableResIcon -> AppCompatResources.getDrawable(context, icon.resourceId)
@@ -183,9 +218,17 @@ private fun ActionContainerPreview() {
                     showPrivacyMask = false,
                     onClick = object : BrowserToolbarEvent {},
                 ),
+                AnimatedPillActionRes(
+                    iconResId = iconsR.drawable.mozac_ic_shield_checkmark_24,
+                    overlayResId = iconsR.drawable.mozac_ic_globe_24,
+                    textResId = R.string.mozac_clear_button_description,
+                    contentDescriptionResId = R.string.mozac_clear_button_description,
+                    highlighted = true,
+                    onClick = object : BrowserToolbarEvent {},
+                ),
             ),
             onInteraction = {},
-            modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceDim),
+            modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainerHighest),
         )
     }
 }

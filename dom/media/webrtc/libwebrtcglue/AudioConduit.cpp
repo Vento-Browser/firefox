@@ -40,7 +40,6 @@
 #include "audio/audio_receive_stream.h"
 #include "call/audio_receive_stream.h"
 #include "call/audio_send_stream.h"
-#include "call/call_basic_stats.h"
 #include "domstubs.h"
 #include "jsapi/RTCStatsReport.h"
 #include "media/base/media_constants.h"
@@ -261,8 +260,11 @@ MediaConduitErrorCode WebrtcAudioConduit::Init() {
 
 void WebrtcAudioConduit::OnDtmfEvent(const DtmfEvent& aEvent) {
   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
-  MOZ_ASSERT(mSendStream);
   MOZ_ASSERT(mDtmfEnabled);
+  // Drop DTMF if sending is disabled.
+  if (!mSendStream) {
+    return;
+  }
   mSendStream->SendTelephoneEvent(aEvent.mPayloadType, aEvent.mPayloadFrequency,
                                   aEvent.mEventCode, aEvent.mLengthMs);
 }
@@ -354,15 +356,30 @@ void WebrtcAudioConduit::OnControlConfigChange() {
 
         webrtc::AudioSendStream::Config::SendCodecSpec spec(
             aConfig.mType, CodecConfigToLibwebrtcFormat(aConfig));
-        if (const auto& maxBps = mControl.mConfiguredSendCodec
-                                     ->mEncodingConstraints.maxBitrateBps) {
-          const auto& info =
-              mSendStreamConfig.encoder_factory->QueryAudioEncoder(spec.format);
-          spec.target_bitrate_bps =
-              std::clamp(AssertedCast<int>(*maxBps), info->min_bitrate_bps,
-                         info->max_bitrate_bps);
+        const auto info =
+            mSendStreamConfig.encoder_factory->QueryAudioEncoder(spec.format);
+        if (info) {
+          if (const auto& maxBps = mControl.mConfiguredSendCodec
+                                       ->mEncodingConstraints.maxBitrateBps) {
+            spec.target_bitrate_bps =
+                std::clamp(SaturatingCast<int>(*maxBps), info->min_bitrate_bps,
+                           info->max_bitrate_bps);
+          }
         }
         mSendStreamConfig.send_codec_spec = std::move(spec);
+
+        const int kDefaultAudioBitrateBps = 32000;
+        // Use the codec's own default bitrate when the application has not
+        // configured a max -- it already accounts for stereo, SDP
+        // maxaveragebitrate/maxplaybackrate, and fixed-rate codecs like
+        // PCMU/PCMA/G.722.
+        const int targetBps =
+            mSendStreamConfig.send_codec_spec->target_bitrate_bps.value_or(
+                info ? info->default_bitrate_bps : kDefaultAudioBitrateBps);
+        mSendStreamConfig.min_bitrate_bps = targetBps;
+        mSendStreamConfig.max_bitrate_bps = targetBps;
+        mSendStreamConfig.include_in_congestion_control_allocation =
+            aConfig.HasCongestionControlAck();
 
         mDtmfEnabled = aConfig.mDtmfEnabled;
         sendStreamReconfigureNeeded = true;
@@ -529,15 +546,33 @@ Maybe<webrtc::AudioSendStream::Stats> WebrtcAudioConduit::GetSenderStats()
     const {
   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
   if (!mSendStream) {
-    // Might be nothing
-    return mTransitionalSendStreamStats;
+    // Prefer transitional stats left over from a recently destroyed stream
+    // (e.g. during a codec change). These carry real cumulative counters and
+    // should take priority over the synthesised fallback below.
+    if (mTransitionalSendStreamStats) {
+      return mTransitionalSendStreamStats;
+    }
+    // The send stream is only created when mTransmitting is true, which
+    // requires a track to be bound (see RTCRtpSender::UpdateBaseConfig). For
+    // a trackless sender the stream never starts, yet the WebRTC stats spec
+    // requires RTCOutboundRtpStreamStats to exist as soon as the sender is
+    // configured by a completed offer/answer exchange. Synthesise minimal
+    // stats from the SSRC that was negotiated in SDP so that outbound-rtp
+    // entries appear in getStats() even before a track arrives.
+    const auto& ssrcs = mControl.mLocalSsrcs.Ref();
+    if (ssrcs.empty()) {
+      return Nothing();
+    }
+    webrtc::AudioSendStream::Stats synthStats;
+    synthStats.local_ssrc = ssrcs[0];
+    return Some(std::move(synthStats));
   }
   // Successfully got stats, so clear the transitional stats.
   mTransitionalSendStreamStats = Nothing();
   return Some(mSendStream->GetStats());
 }
 
-Maybe<webrtc::CallBasicStats> WebrtcAudioConduit::GetCallStats() const {
+Maybe<webrtc::Call::Stats> WebrtcAudioConduit::GetCallStats() const {
   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
   if (!mCall->Call()) {
     return Nothing();
@@ -937,6 +972,12 @@ RtpExtList WebrtcAudioConduit::FilterExtensions(LocalDirection aDirection,
         // TODO: recv mid support, see also bug 1727211
         continue;
       }
+      filteredExtensions.push_back(
+          webrtc::RtpExtension(extension.uri, extension.id));
+    }
+
+    // TransportCC header extension
+    if (extension.uri == webrtc::RtpExtension::kTransportSequenceNumberUri) {
       filteredExtensions.push_back(
           webrtc::RtpExtension(extension.uri, extension.id));
     }

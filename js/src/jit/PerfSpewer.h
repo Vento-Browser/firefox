@@ -1,11 +1,11 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef jit_PerfSpewer_h
 #define jit_PerfSpewer_h
+
+#include "mozilla/Maybe.h"
 
 #ifdef JS_ION_PERF
 #  include <stdio.h>
@@ -18,6 +18,8 @@
 #ifdef JS_JITSPEW
 #  include "jit/GraphSpewer.h"
 #endif
+
+#include "vm/GeckoProfiler.h"
 
 class JSScript;
 enum class JSOp : uint8_t;
@@ -44,7 +46,10 @@ using ProfilerJitCodeVector = Vector<JS::JitCodeRecord, 0, SystemAllocPolicy>;
 
 void ResetPerfSpewer(bool enabled);
 
-struct AutoLockPerfSpewer {
+class AutoLockPerfSpewer {
+  mozilla::Maybe<AutoSuppressProfilerSampling> asps;
+
+ public:
   AutoLockPerfSpewer();
   ~AutoLockPerfSpewer();
 };
@@ -189,8 +194,10 @@ class IonPerfSpewer : public PerfSpewer {
 class WasmBaselinePerfSpewer : public PerfSpewer {
   const char* CodeName(uint32_t op) override;
 
+  bool needsToRecordInstruction_;
+
  public:
-  WasmBaselinePerfSpewer() = default;
+  WasmBaselinePerfSpewer();
   WasmBaselinePerfSpewer(WasmBaselinePerfSpewer&&) = default;
   WasmBaselinePerfSpewer& operator=(WasmBaselinePerfSpewer&&) = default;
 

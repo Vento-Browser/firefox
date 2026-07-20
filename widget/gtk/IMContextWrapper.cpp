@@ -1,30 +1,29 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=4 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/Logging.h"
-#include "nsString.h"
-#include "prtime.h"
-#include "prenv.h"
-
 #include "IMContextWrapper.h"
 
 #include "GRefPtr.h"
-#include "nsGtkKeyUtils.h"
-#include "nsWindow.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/Likely.h"
+#include "mozilla/Logging.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MiscEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_intl.h"
-#include "mozilla/glean/WidgetGtkMetrics.h"
 #include "mozilla/TextEventDispatcher.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/ToString.h"
+#include "mozilla/Utf16.h"
+#include "mozilla/WidgetUtilsGtk.h"
 #include "mozilla/WritingModes.h"
+#include "mozilla/glean/WidgetGtkMetrics.h"
+#include "nsGtkKeyUtils.h"
+#include "nsString.h"
+#include "nsWindow.h"
+#include "prenv.h"
+#include "prtime.h"
 
 // For collecting other people's log, tell `MOZ_LOG=IMEHandler:4,sync`
 // rather than `MOZ_LOG=IMEHandler:5,sync` since using `5` may create too
@@ -603,13 +602,10 @@ TextEventDispatcher* IMContextWrapper::GetTextEventDispatcher() {
 
 NS_IMETHODIMP_(IMENotificationRequests)
 IMContextWrapper::GetIMENotificationRequests() {
-  IMENotificationRequests::Notifications notifications =
-      IMENotificationRequests::NOTIFY_NOTHING;
   // If it's not enabled, we don't need position change notification.
-  if (IsEnabled()) {
-    notifications |= IMENotificationRequests::NOTIFY_POSITION_CHANGE;
-  }
-  return IMENotificationRequests(notifications);
+  return IsEnabled()
+             ? IMENotificationRequests{IMENotificationRequest::PositionChange}
+             : IMENotificationRequests{};
 }
 
 void IMContextWrapper::OnDestroyWindow(nsWindow* aWindow) {
@@ -1110,6 +1106,7 @@ void IMContextWrapper::OnFocusChangeInGecko(bool aFocus) {
   // We shouldn't carry over the removed string to another editor.
   mSelectedStringRemovedByComposition.Truncate();
   mContentSelection.reset();
+  mPendingSetSurrounding = false;
 
   if (aFocus) {
     if (mSetInputPurposeAndInputHints) {
@@ -1606,6 +1603,20 @@ void IMContextWrapper::OnSelectionChange(
       ResetIME();
     }
   }
+
+  if (mPendingSetSurrounding) {
+    MOZ_LOG(gIMELog, LogLevel::Debug,
+            ("0x%p   OnSelectionChange(), retrying "
+             "OnRetrieveSurroundingNative()",
+             this));
+    if (GtkIMContext* currentContext = GetCurrentContext()) {
+      AutoRestore<bool> restore(mRetrieveSurroundingSignalReceived);
+      OnRetrieveSurroundingNative(currentContext);
+    }
+    // Even if OnRetrieveSurroundingNative is failed, don't retry it due to
+    // unexpected.
+    mPendingSetSurrounding = false;
+  }
 }
 
 /* static */
@@ -1801,6 +1812,8 @@ gboolean IMContextWrapper::OnRetrieveSurroundingNative(GtkIMContext* aContext) {
            "current context=0x%p",
            this, aContext, GetCurrentContext()));
 
+  mPendingSetSurrounding = false;
+
   // See bug 472635, we should do nothing if IM context doesn't match.
   if (GetCurrentContext() != aContext) {
     MOZ_LOG(gIMELog, LogLevel::Error,
@@ -1813,6 +1826,10 @@ gboolean IMContextWrapper::OnRetrieveSurroundingNative(GtkIMContext* aContext) {
   nsAutoString uniStr;
   uint32_t cursorPos;
   if (NS_FAILED(GetCurrentParagraph(uniStr, cursorPos))) {
+    // In this situation, content process doesn't notify parent of text changes,
+    // so selection cache in parent is still old data. After receiving the
+    // notification from child, we should retry to set surrounding text.
+    mPendingSetSurrounding = true;
     return FALSE;
   }
 
@@ -2304,7 +2321,7 @@ bool IMContextWrapper::DispatchCompositionStart(GtkIMContext* aContext) {
     NS_ConvertUTF8toUTF16 im(GetIMName());
     // 72 is kMaximumKeyStringLength in TelemetryScalar.cpp
     if (im.Length() > 72) {
-      if (NS_IS_SURROGATE_PAIR(im[72 - 2], im[72 - 1])) {
+      if (mozilla::IsSurrogatePair(im[72 - 2], im[72 - 1])) {
         im.Truncate(72 - 2);
       } else {
         im.Truncate(72 - 1);
@@ -2617,7 +2634,7 @@ already_AddRefed<TextRangeArray> IMContextWrapper::CreateTextRangeArray(
            this, aContext, NS_ConvertUTF16toUTF8(aCompositionString).get(),
            aCompositionString.Length()));
 
-  RefPtr<TextRangeArray> textRangeArray = new TextRangeArray();
+  auto textRangeArray = MakeRefPtr<TextRangeArray>();
 
   gchar* preedit_string;
   gint cursor_pos_in_chars;
@@ -3013,7 +3030,7 @@ void IMContextWrapper::SetCursorPosition(GtkIMContext* aContext) {
   }
 
   nsWindow* rootWindow =
-      static_cast<nsWindow*>(mLastFocusedWindow->GetTopLevelWidget());
+      nsWindow::FromWidget(mLastFocusedWindow->GetTopLevelWidget());
 
   // Get the position of the rootWindow in screen.
   LayoutDeviceIntPoint root = rootWindow->WidgetToScreenOffset();
@@ -3025,9 +3042,20 @@ void IMContextWrapper::SetCursorPosition(GtkIMContext* aContext) {
   LayoutDeviceIntRect rect =
       queryCaretOrTextRectEvent.mReply->mRect + root - owner;
   rect.width = 0;
-  GdkRectangle area = rootWindow->DevicePixelsToGdkRectRoundOut(rect);
+  rootWindow->SetTextInputArea(rect);
 
+  GdkRectangle area = rootWindow->DevicePixelsToGdkRectRoundOut(rect);
   gtk_im_context_set_cursor_location(aContext, &area);
+#ifdef MOZ_WAYLAND
+  if (GdkIsWaylandDisplay()) {
+    if (mOwnerWindow) {
+      GdkWindow* gdkWindow = mOwnerWindow->GetToplevelGdkWindow();
+      if (gdkWindow) {
+        gdk_window_invalidate_rect(gdkWindow, nullptr, false);
+      }
+    }
+  }
+#endif
 }
 
 nsresult IMContextWrapper::GetCurrentParagraph(nsAString& aText,

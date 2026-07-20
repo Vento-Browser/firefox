@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.defineESModuleGetters(this, {
-  PermissionUI: "resource:///modules/PermissionUI.sys.mjs",
-});
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "SiteCategory",
+  "@mozilla.org/site-category;1",
+  Ci.nsISiteCategory
+);
 
 /**
  * Utility object to handle manipulations of the identity permission indicators
@@ -132,6 +135,13 @@ var gPermissionPanel = {
   get _xrSharingIcon() {
     delete this._xrSharingIcon;
     return (this._xrSharingIcon = document.getElementById("xr-sharing-icon"));
+  },
+
+  get _serialSharingIcon() {
+    delete this._serialSharingIcon;
+    return (this._serialSharingIcon = document.getElementById(
+      "serial-sharing-icon"
+    ));
   },
 
   get _webRTCSharingIcon() {
@@ -287,6 +297,7 @@ var gPermissionPanel = {
     this._webRTCSharingIcon.removeAttribute("sharing");
     this._geoSharingIcon.removeAttribute("sharing");
     this._xrSharingIcon.removeAttribute("sharing");
+    this._serialSharingIcon.removeAttribute("sharing");
 
     let hasSharingIcon = false;
 
@@ -328,6 +339,11 @@ var gPermissionPanel = {
         this._xrSharingIcon.setAttribute("sharing", this._sharingState.xr);
         hasSharingIcon = true;
       }
+
+      if (this._sharingState.serial) {
+        this._serialSharingIcon.setAttribute("sharing", "serial");
+        hasSharingIcon = true;
+      }
     }
 
     this._identityPermissionBox.toggleAttribute(
@@ -361,9 +377,12 @@ var gPermissionPanel = {
     // being focused (and therefore, interacted with) by the user. However, we
     // want to allow opening the identity popup from the device control menu,
     // which calls click() on the identity button, so we don't return early.
+    // Persisted search terms also produce pageproxystate=invalid, but a real
+    // page is loaded underneath, so the permission popup is still meaningful.
     if (
       !this._sharingState &&
-      gURLBar.getAttribute("pageproxystate") != "valid"
+      gURLBar.getAttribute("pageproxystate") != "valid" &&
+      !gURLBar.hasAttribute("persistsearchterms")
     ) {
       return;
     }
@@ -497,6 +516,20 @@ var gPermissionPanel = {
       } else {
         permissions.push({
           id: "xr",
+          state: SitePermissions.ALLOW,
+          scope: SitePermissions.SCOPE_REQUEST,
+          sharingState: true,
+        });
+      }
+    }
+
+    if (this._sharingState?.serial) {
+      let serialPermission = permissions.find(perm => perm.id === "serial");
+      if (serialPermission) {
+        serialPermission.sharingState = true;
+      } else {
+        permissions.push({
+          id: "serial",
           state: SitePermissions.ALLOW,
           scope: SitePermissions.SCOPE_REQUEST,
           sharingState: true,
@@ -718,6 +751,13 @@ var gPermissionPanel = {
       menulist.setAttribute("sizetopopup", "none");
       menulist.setAttribute("id", "permission-popup-menulist");
 
+      if (
+        idNoSuffix == "popup" &&
+        Services.prefs.prefIsLocked("dom.disable_open_during_load")
+      ) {
+        menulist.setAttribute("disabled", "true");
+      }
+
       for (let state of SitePermissions.getAvailableStates(idNoSuffix)) {
         let menuitem = document.createXULElement("menuitem");
         // We need to correctly display the default/unknown state, which has its
@@ -926,9 +966,7 @@ var gPermissionPanel = {
       // Record telemetry for notification permission revocation via toolbar
       if (idNoSuffix === "desktop-notification") {
         Glean.webNotificationPermission.permissionRevokedToolbar.record({
-          site_category: PermissionUI.getSiteCategory(
-            gBrowser.contentPrincipal
-          ),
+          site_category: SiteCategory.getCategory(gBrowser.contentPrincipal),
         });
       }
 
@@ -938,6 +976,13 @@ var gPermissionPanel = {
         gBrowser.updateBrowserSharing(browser, { geo: false });
       } else if (idNoSuffix === "xr") {
         gBrowser.updateBrowserSharing(browser, { xr: false });
+      } else if (idNoSuffix === "serial") {
+        gSerialDeviceObserver.resetBrowserCount(browser);
+        gBrowser.updateBrowserSharing(browser, { serial: false });
+        Services.obs.notifyObservers(
+          browser.browsingContext,
+          "serial-permission-revoked"
+        );
       }
 
       clearCallback();

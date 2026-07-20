@@ -20,14 +20,17 @@ ChromeUtils.defineESModuleGetters(this, {
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
-  UrlbarController:
-    "moz-src:///browser/components/urlbar/UrlbarController.sys.mjs",
+  UrlbarParentController:
+    "moz-src:///browser/components/urlbar/UrlbarParentController.sys.mjs",
   UrlbarPrefs: "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
   UrlbarProviderOpenTabs:
     "moz-src:///browser/components/urlbar/UrlbarProviderOpenTabs.sys.mjs",
+  UrlbarProviderSearchSuggestions:
+    "moz-src:///browser/components/urlbar/UrlbarProviderSearchSuggestions.sys.mjs",
   ProvidersManager:
     "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
-  UrlbarResult: "moz-src:///browser/components/urlbar/UrlbarResult.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
   UrlbarTokenizer:
     "moz-src:///browser/components/urlbar/UrlbarTokenizer.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
@@ -143,7 +146,7 @@ function createContext(searchString = "foo", properties = {}) {
 /**
  * Waits for the given notification from the supplied controller.
  *
- * @param {UrlbarController} controller The controller to wait for a response from.
+ * @param {UrlbarParentController} controller The controller to wait for a response from.
  * @param {string} notification The name of the notification to wait for.
  * @param {boolean} expected Wether the notification is expected.
  * @returns {Promise} A promise that is resolved with the arguments supplied to
@@ -438,7 +441,15 @@ async function cleanupPlaces() {
  * @param {boolean} [options.heuristic]
  *   True if this is a heuristic result. Defaults to false.
  * @param {number} [options.source]
- *   Where the results should be sourced from. See {@link UrlbarUtils.RESULT_SOURCE}.
+ *   Where the results should be sourced from. See {@link UrlbarShared.RESULT_SOURCE}.
+ * @param {number} [options.bookmarkDateMs]
+ *   The date the bookmark was added in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
+ * @param {number} [options.lastVisit]
+ *   The date the bookmark was last visited in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
  * @returns {UrlbarResult}
  */
 function makeBookmarkResult(
@@ -449,31 +460,42 @@ function makeBookmarkResult(
     iconUri,
     tags = [],
     heuristic = false,
-    source = UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
+    source = UrlbarShared.RESULT_SOURCE.BOOKMARKS,
+    bookmarkDateMs = undefined,
+    lastVisit = undefined,
   }
 ) {
+  let payload = {
+    url: uri,
+    title,
+    tags,
+    // Check against undefined so consumers can pass in the empty string.
+    icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
+    isBlockable:
+      source == UrlbarShared.RESULT_SOURCE.HISTORY ? true : undefined,
+    blockL10n:
+      source == UrlbarShared.RESULT_SOURCE.HISTORY
+        ? { id: "urlbar-result-menu-remove-from-history2" }
+        : undefined,
+    helpUrl:
+      source == UrlbarShared.RESULT_SOURCE.HISTORY
+        ? Services.urlFormatter.formatURLPref("app.support.baseURL") +
+          "awesome-bar-result-menu"
+        : undefined,
+  };
+
+  if (bookmarkDateMs !== undefined) {
+    payload.bookmarkDateMs = bookmarkDateMs;
+  }
+  if (lastVisit !== undefined) {
+    payload.lastVisit = lastVisit;
+  }
+
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.URL,
+    type: UrlbarShared.RESULT_TYPE.URL,
     source,
     heuristic,
-    payload: {
-      url: uri,
-      title,
-      tags,
-      // Check against undefined so consumers can pass in the empty string.
-      icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
-      isBlockable:
-        source == UrlbarUtils.RESULT_SOURCE.HISTORY ? true : undefined,
-      blockL10n:
-        source == UrlbarUtils.RESULT_SOURCE.HISTORY
-          ? { id: "urlbar-result-menu-remove-from-history" }
-          : undefined,
-      helpUrl:
-        source == UrlbarUtils.RESULT_SOURCE.HISTORY
-          ? Services.urlFormatter.formatURLPref("app.support.baseURL") +
-            "awesome-bar-result-menu"
-          : undefined,
-    },
+    payload,
   });
 }
 
@@ -492,15 +514,15 @@ function makeBookmarkResult(
  */
 function makeFormHistoryResult(queryContext, { suggestion, engineName }) {
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.SEARCH,
-    source: UrlbarUtils.RESULT_SOURCE.HISTORY,
+    type: UrlbarShared.RESULT_TYPE.SEARCH,
+    source: UrlbarShared.RESULT_SOURCE.HISTORY,
     payload: {
       engine: engineName,
       suggestion,
       title: suggestion,
       lowerCaseSuggestion: suggestion.toLocaleLowerCase(),
       isBlockable: true,
-      blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+      blockL10n: { id: "urlbar-result-menu-remove-from-history2" },
       helpUrl:
         Services.urlFormatter.formatURLPref("app.support.baseURL") +
         "awesome-bar-result-menu",
@@ -532,8 +554,8 @@ function makeOmniboxResult(
   { content, description, keyword, heuristic = false }
 ) {
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.OMNIBOX,
-    source: UrlbarUtils.RESULT_SOURCE.ADDON,
+    type: UrlbarShared.RESULT_TYPE.OMNIBOX,
+    source: UrlbarShared.RESULT_SOURCE.ADDON,
     heuristic,
     payload: {
       title: description,
@@ -561,23 +583,48 @@ function makeOmniboxResult(
  *   An id of the userContext in which the tab is located.
  * @param {string} [options.tabGroup]
  *   An id of the tab group in which the tab is located.
+ * @param {number} [options.bookmarkDateMs]
+ *   If the URL is bookmarked, the date the bookmark was added in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
+ * @param {number} [options.lastVisit]
+ *   The date the URL was last visited in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
  * @returns {UrlbarResult}
  */
 function makeTabSwitchResult(
   queryContext,
-  { uri, title, iconUri, userContextId, tabGroup }
+  {
+    uri,
+    title,
+    iconUri,
+    userContextId,
+    tabGroup,
+    bookmarkDateMs = undefined,
+    lastVisit = undefined,
+  }
 ) {
+  let payload = {
+    url: uri,
+    title,
+    // Check against undefined so consumers can pass in the empty string.
+    icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
+    userContextId: userContextId || 0,
+    tabGroup,
+  };
+
+  if (bookmarkDateMs !== undefined) {
+    payload.bookmarkDateMs = bookmarkDateMs;
+  }
+  if (lastVisit !== undefined) {
+    payload.lastVisit = lastVisit;
+  }
+
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
-    source: UrlbarUtils.RESULT_SOURCE.TABS,
-    payload: {
-      url: uri,
-      title,
-      // Check against undefined so consumers can pass in the empty string.
-      icon: typeof iconUri != "undefined" ? iconUri : `page-icon:${uri}`,
-      userContextId: userContextId || 0,
-      tabGroup,
-    },
+    type: UrlbarShared.RESULT_TYPE.TAB_SWITCH,
+    source: UrlbarShared.RESULT_SOURCE.TABS,
+    payload,
   });
 }
 
@@ -607,8 +654,8 @@ function makeKeywordSearchResult(
   { uri, keyword, title, iconUri, postData, heuristic = false }
 ) {
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.KEYWORD,
-    source: UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
+    type: UrlbarShared.RESULT_TYPE.KEYWORD,
+    source: UrlbarShared.RESULT_SOURCE.BOOKMARKS,
     heuristic,
     payload: {
       title: title || uri,
@@ -661,8 +708,8 @@ function makeRemoteTabResult(
   }
 
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.REMOTE_TAB,
-    source: UrlbarUtils.RESULT_SOURCE.TABS,
+    type: UrlbarShared.RESULT_TYPE.REMOTE_TAB,
+    source: UrlbarShared.RESULT_SOURCE.TABS,
     payload,
   });
 }
@@ -712,9 +759,9 @@ function makeRemoteTabResult(
  *   For tab-to-search results, the search engine domain without the public
  *   suffix.
  * @param {number} [options.type]
- *   The type of the search result. Defaults to UrlbarUtils.RESULT_TYPE.SEARCH.
+ *   The type of the search result. Defaults to UrlbarShared.RESULT_TYPE.SEARCH.
  * @param {number} [options.source]
- *   The source of the search result. Defaults to UrlbarUtils.RESULT_SOURCE.SEARCH.
+ *   The source of the search result. Defaults to UrlbarShared.RESULT_SOURCE.SEARCH.
  * @param {boolean} [options.satisfiesAutofillThreshold]
  *   If this search should appear in the autofill section of the box
  * @param {boolean} [options.trending]
@@ -743,8 +790,8 @@ function makeSearchResult(
     heuristic = false,
     trending = false,
     isRichSuggestion = false,
-    type = UrlbarUtils.RESULT_TYPE.SEARCH,
-    source = UrlbarUtils.RESULT_SOURCE.SEARCH,
+    type = UrlbarShared.RESULT_TYPE.SEARCH,
+    source = UrlbarShared.RESULT_SOURCE.SEARCH,
     satisfiesAutofillThreshold = false,
   }
 ) {
@@ -807,8 +854,10 @@ function makeSearchResult(
   }
 
   if (isRichSuggestion) {
-    payload.icon =
-      "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+    payload.icon = UrlbarUtils.getRemoteIconUrl(
+      "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
+      UrlbarProviderSearchSuggestions.RICH_ICON_SIZE
+    );
     payload.description = "description";
   }
 
@@ -843,6 +892,16 @@ function makeSearchResult(
  *   check which provider offered a result unless this option is specified.
  * @param {number} [options.source]
  *   The source of the result
+ * @param {boolean} [options.isAutofillFallback]
+ *   Whether it's a result of being a fallback for the autofill result.
+ * @param {number} [options.bookmarkDateMs]
+ *   If the URL is bookmarked, the date the bookmark was added in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
+ * @param {number} [options.lastVisit]
+ *   The date the URL was last visited in ms since epoch.
+ *   For `check_results()`, leave this undefined to ignore the actual value.
+ *   Pass zero to assert that the actual value is falsey.
  * @returns {UrlbarResult}
  */
 function makeVisitResult(
@@ -854,7 +913,10 @@ function makeVisitResult(
     providerName,
     tags = [],
     heuristic = false,
-    source = UrlbarUtils.RESULT_SOURCE.HISTORY,
+    source = UrlbarShared.RESULT_SOURCE.HISTORY,
+    isAutofillFallback = false,
+    bookmarkDateMs = undefined,
+    lastVisit = undefined,
   }
 ) {
   let payload = {
@@ -864,14 +926,20 @@ function makeVisitResult(
   if (title != undefined) {
     payload.title = title;
   }
+  if (bookmarkDateMs !== undefined) {
+    payload.bookmarkDateMs = bookmarkDateMs;
+  }
+  if (lastVisit !== undefined) {
+    payload.lastVisit = lastVisit;
+  }
 
   if (
     !heuristic &&
     providerName != "UrlbarProviderAboutPages" &&
-    source == UrlbarUtils.RESULT_SOURCE.HISTORY
+    source == UrlbarShared.RESULT_SOURCE.HISTORY
   ) {
     payload.isBlockable = true;
-    payload.blockL10n = { id: "urlbar-result-menu-remove-from-history" };
+    payload.blockL10n = { id: "urlbar-result-menu-remove-from-history2" };
     payload.helpUrl =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "awesome-bar-result-menu";
@@ -881,7 +949,7 @@ function makeVisitResult(
     payload.icon = iconUri;
   } else if (
     iconUri === undefined &&
-    source != UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL
+    source != UrlbarShared.RESULT_SOURCE.OTHER_LOCAL
   ) {
     payload.icon = `page-icon:${uri}`;
   }
@@ -890,8 +958,12 @@ function makeVisitResult(
     payload.tags = tags;
   }
 
+  if (isAutofillFallback) {
+    payload.isAutofillFallback = true;
+  }
+
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.URL,
+    type: UrlbarShared.RESULT_TYPE.URL,
     source,
     heuristic,
     providerName,
@@ -912,8 +984,8 @@ function makeVisitResult(
  */
 function makeCalculatorResult(queryContext, { value }) {
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-    source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+    type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+    source: UrlbarShared.RESULT_SOURCE.OTHER_LOCAL,
     payload: {
       value,
       input: queryContext.searchString,
@@ -953,15 +1025,15 @@ function makeGlobalActionsResult({
   };
 
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-    source: UrlbarUtils.RESULT_SOURCE.ACTIONS,
+    type: UrlbarShared.RESULT_TYPE.DYNAMIC,
+    source: UrlbarShared.RESULT_SOURCE.ACTIONS,
     providerName: "UrlbarProviderGlobalActions",
     payload,
   });
 }
 
 /**
- * Checks that the results returned by a UrlbarController match those in
+ * Checks that the results returned by a UrlbarParentController match those in
  * the param `matches`.
  *
  * @param {object} options Options for the check.
@@ -976,7 +1048,8 @@ function makeGlobalActionsResult({
  *   The value that would be filled if the autofill result was confirmed.
  *   Has no effect if `autofilled` is not specified.
  * @param {object} [options.conditionalPayloadProperties]
- *   An object mapping payload property names to objects { optional, ignore }.
+ *   An object mapping payload property names to objects
+ *   { optional, ignore, custom }.
  *   See the code below.
  * @param {Array} options.matches
  *   An array of UrlbarResults.
@@ -1073,16 +1146,43 @@ async function check_results({
     richSuggestionIconVariation: { optional: true },
   };
 
+  // A validator object to check optional date payload properties. If the
+  // expected date is undefined, the actual date won't be checked. If the
+  // expected date is zero, the actual date is asserted to be falsey.
+  let optionalDateValidator = {
+    optional: true,
+    custom(resultIndex, actualResult, payloadKey) {
+      if (matches[resultIndex].payload[payloadKey] === 0) {
+        Assert.ok(
+          !actualResult.payload[payloadKey],
+          `result.payload.${payloadKey} should be falsey at result index ${resultIndex}`
+        );
+        return true;
+      }
+      return false;
+    },
+  };
+
   // Payload properties to conditionally check. Properties not specified here
-  // will always be checked.
+  // will always be checked. For each entry in this object, the key is the
+  // payload property name and the value is a validator object that can have the
+  // following keys, each optional:
   //
-  // ignore:
-  //   Always ignore the property.
-  // optional:
-  //   Ignore the property if it's not in the expected result.
+  // {Function} custom
+  //   A function called to validate the payload property. It will be called
+  //   like: `custom(resultIndex, actualResult, payloadKey)`
+  //   It will be called before any other validation is performed for the given
+  //   payload property. It should return true if validation should stop or
+  //   false if it should continue as usual.
+  // {boolean} ignore
+  //   Whether the payload property should always be ignored.
+  // {boolean} optional
+  //   When true, the payload property will be ignored if it's not in the
+  //   payload of the expected result.
   conditionalPayloadProperties = {
+    bookmarkDateMs: optionalDateValidator,
     frecency: { optional: true },
-    lastVisit: { optional: true },
+    lastVisit: optionalDateValidator,
     // `suggestionObject` is only used for dismissing Suggest Rust results, and
     // important properties in this object are reflected in the top-level
     // payload object, so ignore it. There are Suggest tests specifically for
@@ -1093,11 +1193,17 @@ async function check_results({
 
   for (let i = 0; i < matches.length; i++) {
     let actual = context.results[i];
+
+    let actualJsonable = { payload: actual.payload };
+    for (let key of Object.keys(propertiesToCheck)) {
+      actualJsonable[key] = actual[key];
+    }
+
     let expected = matches[i];
     info(
       `Comparing results at index ${i}:` +
         " actual=" +
-        JSON.stringify(actual) +
+        JSON.stringify(actualJsonable) +
         " expected=" +
         JSON.stringify(expected)
     );
@@ -1114,8 +1220,8 @@ async function check_results({
     }
 
     if (
-      actual.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
-      actual.source == UrlbarUtils.RESULT_SOURCE.SEARCH &&
+      actual.type == UrlbarShared.RESULT_TYPE.SEARCH &&
+      actual.source == UrlbarShared.RESULT_SOURCE.SEARCH &&
       actual.providerName == "UrlbarProviderHeuristicFallback"
     ) {
       expected.payload.icon = SEARCH_GLASS_ICON;
@@ -1126,7 +1232,7 @@ async function check_results({
         const payloadUrlProtocol = new URL(actual.payload.url).protocol;
         if (
           !UrlbarUtils.PROTOCOLS_WITH_ICONS.includes(payloadUrlProtocol) &&
-          actual.source != UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL
+          actual.source != UrlbarShared.RESULT_SOURCE.OTHER_LOCAL
         ) {
           expected.payload.icon = UrlbarUtils.ICON.DEFAULT;
         }
@@ -1141,9 +1247,15 @@ async function check_results({
 
       for (let key of actualKeys.union(expectedKeys)) {
         let condition = conditionalPayloadProperties[key];
+
+        if (condition?.custom?.(i, actual, key)) {
+          // The custom assertion consumed this assertion.
+          continue;
+        }
+
         if (
           condition?.ignore ||
-          (condition?.optional && !expected.hasOwnProperty(key))
+          (condition?.optional && !expected.payload.hasOwnProperty(key))
         ) {
           continue;
         }
@@ -1156,6 +1268,30 @@ async function check_results({
       }
     }
   }
+}
+
+/**
+ * Reads a single column from moz_origins for the origin that matches the url.
+ *
+ * @param {string} url
+ *   A URL whose origin row should be looked up.
+ * @param {string} column
+ *   The column name to read from moz_origins.
+ */
+async function getOriginColumn(url, column) {
+  let db = await PlacesUtils.promiseDBConnection();
+  let rows = await db.executeCached(
+    `SELECT o.${column}
+     FROM moz_origins o
+     JOIN moz_places h ON h.origin_id = o.id
+     WHERE h.url_hash = hash(:url) AND h.url = :url
+     LIMIT 1`,
+    { url }
+  );
+  if (!rows.length) {
+    return undefined;
+  }
+  return rows[0].getResultByIndex(0);
 }
 
 /**

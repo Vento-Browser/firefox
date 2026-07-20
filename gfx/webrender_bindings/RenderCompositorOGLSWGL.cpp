@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  *
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -10,27 +8,29 @@
 
 #include "GLContext.h"
 #include "GLContextEGL.h"
+#include "OGLShaderProgram.h"
 #include "ScopedGLHelpers.h"
 #include "mozilla/layers/BuildConstants.h"
 #include "mozilla/layers/CompositorOGL.h"
 #include "mozilla/layers/Effects.h"
 #include "mozilla/layers/TextureHostOGL.h"
 #include "mozilla/widget/CompositorWidget.h"
-#include "OGLShaderProgram.h"
 
 #ifdef MOZ_WIDGET_ANDROID
+#  include <android/native_window.h>
+#  include <android/native_window_jni.h>
+
 #  include "mozilla/java/GeckoSurfaceTextureWrappers.h"
 #  include "mozilla/layers/AndroidHardwareBuffer.h"
 #  include "mozilla/webrender/RenderAndroidHardwareBufferTextureHost.h"
 #  include "mozilla/webrender/RenderAndroidSurfaceTextureHost.h"
 #  include "mozilla/widget/AndroidCompositorWidget.h"
-#  include <android/native_window.h>
-#  include <android/native_window_jni.h>
 #endif
 
 #ifdef MOZ_WIDGET_GTK
-#  include "mozilla/widget/GtkCompositorWidget.h"
 #  include <gdk/gdk.h>
+
+#  include "mozilla/widget/GtkCompositorWidget.h"
 #  ifdef MOZ_X11
 #    include <gdk/gdkx.h>
 #  endif
@@ -317,12 +317,64 @@ bool RenderCompositorOGLSWGL::MaybeReadback(
 #ifdef MOZ_WIDGET_ANDROID
 bool RenderCompositorOGLSWGL::MaybeCaptureScreenPixels(
     const gfx::IntRect& aSourceRect,
-    RefPtr<layers::AndroidHardwareBuffer> aHardwareBuffer) {
+    layers::AndroidHardwareBuffer* aHardwareBuffer) {
   auto* const gl = GetGLContext();
+  gl::ScopedBindFramebuffer scopedBind(gl);
+
+  if (!gl->IsSupported(gl::GLFeature::framebuffer_blit)) {
+    // Fallback path for devices which do not support glBlitFramebuffer (i.e.
+    // GLES 2.0 without extensions). Use glReadPixels to read the source rect
+    // into a buffer, then draw into the CPU-mapped hardware buffer, flipping
+    // and scaling as required.
+    const int bpp = gfx::BytesPerPixel(aHardwareBuffer->mFormat);
+    const RefPtr<gfx::DataSourceSurface> surface =
+        gfx::Factory::CreateDataSourceSurfaceWithStride(
+            aSourceRect.Size(), gfx::SurfaceFormat::R8G8B8A8,
+            aSourceRect.width * bpp);
+    if (!surface) {
+      return true;
+    }
+    {
+      const gfx::DataSourceSurface::ScopedMap map(
+          surface, gfx::DataSourceSurface::WRITE);
+      if (!map.IsMapped()) {
+        return true;
+      }
+      gl->BindReadFB(0);
+      gl->fReadPixels(
+          aSourceRect.x,
+          GetBufferSize().height - aSourceRect.y - aSourceRect.height,
+          aSourceRect.width, aSourceRect.height, LOCAL_GL_RGBA,
+          LOCAL_GL_UNSIGNED_BYTE, map.GetData());
+    }
+
+    uint8_t* destBuf = nullptr;
+    if (aHardwareBuffer->Lock(AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, nullptr,
+                              reinterpret_cast<void**>(&destBuf)) < 0) {
+      return true;
+    }
+    const auto hardwareBufferUnlock =
+        MakeScopeExit([&]() { aHardwareBuffer->Unlock(); });
+    const RefPtr<gfx::DrawTarget> dt = gfx::Factory::CreateDrawTargetForData(
+        gfx::BackendType::SKIA, destBuf, aHardwareBuffer->mSize,
+        aHardwareBuffer->mStride * bpp, aHardwareBuffer->mFormat);
+    if (!dt) {
+      return true;
+    }
+    dt->SetTransform(Matrix::Scaling(1.0, -1.0) *
+                     Matrix::Translation(0, aHardwareBuffer->mSize.height));
+    dt->DrawSurface(surface, gfx::Rect({}, gfx::Size(aHardwareBuffer->mSize)),
+                    gfx::Rect({}, gfx::Size(aSourceRect.Size())),
+                    gfx::DrawSurfaceOptions(gfx::SamplingFilter::LINEAR),
+                    gfx::DrawOptions(1.0f, gfx::CompositionOp::OP_SOURCE));
+    return true;
+  }
+
+  // Attach the hardware buffer to a framebuffer, then blit the source rect to
+  // it from the main framebuffer, flipping and scaling as required.
   auto* const gle = gl::GLContextEGL::Cast(gl);
   const auto& egl = gle->mEgl;
   gl::ScopedEGLImageForAndroidHardwareBuffer eglImage(gle, aHardwareBuffer);
-  gl::ScopedBindFramebuffer scopedBind(gl);
   gl::ScopedRenderbuffer rb(gl);
   gl->fBindRenderbuffer(LOCAL_GL_RENDERBUFFER, rb);
   gl->fEGLImageTargetRenderbufferStorage(LOCAL_GL_RENDERBUFFER, eglImage);

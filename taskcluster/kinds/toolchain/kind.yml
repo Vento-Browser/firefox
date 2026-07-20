@@ -16,7 +16,6 @@ transforms:
     - gecko_taskgraph.transforms.task:transforms
 
 task-defaults:
-    run-on-repo-type: [hg]
     treeherder:
         kind: build
         platform: toolchains/opt
@@ -28,6 +27,7 @@ task-defaults:
 tasks-from:
     - 7zz.yml
     - android.yml
+    - android-macos.yml
     - cargo-vet.yml
     - cabextract.yml
     - cbindgen.yml
@@ -51,16 +51,25 @@ tasks-from:
     - mingw.yml
     - minidump-stackwalk.yml
     - misc.yml
+    - mozcheck.yml
     - nasm.yml
     - nimbus-fml.yml
     - node.yml
     - onnx.yml
     - pkgconf.yml
+    - profiler-node-tools.yml
     - python.yml
     - python-wheels.yml
     - rust.yml
     - rust-size.yml
+    - samply.yml
     - sccache.yml
+    - searchfox-cli.yml
+    - socorro-cli.yml
+    - stmo-cli.yml
     - sysroot.yml
+    - treeherder-cli.yml
+    - upx.yml
     - uv.yml
+    - webspec-index.yml
     - dist-toolchains.yml

@@ -1,28 +1,24 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "CrossProcessPaint.h"
 
+#include "gfxPlatform.h"
+#include "mozilla/Logging.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ContentProcessManager.h"
 #include "mozilla/dom/ImageBitmap.h"
-#include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/PWindowGlobalParent.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/dom/WindowGlobalParent.h"
-#include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/WindowGlobalActorsBinding.h"
+#include "mozilla/dom/WindowGlobalChild.h"
+#include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/gfx/DrawEventRecorder.h"
 #include "mozilla/gfx/InlineTranslator.h"
 #include "mozilla/gfx/RecordedEvent.h"
-#include "mozilla/Logging.h"
-#include "mozilla/PresShell.h"
-
-#include "gfxPlatform.h"
-
 #include "nsContentUtils.h"
 #include "nsIDocShell.h"
 #include "nsPresContext.h"
@@ -133,6 +129,9 @@ PaintFragment PaintFragment::Record(dom::BrowsingContext* aBc,
   }
   if (aFlags & CrossProcessPaintFlags::UseHighQualityScaling) {
     renderDocFlags |= RenderDocumentFlags::UseHighQualityScaling;
+  }
+  if (aFlags & CrossProcessPaintFlags::ForPrinting) {
+    renderDocFlags |= RenderDocumentFlags::ForPrinting;
   }
 
   // Perform the actual rendering
@@ -305,10 +304,10 @@ bool CrossProcessPaint::Start(dom::WindowGlobalParent* aRoot,
 
 /* static */
 RefPtr<CrossProcessPaint::ResolvePromise> CrossProcessPaint::Start(
-    nsTHashSet<uint64_t>&& aDependencies) {
+    nsTHashSet<uint64_t>&& aDependencies, CrossProcessPaintFlags aFlags) {
   MOZ_ASSERT(!aDependencies.IsEmpty());
   RefPtr<CrossProcessPaint> resolver =
-      new CrossProcessPaint(1.0, dom::TabId(0), CrossProcessPaintFlags::None);
+      new CrossProcessPaint(1.0, dom::TabId(0), aFlags);
 
   RefPtr<CrossProcessPaint::ResolvePromise> promise = resolver->Init();
 
@@ -412,8 +411,7 @@ void CrossProcessPaint::QueuePaint(dom::WindowGlobalParent* aWGP,
 
   CPP_LOG("Queueing paint for WindowGlobalParent(%p).\n", aWGP);
 
-  aWGP->DrawSnapshotInternal(this, aRect, mScale, aBackgroundColor,
-                             (uint32_t)aFlags);
+  aWGP->DrawSnapshotInternal(this, aRect, mScale, aBackgroundColor, aFlags);
   mPendingFragments += 1;
 }
 
@@ -451,7 +449,7 @@ void CrossProcessPaint::QueuePaint(dom::CanonicalBrowsingContext* aBc) {
         // 1562720)
         wgp->DrawSnapshotInternal(self, Nothing(), self->mScale,
                                   NS_RGBA(0, 0, 0, 0),
-                                  (uint32_t)self->GetFlagsForDependencies());
+                                  self->GetFlagsForDependencies());
       },
       [self = RefPtr{this}]() {
         CPP_LOG(

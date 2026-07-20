@@ -53,7 +53,15 @@ const DEFAULT_DELETE_TIMEOUT_MS = 5000;
 const LOCAL_CHROME_PREFIX = "chrome://";
 
 // Default indexedDB revision.
-const DEFAULT_MODEL_REVISION = 6;
+const DEFAULT_MODEL_REVISION = 7;
+
+// One-shot engineId renames applied during the 6 -> 7 schema migration. Keys
+// are the obsolete engineIds, values are the replacements. Used to preserve
+// already-downloaded model files when a feature's engineId is renamed.
+const RENAMED_ENGINE_IDS = {
+  // Bug 1967279: Link Preview engineId rename.
+  wllamapreview: "link-preview",
+};
 
 const DEFAULT_DB_NAME = "modelFiles";
 
@@ -407,14 +415,51 @@ class IndexedDBCache {
     }
   }
 
-  #migrateStore(db, oldVersion) {
+  /**
+   * Perform schema migrations between IndexedDB versions.
+   *
+   * @returns {{destructive: boolean}} `destructive` is true when the migration
+   *   dropped object stores, in which case the on-disk OPFS cache must also be
+   *   cleared by the caller to stay consistent.
+   */
+  #migrateStore(db, oldVersion, transaction) {
     const newVersion = db.version;
     lazy.console.debug(`Migrating from version ${oldVersion} to ${newVersion}`);
     try {
-      // If we are migrating from version 5 to 6, we can skip the migration
-      // as we just added the header lastUsed and lastUpdated fields
+      // Version 5 -> 6 only added optional header fields; no rewrite needed.
       if (oldVersion === 5 && newVersion === 6) {
-        return;
+        return { destructive: false };
+      }
+
+      // Version 6 -> 7 renames engineIds in place to preserve OPFS files for
+      // users who already downloaded models under a since-renamed engineId.
+      if (oldVersion === 6 && newVersion === 7) {
+        if (db.objectStoreNames.contains(this.enginesStoreName)) {
+          const store = transaction.objectStore(this.enginesStoreName);
+          store.openCursor().onsuccess = event => {
+            const cursor = event.target.result;
+            if (!cursor) {
+              return;
+            }
+            const row = cursor.value;
+            if (Array.isArray(row.engineIds)) {
+              let changed = false;
+              const renamed = row.engineIds.map(id => {
+                if (RENAMED_ENGINE_IDS[id]) {
+                  changed = true;
+                  return RENAMED_ENGINE_IDS[id];
+                }
+                return id;
+              });
+              if (changed) {
+                row.engineIds = Array.from(new Set(renamed));
+                cursor.update(row);
+              }
+            }
+            cursor.continue();
+          };
+        }
+        return { destructive: false };
       }
 
       if (oldVersion < newVersion) {
@@ -428,7 +473,9 @@ class IndexedDBCache {
             db.deleteObjectStore(name);
           }
         }
+        return { destructive: true };
       }
+      return { destructive: false };
     } finally {
       lazy.console.debug("Migration done");
     }
@@ -488,6 +535,7 @@ class IndexedDBCache {
    */
   async #openDB() {
     let wasUpgraded = false;
+    let migrationResult = { destructive: false };
 
     return new Promise((resolve, reject) => {
       if (DEFAULT_PRINCIPAL_ORIGIN) {
@@ -507,7 +555,11 @@ class IndexedDBCache {
         const transaction = event.target.transaction;
 
         try {
-          this.#migrateStore(db, event.oldVersion, transaction);
+          migrationResult = this.#migrateStore(
+            db,
+            event.oldVersion,
+            transaction
+          );
 
           if (!db.objectStoreNames.contains(this.headersStoreName)) {
             db.createObjectStore(this.headersStoreName, {
@@ -573,8 +625,8 @@ class IndexedDBCache {
         resolve(db); // Immediately resolve after DB is ready
       };
     }).then(async db => {
-      if (wasUpgraded) {
-        lazy.console.debug("Clearing OPFS cache");
+      if (wasUpgraded && migrationResult.destructive) {
+        lazy.console.debug("Clearing OPFS cache (destructive migration)");
         await lazy.OPFS.remove(this.dbName, {
           recursive: true,
           ignoreErrors: true,
@@ -1392,6 +1444,14 @@ export class ModelHub {
   #lastDownloadOk = new Map();
 
   /**
+   * Tracks the start time (ms) of each model download session, used to report
+   * the total download time for the whole model on completion.
+   *
+   * @type {Map<string, number>}
+   */
+  #downloadStartTime = new Map();
+
+  /**
    * Create an instance of ModelHub.
    *
    * @param {object} [config]
@@ -1858,13 +1918,17 @@ export class ModelHub {
     const isSuccess = this.#lastDownloadOk.get(sessionId);
     const step = isSuccess ? "end_download_success" : "end_download_failed";
     this.#lastDownloadOk.delete(sessionId);
+    const startTime = this.#downloadStartTime.get(sessionId);
+    this.#downloadStartTime.delete(sessionId);
+    const duration =
+      startTime === undefined ? 0 : Math.floor(ChromeUtils.now() - startTime);
     Glean.firefoxAiRuntime.modelDownload.record({
       modelDownloadId: sessionId,
       featureId,
       engineId,
       modelId: model,
       step,
-      duration: 0,
+      duration,
       modelRevision: revision,
       error: isSuccess
         ? ""
@@ -2041,6 +2105,7 @@ export class ModelHub {
     );
 
     if (!this.#lastDownloadOk.has(sessionId)) {
+      this.#downloadStartTime.set(sessionId, ChromeUtils.now());
       Glean.firefoxAiRuntime.modelDownload.record({
         modelDownloadId: sessionId,
         featureId,
@@ -2055,7 +2120,7 @@ export class ModelHub {
     }
     this.#lastDownloadOk.set(sessionId, false);
 
-    const start = Date.now();
+    const start = ChromeUtils.now();
     Glean.firefoxAiRuntime.modelDownload.record({
       modelDownloadId: sessionId,
       featureId,
@@ -2096,7 +2161,7 @@ export class ModelHub {
       });
 
       this.#lastDownloadOk.set(sessionId, true);
-      const end = Date.now();
+      const end = ChromeUtils.now();
       const duration = Math.floor(end - start);
       Glean.firefoxAiRuntime.modelDownload.record({
         modelDownloadId: sessionId,
@@ -2135,7 +2200,7 @@ export class ModelHub {
       return [localFilePath, headers];
     } catch (error) {
       caughtError = error;
-      const end = Date.now();
+      const end = ChromeUtils.now();
       const duration = Math.floor(end - start);
       Glean.firefoxAiRuntime.modelDownload.record({
         modelDownloadId: sessionId,

@@ -1,29 +1,23 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Mon, 29 Dec 2025 13:18:00 -0600
-Subject: Bug 2006933 - (fix-932f274e86) don't include rtc_error.h, forward
- declare RTCError
+From: Byron Campen <docfaraday@gmail.com>
+Date: Tue, 19 May 2026 16:37:00 -0500
+Subject: Bug 2040478 - (fix-de183fb028) Remove this include of override code
+ that is gone. r?mjf
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/fb61f91d422c3d77545d0d10778314eb958fc8c6
+It appears that this override code is no longer necessary.
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/dbd090975384251d83d3554677efcbb0e133feab
 ---
- api/rtp_parameters.h | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ call/call.h | 1 -
+ 1 file changed, 1 deletion(-)
 
-diff --git a/api/rtp_parameters.h b/api/rtp_parameters.h
-index 09eebcab05..db025379da 100644
---- a/api/rtp_parameters.h
-+++ b/api/rtp_parameters.h
-@@ -23,13 +23,13 @@
- #include "absl/strings/string_view.h"
- #include "api/media_types.h"
- #include "api/priority.h"
--#include "api/rtc_error.h"
- #include "api/rtp_transceiver_direction.h"
- #include "api/video/resolution.h"
- #include "api/video_codecs/scalability_mode.h"
- #include "rtc_base/system/rtc_export.h"
- 
- namespace webrtc {
-+class RTCError;
- class StringBuilder;
- 
- using CodecParameterMap = std::map<std::string, std::string>;
+diff --git a/call/call.h b/call/call.h
+index e97a8ee4ec..53a1cf0636 100644
+--- a/call/call.h
++++ b/call/call.h
+@@ -27,7 +27,6 @@
+ #include "api/video/video_stream_encoder_settings.h"
+ #include "call/audio_receive_stream.h"
+ #include "call/audio_send_stream.h"
+-#include "call/call_basic_stats.h"
+ #include "call/call_config.h"
+ #include "call/flexfec_receive_stream.h"
+ #include "call/packet_receiver.h"

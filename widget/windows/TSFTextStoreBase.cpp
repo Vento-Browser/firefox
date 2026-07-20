@@ -1,9 +1,12 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TSFTextStoreBase.h"
+
+#include <comutil.h>  // for _bstr_t
+#include <oleauto.h>  // for SysAllocString
+#include <olectl.h>
 
 #include "IMMHandler.h"
 #include "TSFInputScope.h"
@@ -19,10 +22,6 @@
 #include "mozilla/TextEvents.h"
 #include "mozilla/ToString.h"
 #include "nsWindow.h"
-
-#include <comutil.h>  // for _bstr_t
-#include <oleauto.h>  // for SysAllocString
-#include <olectl.h>
 
 // For collecting other people's log, tell `MOZ_LOG=IMEHandler:4,sync`
 // rather than `MOZ_LOG=IMEHandler:5,sync` since using `5` may create too
@@ -1104,7 +1103,7 @@ HRESULT TSFTextStoreBase::RetrieveRequestedAttrsInternal(
       switch (i) {
         case TSFUtils::AttrIndex::InputScope: {
           paAttrVals[count].varValue.vt = VT_UNKNOWN;
-          RefPtr<IUnknown> inputScope = new TSFInputScope(mInputScopes);
+          auto inputScope = MakeRefPtr<TSFInputScope>(mInputScopes);
           paAttrVals[count].varValue.punkVal = inputScope.forget().take();
           break;
         }

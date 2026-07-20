@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -48,8 +47,9 @@ class VideoFrame {
   void SetNull();
   void TakeFrom(VideoFrame* aFrame);
 
-  // Create a planar YCbCr black image.
-  static already_AddRefed<Image> CreateBlackImage(const gfx::IntSize& aSize);
+  // Create a planar YCbCr black image at intrinsic size. Returns nullptr if the
+  // size is invalid or exceeds 16K in either dimension.
+  already_AddRefed<Image> CloneAsBlackImage() const;
 
  protected:
   // mImage can be null to indicate "no video" (aka "empty frame"). It can
@@ -118,12 +118,12 @@ class VideoSegment : public MediaSegmentBase<VideoSegment, VideoChunk> {
                    const Maybe<bool>& aForceBlack = Nothing(),
                    const Maybe<TimeStamp>& aTimeStamp = Nothing());
   void AppendFrame(
-      already_AddRefed<Image>&& aImage, const IntSize& aIntrinsicSize,
+      already_AddRefed<Image> aImage, const IntSize& aIntrinsicSize,
       const PrincipalHandle& aPrincipalHandle, bool aForceBlack = false,
       TimeStamp aTimeStamp = TimeStamp::Now(),
       media::TimeUnit aProcessingDuration = media::TimeUnit::Invalid(),
       media::TimeUnit aMediaTime = media::TimeUnit::Invalid());
-  void AppendWebrtcRemoteFrame(already_AddRefed<Image>&& aImage,
+  void AppendWebrtcRemoteFrame(already_AddRefed<Image> aImage,
                                const IntSize& aIntrinsicSize,
                                const PrincipalHandle& aPrincipalHandle,
                                bool aForceBlack, TimeStamp aTimeStamp,
@@ -131,7 +131,7 @@ class VideoSegment : public MediaSegmentBase<VideoSegment, VideoChunk> {
                                uint32_t aRtpTimestamp,
                                int64_t aWebrtcCaptureTimeNtp,
                                int64_t aWebrtcReceiveTimeUs);
-  void AppendWebrtcLocalFrame(already_AddRefed<Image>&& aImage,
+  void AppendWebrtcLocalFrame(already_AddRefed<Image> aImage,
                               const IntSize& aIntrinsicSize,
                               const PrincipalHandle& aPrincipalHandle,
                               bool aForceBlack, TimeStamp aTimeStamp,

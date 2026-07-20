@@ -8,21 +8,24 @@
  */
 
 /**
- * @import {Query} from "UrlbarProvidersManager.sys.mjs"
+ * @import {Query} from "./UrlbarProvidersManager.sys.mjs"
  * @import {SearchEngine} from "moz-src:///toolkit/components/search/SearchEngine.sys.mjs"
  * @import {SmartbarInput} from "chrome://browser/content/urlbar/SmartbarInput.mjs"
- * @import {UrlbarSearchStringTokenData} from "UrlbarTokenizer.sys.mjs"
+ * @import {UrlbarSearchStringTokenData} from "./UrlbarTokenizer.sys.mjs"
  */
 
+import { UrlbarShared } from "chrome://browser/content/urlbar/UrlbarShared.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = XPCOMUtils.declareLazy({
   AIWindow:
     "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs",
+  BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
   ContextualIdentityService:
-    "resource://gre/modules/ContextualIdentityService.sys.mjs",
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
   DEFAULT_FORM_HISTORY_PARAM:
     "moz-src:///toolkit/components/search/SearchSuggestionController.sys.mjs",
+  FaviconUtils: "moz-src:///toolkit/modules/FaviconUtils.sys.mjs",
   FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
   KeywordUtils: "resource://gre/modules/KeywordUtils.sys.mjs",
   PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
@@ -39,17 +42,55 @@ const lazy = XPCOMUtils.declareLazy({
     "moz-src:///browser/components/urlbar/UrlbarProviderOpenTabs.sys.mjs",
   UrlbarProviderSearchTips:
     "moz-src:///browser/components/urlbar/UrlbarProviderSearchTips.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
   UrlbarSearchUtils:
     "moz-src:///browser/components/urlbar/UrlbarSearchUtils.sys.mjs",
-  UrlbarTokenizer:
-    "moz-src:///browser/components/urlbar/UrlbarTokenizer.sys.mjs",
-  BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
   UrlUtils: "resource://gre/modules/UrlUtils.sys.mjs",
-  parserUtils: {
-    service: "@mozilla.org/parserutils;1",
-    iid: Ci.nsIParserUtils,
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
+
+  historyEnabled: {
+    pref: "places.history.enabled",
+    default: true,
   },
 });
+
+/**
+ * @typedef {object} LocalSearchMode
+ *   Represents a local search mode, e.g. bookmarks.
+ *
+ * @property {Values<typeof UrlbarShared.RESULT_SOURCE>} source
+ *   The source which the search mode will search.
+ * @property {Values<typeof UrlbarShared.RESTRICT_TOKENS>} restrict
+ *   The restrict token that is associated with the search (*, %, $ etc).
+ * @property {string} icon
+ *   The URL of the icon associated with the search mode in preferences.
+ * @property {string} pref
+ *   The suffix of the preference associated with if the mode is displayed
+ *   in the lists or not (prefix with `browser.urlbar.`).
+ * @property {string} telemetryLabel
+ *   The telemetry label for recording searches in this mode.
+ * @property {string} uiLabel
+ *   The L10n ID to use for the UI label.
+ *   Has a value and an accesskey attribute.
+ */
+
+/**
+ * Parses a URL and returns the origin parts needed for moz_origins lookups.
+ * Returns null if the URL is unparseable.
+ *
+ * @param {string} url
+ *   The URL to parse.
+ * @returns {{ prefix: string, host: string } | null}
+ *   The prefix (scheme + "//") and host, or null if parsing failed.
+ */
+function parseOriginParts(url) {
+  let parsed = URL.parse(url);
+  if (!parsed) {
+    return null;
+  }
+  return { prefix: parsed.protocol + "//", host: parsed.host };
+}
 
 export var UrlbarUtils = {
   // Results are categorized into groups to help the muxer compose them.  See
@@ -82,6 +123,7 @@ export var UrlbarUtils = {
     REMOTE_SUGGESTION: "remoteSuggestion",
     REMOTE_TAB: "remoteTab",
     RESTRICT_SEARCH_KEYWORD: "restrictSearchKeyword",
+    SEMANTIC_HISTORY: "semanticHistory",
     SUGGESTED_INDEX: "suggestedIndex",
     TAIL_SUGGESTION: "tailSuggestion",
   }),
@@ -100,51 +142,6 @@ export var UrlbarUtils = {
     NETWORK: 3,
     // Can be delayed, contains results coming from unknown sources.
     EXTENSION: 4,
-  }),
-
-  // Defines UrlbarResult types.
-  RESULT_TYPE: Object.freeze({
-    // An open tab.
-    TAB_SWITCH: 1,
-    // A search suggestion or engine.
-    SEARCH: 2,
-    // A common url/title tuple, may be a bookmark with tags.
-    URL: 3,
-    // A bookmark keyword.
-    KEYWORD: 4,
-    // A WebExtension Omnibox result.
-    OMNIBOX: 5,
-    // A tab from another synced device.
-    REMOTE_TAB: 6,
-    // An actionable message to help the user with their query.
-    TIP: 7,
-    // A type of result which layout is defined at runtime.
-    DYNAMIC: 8,
-    // A restrict keyword result, could be @bookmarks, @history, or @tabs.
-    RESTRICT: 9,
-    // An AI chat result.
-    AI_CHAT: 10,
-
-    // When you add a new type, also add its schema to
-    // UrlbarUtils.RESULT_PAYLOAD_SCHEMA below.  Also consider checking if
-    // consumers of "urlbar-user-start-navigation" need updating.
-  }),
-
-  // This defines the source of results returned by a provider. Each provider
-  // can return results from more than one source. This is used by the
-  // ProvidersManager to decide which providers must be queried and which
-  // results can be returned.
-  // If you add new source types, consider checking if consumers of
-  // "urlbar-user-start-navigation" need update as well.
-  RESULT_SOURCE: Object.freeze({
-    BOOKMARKS: 1,
-    HISTORY: 2,
-    SEARCH: 3,
-    TABS: 4,
-    OTHER_LOCAL: 5,
-    OTHER_NETWORK: 6,
-    ADDON: 7,
-    ACTIONS: 8,
   }),
 
   // Per-result exposure telemetry.
@@ -205,11 +202,12 @@ export var UrlbarUtils = {
   REGEXP_SINGLE_WORD: /^[^\s@:/?#]+(:\d+)?$/,
 
   // Valid entry points for search mode. If adding a value here, please update
-  // telemetry documentation and Scalars.yaml.
+  // telemetry documentation and metrics.yaml.
   SEARCH_MODE_ENTRY: new Set([
     "bookmarkmenu",
     "handoff",
     "keywordoffer",
+    "messagingSystem",
     "oneoff",
     "historymenu",
     "other",
@@ -243,55 +241,38 @@ export var UrlbarUtils = {
   // Search mode objects corresponding to the local shortcuts in the view, in
   // order they appear.  Pref names are relative to the `browser.urlbar` branch.
   get LOCAL_SEARCH_MODES() {
-    /**
-     * @typedef {object} LocalSearchMode
-     * @property {Values<typeof this.RESULT_SOURCE>} source
-     *   The source which the search mode will search.
-     * @property {Values<typeof lazy.UrlbarTokenizer.RESTRICT>} restrict
-     *   The restrict token that is associated with the search (*, %, $ etc).
-     * @property {string} icon
-     *   The URL of the icon associated with the search mode in preferences.
-     * @property {string} pref
-     *   The suffix of the preference associated with if the mode is displayed
-     *   in the lists or not (prefix with `browser.urlbar.`).
-     * @property {string} telemetryLabel
-     *   The telemetry label for recording searches in this mode.
-     * @property {string} uiLabel
-     *   The string to use for the UI label.
-     */
-
     return /** @type {LocalSearchMode[]} */ ([
       {
-        source: this.RESULT_SOURCE.BOOKMARKS,
-        restrict: lazy.UrlbarTokenizer.RESTRICT.BOOKMARK,
+        source: UrlbarShared.RESULT_SOURCE.BOOKMARKS,
+        restrict: UrlbarShared.RESTRICT_TOKENS.BOOKMARK,
         icon: "chrome://browser/skin/bookmark.svg",
         pref: "shortcuts.bookmarks",
         telemetryLabel: "bookmarks",
-        uiLabel: "urlbar-searchmode-bookmarks",
+        uiLabel: "urlbar-searchmode-bookmarks3",
       },
       {
-        source: this.RESULT_SOURCE.TABS,
-        restrict: lazy.UrlbarTokenizer.RESTRICT.OPENPAGE,
+        source: UrlbarShared.RESULT_SOURCE.TABS,
+        restrict: UrlbarShared.RESTRICT_TOKENS.OPENPAGE,
         icon: "chrome://browser/skin/tabs.svg",
         pref: "shortcuts.tabs",
         telemetryLabel: "tabs",
-        uiLabel: "urlbar-searchmode-tabs",
+        uiLabel: "urlbar-searchmode-tabs3",
       },
       {
-        source: this.RESULT_SOURCE.HISTORY,
-        restrict: lazy.UrlbarTokenizer.RESTRICT.HISTORY,
+        source: UrlbarShared.RESULT_SOURCE.HISTORY,
+        restrict: UrlbarShared.RESTRICT_TOKENS.HISTORY,
         icon: "chrome://browser/skin/history.svg",
         pref: "shortcuts.history",
         telemetryLabel: "history",
-        uiLabel: "urlbar-searchmode-history",
+        uiLabel: "urlbar-searchmode-history3",
       },
       {
-        source: this.RESULT_SOURCE.ACTIONS,
-        restrict: lazy.UrlbarTokenizer.RESTRICT.ACTION,
+        source: UrlbarShared.RESULT_SOURCE.ACTIONS,
+        restrict: UrlbarShared.RESTRICT_TOKENS.ACTION,
         icon: "chrome://browser/skin/quickactions.svg",
         pref: "shortcuts.actions",
         telemetryLabel: "actions",
-        uiLabel: "urlbar-searchmode-actions",
+        uiLabel: "urlbar-searchmode-actions3",
       },
     ]);
   },
@@ -299,7 +280,7 @@ export var UrlbarUtils = {
   /**
    * Returns the payload schema for the given type of result.
    *
-   * @param {Values<typeof this.RESULT_TYPE>} type
+   * @param {Values<typeof UrlbarShared.RESULT_TYPE>} type
    * @returns {object} The schema for the given type.
    */
   getPayloadSchema(type) {
@@ -621,8 +602,8 @@ export var UrlbarUtils = {
     }
 
     switch (result.type) {
-      case this.RESULT_TYPE.SEARCH:
-        if (result.source == this.RESULT_SOURCE.HISTORY) {
+      case UrlbarShared.RESULT_TYPE.SEARCH:
+        if (result.source == UrlbarShared.RESULT_SOURCE.HISTORY) {
           return result.providerName == "UrlbarProviderRecentSearches"
             ? this.RESULT_GROUP.RECENT_SEARCH
             : this.RESULT_GROUP.FORM_HISTORY;
@@ -634,14 +615,24 @@ export var UrlbarUtils = {
           return this.RESULT_GROUP.REMOTE_SUGGESTION;
         }
         break;
-      case this.RESULT_TYPE.OMNIBOX:
+      case UrlbarShared.RESULT_TYPE.OMNIBOX:
         return this.RESULT_GROUP.OMNIBOX;
-      case this.RESULT_TYPE.REMOTE_TAB:
+      case UrlbarShared.RESULT_TYPE.REMOTE_TAB:
         return this.RESULT_GROUP.REMOTE_TAB;
-      case this.RESULT_TYPE.RESTRICT:
+      case UrlbarShared.RESULT_TYPE.RESTRICT:
         return this.RESULT_GROUP.RESTRICT_SEARCH_KEYWORD;
-      case this.RESULT_TYPE.AI_CHAT:
+      case UrlbarShared.RESULT_TYPE.AI_CHAT:
         return this.RESULT_GROUP.AI;
+    }
+    // When enabled, semantic history results (both history URLs and
+    // switch-to-tab results) get their own group so they fill only the space
+    // left after, and never evict, the plain (non-semantic) results that would
+    // otherwise share the general group.
+    if (
+      result.providerName == "UrlbarProviderSemanticHistorySearch" &&
+      lazy.UrlbarPrefs.get("suggest.semanticHistory.separateGroup")
+    ) {
+      return this.RESULT_GROUP.SEMANTIC_HISTORY;
     }
     return this.RESULT_GROUP.GENERAL;
   },
@@ -665,8 +656,8 @@ export var UrlbarUtils = {
   getUrlFromResult(result, { element = null } = {}) {
     if (
       result.payload.engine &&
-      (result.type == this.RESULT_TYPE.SEARCH ||
-        result.type == this.RESULT_TYPE.DYNAMIC)
+      (result.type == UrlbarShared.RESULT_TYPE.SEARCH ||
+        result.type == UrlbarShared.RESULT_TYPE.DYNAMIC)
     ) {
       let query =
         element?.dataset.query ||
@@ -743,7 +734,7 @@ export var UrlbarUtils = {
     }
 
     switch (result.type) {
-      case this.RESULT_TYPE.TIP:
+      case UrlbarShared.RESULT_TYPE.TIP:
         return 3;
     }
     return 1;
@@ -769,6 +760,41 @@ export var UrlbarUtils = {
       return "page-icon:" + url.href;
     }
     return this.ICON.DEFAULT;
+  },
+
+  /**
+   * Converts a given icon URL to a remote icon URL if it's not a trusted
+   * protocol.
+   *
+   * @param {string} iconUrl The URL of the icon.
+   * @param {number} size The desired size of the icon (currently ignored).
+   * @param {Window} win The window context.
+   * @returns {string|null} The URL of the remote icon or null if not available.
+   */
+  getRemoteIconUrl(iconUrl, size, win) {
+    let url = URL.parse(iconUrl);
+    if (!url) {
+      return null;
+    }
+    if (!lazy.FaviconUtils.TRUSTED_FAVICON_SCHEMES.includes(url.protocol)) {
+      if (Services.env.exists("XPCSHELL_TEST_PROFILE_DIR")) {
+        // XPCShell tests don't have a real window, just use fallback values.
+        return lazy.FaviconUtils.getMozRemoteImageURL(iconUrl, {
+          size,
+          colorScheme: "light",
+        });
+      }
+      return lazy.FaviconUtils.getMozRemoteImageURL(iconUrl, {
+        // TODO Bug 2035971: Restore the size property once `FaviconUtils` and
+        // `moz-remote-image` handle the image aspect ratio correctly.
+        //
+        // size: Math.floor(size * win.devicePixelRatio),
+        colorScheme: win.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light",
+      });
+    }
+    return iconUrl;
   },
 
   /**
@@ -992,21 +1018,80 @@ export var UrlbarUtils = {
    *
    * @param {string} url The url to add input history for
    * @param {string} input The associated search term
+   * @returns {Promise<boolean>}
+   *   Whether the row was written. False if the URL is not yet in moz_places
+   *   or history is disabled.
    */
   async addToInputHistory(url, input) {
-    await lazy.PlacesUtils.withConnectionWrapper("addToInputHistory", db => {
-      // use_count will asymptotically approach the max of 10.
-      return db.executeCached(
-        `
-        INSERT OR REPLACE INTO moz_inputhistory
-        SELECT h.id, IFNULL(i.input, :input), IFNULL(i.use_count, 0) * .9 + 1
-        FROM moz_places h
-        LEFT JOIN moz_inputhistory i ON i.place_id = h.id AND i.input = :input
-        WHERE url_hash = hash(:url) AND url = :url
-      `,
-        { url, input: input.toLowerCase() }
-      );
-    });
+    if (!lazy.historyEnabled) {
+      return false;
+    }
+    // use_count will asymptotically approach the max of 10.
+    let rows = await lazy.PlacesUtils.withConnectionWrapper(
+      "addToInputHistory",
+      db => {
+        return db.executeCached(
+          `
+          INSERT OR REPLACE INTO moz_inputhistory
+          SELECT h.id, IFNULL(i.input, :input), IFNULL(i.use_count, 0) * .9 + 1
+          FROM moz_places h
+          LEFT JOIN moz_inputhistory i ON i.place_id = h.id AND i.input = :input
+          WHERE url_hash = hash(:url) AND url = :url
+          RETURNING place_id
+          `,
+          { url, input: input.toLowerCase() }
+        );
+      }
+    );
+    return !!rows.length;
+  },
+
+  /**
+   * Like addToInputHistory, but if the URL is not yet in moz_places
+   * (e.g. an origin derived from a deep-link visit), waits for the
+   * visit to land before writing.
+   *
+   * @param {string} url The url to add input history for
+   * @param {string} input The associated search term
+   */
+  async addToInputHistoryWhenReady(url, input) {
+    if (!lazy.historyEnabled) {
+      return;
+    }
+    // Register the observer before the initial attempt so we can't miss
+    // a visit that lands between the check and the registration.
+    let { promise: visitedPromise, resolve: visitedResolve } =
+      Promise.withResolvers();
+    let listener = events => {
+      for (let event of events) {
+        if (event.type == "page-visited" && event.url == url) {
+          PlacesObservers.removeListener(["page-visited"], listener);
+          visitedResolve(true);
+          return;
+        }
+      }
+    };
+    PlacesObservers.addListener(["page-visited"], listener);
+
+    // Safety timeout so we don't leak the listener forever.
+    let timeoutId = lazy.setTimeout(() => {
+      PlacesObservers.removeListener(["page-visited"], listener);
+      visitedResolve(false);
+    }, 1000);
+
+    // Try immediately, succeeds if the URL is already in moz_places.
+    if (await this.addToInputHistory(url, input)) {
+      PlacesObservers.removeListener(["page-visited"], listener);
+      lazy.clearTimeout(timeoutId);
+      return;
+    }
+
+    // Page not yet in moz_places, wait for the visit to be recorded.
+    let visited = await visitedPromise;
+    lazy.clearTimeout(timeoutId);
+    if (visited) {
+      await this.addToInputHistory(url, input);
+    }
   },
 
   /**
@@ -1030,6 +1115,374 @@ export var UrlbarUtils = {
         { url, input: input.toLowerCase() }
       );
     });
+  },
+
+  /**
+   * Temporarily blocks autofill for the given URL. If the URL is an origin,
+   * blocks origin autofill via blockOriginAutofill. Otherwise, blocks
+   * page-level autofill via blockOriginPageAutofill.
+   *
+   * @param {string} url
+   *   The URL to block from autofill.
+   * @param {number} blockUntilMs
+   *   Epoch timestamp in ms after which the block expires.
+   */
+  async blockAutofill(url, blockUntilMs) {
+    if (this.isOriginUrl(url)) {
+      await this.blockOriginAutofill(url, blockUntilMs);
+    } else {
+      await this.blockOriginPageAutofill(url, blockUntilMs);
+    }
+  },
+
+  /**
+   * Temporarily blocks origin autofill for the given URL's origin and all its
+   * scheme/www variations. For example, blocking https://www.example.com also
+   * blocks http://www.example.com, http://example.com, and
+   * https://example.com. The lookup matches against moz_origins directly, so
+   * the URL need not have a corresponding entry in moz_places.
+   *
+   * This is a no-op if the URL is unparseable.
+   *
+   * @param {string} url
+   *   A URL belonging to the origin to block.
+   * @param {number} blockUntilMs
+   *   Epoch timestamp in ms after which the block expires.
+   */
+  async blockOriginAutofill(url, blockUntilMs) {
+    let origin = parseOriginParts(url);
+    if (!origin) {
+      return;
+    }
+
+    let baseHost = origin.host.replace(/^www\./, "");
+    let wwwHost = "www." + baseHost;
+
+    await lazy.PlacesUtils.withConnectionWrapper("blockOriginAutofill", db => {
+      return db.executeCached(
+        `
+      UPDATE moz_origins SET block_until_ms = :blockUntilMs
+      WHERE host IN (:baseHost, :wwwHost)
+        AND prefix IN ('http://', 'https://')
+      `,
+        { blockUntilMs, baseHost, wwwHost }
+      );
+    });
+  },
+
+  /**
+   * Temporarily blocks page-level autofill for the given URL's origin and all
+   * its scheme/www variations. For example, blocking https://www.example.com
+   * also blocks http://www.example.com, http://example.com, and
+   * https://example.com.
+   *
+   * This is a no-op if the URL is unparseable.
+   *
+   * @param {string} url
+   *   A URL belonging to the origin to block.
+   * @param {number} blockPagesUntilMs
+   *   Epoch timestamp in ms after which the block expires.
+   */
+  async blockOriginPageAutofill(url, blockPagesUntilMs) {
+    let origin = parseOriginParts(url);
+    if (!origin) {
+      return;
+    }
+
+    let baseHost = origin.host.replace(/^www\./, "");
+    let wwwHost = "www." + baseHost;
+
+    await lazy.PlacesUtils.withConnectionWrapper(
+      "blockOriginPageAutofill",
+      db => {
+        return db.executeCached(
+          `
+        UPDATE moz_origins SET block_pages_until_ms = :blockPagesUntilMs
+        WHERE host IN (:baseHost, :wwwHost)
+          AND prefix IN ('http://', 'https://')
+        `,
+          { blockPagesUntilMs, baseHost, wwwHost }
+        );
+      }
+    );
+  },
+
+  /**
+   * Clears an origin-level autofill block for the given URL's origin and all
+   * its scheme/www variations. For example, clearing a block on
+   * http://example.com also clears blocks on https://example.com,
+   * http://www.example.com, and https://www.example.com. The lookup matches
+   * against moz_origins directly, so the URL need not have a corresponding
+   * entry in moz_places.
+   *
+   * This is a no-op if the URL is unparseable or the origin is not
+   * currently blocked.
+   *
+   * @param {string} url
+   *   A URL belonging to the origin to unblock.
+   * @returns {Promise<boolean>}
+   *   True if a block was actually cleared, false otherwise.
+   */
+  async clearOriginAutofillBlock(url) {
+    let origin = parseOriginParts(url);
+    if (!origin) {
+      return false;
+    }
+
+    let baseHost = origin.host.replace(/^www\./, "");
+    let wwwHost = "www." + baseHost;
+
+    let rows = await lazy.PlacesUtils.withConnectionWrapper(
+      "clearOriginAutofillBlock",
+      db => {
+        return db.executeCached(
+          `
+        UPDATE moz_origins SET block_until_ms = NULL
+        WHERE host IN (:baseHost, :wwwHost)
+          AND prefix IN ('http://', 'https://')
+          AND block_until_ms IS NOT NULL
+        RETURNING id
+        `,
+          { baseHost, wwwHost }
+        );
+      }
+    );
+    return !!rows.length;
+  },
+
+  /**
+   * Clears a page-level autofill block for the given URL's origin and all its
+   * scheme/www variations. For example, clearing a block on
+   * http://example.com also clears blocks on https://example.com,
+   * http://www.example.com, and https://www.example.com.
+   *
+   * This is a no-op if the URL is unparseable or the origin's pages are
+   * not currently blocked.
+   *
+   * @param {string} url
+   *   A URL belonging to the origin to unblock.
+   * @returns {Promise<boolean>}
+   *   True if a block was actually cleared, false otherwise.
+   */
+  async clearOriginPageAutofillBlock(url) {
+    let origin = parseOriginParts(url);
+    if (!origin) {
+      return false;
+    }
+
+    let baseHost = origin.host.replace(/^www\./, "");
+    let wwwHost = "www." + baseHost;
+
+    let rows = await lazy.PlacesUtils.withConnectionWrapper(
+      "clearOriginPageAutofillBlock",
+      db => {
+        return db.executeCached(
+          `
+        UPDATE moz_origins SET block_pages_until_ms = NULL
+        WHERE host IN (:baseHost, :wwwHost)
+          AND prefix IN ('http://', 'https://')
+          AND block_pages_until_ms IS NOT NULL
+        RETURNING id
+        `,
+          { baseHost, wwwHost }
+        );
+      }
+    );
+    return !!rows.length;
+  },
+
+  /**
+   * @typedef {object} BackspaceInfo
+   * @property {number?} count
+   *   How many times the origin or URL had its autofill cleared.
+   * @property {number?} blockedAt
+   *   How long ago the origin or URL was blocked from backspacing.
+   */
+
+  /**
+   * LRU map tracking adaptive autofill backspace dismissals through their
+   * lifecycle: pre-block (counting backspaces toward the threshold) and
+   * post-block (timestamp used by re-integration telemetry to measure how
+   * long until the user returned to the same destination).
+   *
+   * Keyed by "<scope>:<host>" where scope is "origin" or "page" and host
+   * has any leading "www." stripped, matching how blockOriginAutofill
+   * applies the underlying SQL block. The two scopes for the same host
+   * live as independent entries.
+   *
+   * Insertion order is maintained as an LRU: entries past
+   * _BACKSPACE_BLOCKS_MAX are evicted. State does not survive
+   * restart.
+   *
+   * Re-integration after restart, or more than _BACKSPACE_BLOCK_MAX_AGE_HOURS
+   * after the block, does not record a sample.
+   *
+   * @type {Map<string, BackspaceInfo>}
+   */
+  _backspaceBlocks: new Map(),
+
+  // Resolves with the most recent recordAutofillBackspace() call's DB write
+  // (if any). Tests can await this to sequence on the block before reading
+  // from the database.
+  _lastRecordAutofillBackspacePromise: Promise.resolve(),
+
+  // Maximum age of a tracked block, in hours.
+  _BACKSPACE_BLOCK_MAX_AGE_HOURS: 24,
+
+  // Maximum number of blocked origins that can be stored at one time.
+  _BACKSPACE_BLOCKS_MAX: 512,
+
+  /**
+   * Computes the map key used to record a backspace block for the given URL.
+   * The key is in the form of the scope (origin or page), followed by colon,
+   * and the URL's host with a leading "www." stripped, mirroring how
+   * blockOriginAutofill applies the underlying block in SQL.
+   *
+   * @param {string} url
+   *   The URL whose key is being computed.
+   * @returns {?string}
+   *   The scope and normalized host key, or null if the URL is unparseable.
+   *
+   * @example
+   * // Returns "origin:example.com"
+   * _backspaceBlockKey("https://www.example.com/");
+   *
+   * @example
+   * // Returns "page:example.com"
+   * _backspaceBlockKey("https://example.com/some/path");
+   */
+  _backspaceBlockKey(url) {
+    let origin = parseOriginParts(url);
+    if (!origin) {
+      return null;
+    }
+    let basehost = origin.host.replace(/^www\./, "");
+    let scope = /** @type {"origin" | "page"} */ (
+      this.isOriginUrl(url) ? "origin" : "page"
+    );
+    return `${scope}:${basehost}`;
+  },
+
+  /**
+   * Records a backspace in the LRU map for the autofill URL. Increments
+   * (or creates) the entry's count and when the count reaches the
+   * `autoFill.backspaceThreshold` pref calls blockAutofill and records the
+   * entry's blockedAt so re-integration telemetry can sample the unblock
+   * delay later.
+   *
+   * @param {string} url
+   *   The autofill result URL whose backspace is being recorded.
+   * @returns {Promise<void>}
+   *   Resolves after the threshold-triggered blockAutofill DB write completes.
+   *   Resolves immediately when the URL is unparseable or the count is still
+   *   below threshold (no DB write in either case). Tests can await this to
+   *   sequence on the block.
+   */
+  async recordAutofillBackspace(url) {
+    let key = this._backspaceBlockKey(url);
+    if (!key) {
+      return;
+    }
+
+    let entry = this._backspaceBlocks.get(key) ?? {
+      count: 0,
+      blockedAt: null,
+    };
+    if (entry.blockedAt) {
+      delete entry.blockedAt;
+    }
+    let newCount = (entry.count ?? 0) + 1;
+
+    if (newCount >= lazy.UrlbarPrefs.get("autoFill.backspaceThreshold")) {
+      delete entry.count;
+      entry.blockedAt = Date.now();
+      await this.blockAutofill(
+        url,
+        Date.now() + lazy.UrlbarPrefs.get("autoFill.backspaceBlockDurationMs")
+      ).catch(console.error);
+    } else {
+      entry.count = newCount;
+    }
+
+    // Remove and reinsert so this entry is treated as most-recent under the
+    // Map's insertion-order semantics, which we rely on below to expire the
+    // least-recently-used entry.
+    this._backspaceBlocks.delete(key);
+    this._backspaceBlocks.set(key, entry);
+
+    // Least recently used are expired.
+    if (this._backspaceBlocks.size > this._BACKSPACE_BLOCKS_MAX) {
+      let oldestKey = this._backspaceBlocks.keys().next().value;
+      this._backspaceBlocks.delete(oldestKey);
+    }
+  },
+
+  /**
+   * Retrieves and deletes the recorded backspace block for the given URL, if
+   * any. Only the timestamp matching the URL's level (origin vs. url) is
+   * returned and removed; any other-level timestamp for the same host is
+   * preserved. If the matching timestamp is older than
+   * BACKSPACE_BLOCK_MAX_AGE_HOURS, this returns null. (The timestamp is
+   * removed either way.)
+   *
+   * @param {string} url
+   *   The URL whose block is being cleared.
+   * @returns {?{blockedAt: number, level: "origin" | "url"}}
+   *   The matching timestamp and level if a fresh block existed,
+   *   null otherwise.
+   */
+  getBackspaceBlock(url) {
+    let key = this._backspaceBlockKey(url);
+    if (!key) {
+      return null;
+    }
+
+    let entry = this._backspaceBlocks.get(key);
+    if (!entry?.blockedAt) {
+      return null;
+    }
+
+    // Consume the timestamp so a later call returns null for this URL.
+    this._backspaceBlocks.delete(key);
+
+    // If the timestamp is too old, don't report it.
+    let ageHours = (Date.now() - entry.blockedAt) / (60 * 60 * 1000);
+    if (ageHours > this._BACKSPACE_BLOCK_MAX_AGE_HOURS) {
+      return null;
+    }
+    /** @type {"origin" | "url"} */
+    let level = this.isOriginUrl(url) ? "origin" : "url";
+    return { blockedAt: entry.blockedAt, level };
+  },
+
+  /**
+   * Clears the in-progress backspace count for the URL's scope.
+   *
+   * @param {string} url
+   *   A URL belonging to the scope being cleared.
+   */
+  clearAutofillBackspaceEntryForUrl(url) {
+    let key = this._backspaceBlockKey(url);
+    if (key) {
+      this._backspaceBlocks.delete(key);
+    }
+  },
+
+  /**
+   * Returns whether a URL is an origin URL, i.e. it has no path beyond "/",
+   * no query string, and no hash.
+   *
+   * @param {string} url
+   *   The URL to check.
+   * @returns {boolean}
+   *   True if the URL is an origin URL, false if it has a path, query, hash,
+   *   or is unparseable.
+   */
+  isOriginUrl(url) {
+    let parsed = URL.parse(url);
+    return (
+      !!parsed && parsed.pathname === "/" && !parsed.search && !parsed.hash
+    );
   },
 
   /**
@@ -1166,50 +1619,27 @@ export var UrlbarUtils = {
       }
     }
     let context = new UrlbarQueryContext(options);
-    await urlbarInput.controller.manager.startQuery(context);
-    if (!context.heuristicResult) {
+    let heuristicResult =
+      await urlbarInput.controller.getHeuristicResult(context);
+    if (!heuristicResult) {
       throw new Error("There should always be an heuristic result");
     }
-    return context.heuristicResult;
-  },
-
-  /**
-   * Creates a console logger.
-   * Logging level can be controlled through the `browser.urlbar.loglevel`
-   * preference.
-   *
-   * @param {object} [options] Options for the logger.
-   * @param {string} [options.prefix] Prefix to use for the logged messages.
-   * @returns {ConsoleInstance} The console logger.
-   */
-  getLogger({ prefix = "" } = {}) {
-    if (!this._loggers) {
-      this._loggers = new Map();
-    }
-    let logger = this._loggers.get(prefix);
-    if (!logger) {
-      logger = console.createInstance({
-        prefix: `URLBar${prefix ? " - " + prefix : ""}`,
-        maxLogLevelPref: "browser.urlbar.loglevel",
-      });
-      this._loggers.set(prefix, logger);
-    }
-    return logger;
+    return heuristicResult;
   },
 
   /**
    * Returns the name of a result source.  The name is the lowercase name of the
    * corresponding property in the RESULT_SOURCE object.
    *
-   * @param {Values<typeof this.RESULT_SOURCE>} source
-   *   A UrlbarUtils.RESULT_SOURCE value.
+   * @param {Values<typeof UrlbarShared.RESULT_SOURCE>} source
+   *   A UrlbarShared.RESULT_SOURCE value.
    * @returns {string}
    *   The token's name, a lowercased name in the RESULT_SOURCE object.
    */
   getResultSourceName(source) {
     if (!this._resultSourceNamesBySource) {
       this._resultSourceNamesBySource = new Map();
-      for (let [name, src] of Object.entries(this.RESULT_SOURCE)) {
+      for (let [name, src] of Object.entries(UrlbarShared.RESULT_SOURCE)) {
         this._resultSourceNamesBySource.set(src, name.toLowerCase());
       }
     }
@@ -1245,6 +1675,18 @@ export var UrlbarUtils = {
       fieldname: lazy.DEFAULT_FORM_HISTORY_PARAM,
       value,
       source,
+    });
+  },
+
+  /**
+   * Clears the form history for all search engines.
+   *
+   * @returns {Promise<void>}
+   */
+  clearFormHistory() {
+    return lazy.FormHistory.update({
+      op: "remove",
+      fieldname: lazy.DEFAULT_FORM_HISTORY_PARAM,
     });
   },
 
@@ -1314,107 +1756,6 @@ export var UrlbarUtils = {
     }
 
     return url.hash.startsWith(candidate.hash);
-  },
-
-  /**
-   * Extracts a telemetry type from a result, used by scalars and event
-   * telemetry.
-   *
-   * @param {UrlbarResult} result The result to analyze.
-   * @returns {string} A string type for telemetry.
-   */
-  telemetryTypeFromResult(result) {
-    if (!result) {
-      return "unknown";
-    }
-    switch (result.type) {
-      case this.RESULT_TYPE.TAB_SWITCH:
-        return "switchtab";
-      case this.RESULT_TYPE.SEARCH:
-        if (result.providerName == "UrlbarProviderRecentSearches") {
-          return "recent_search";
-        }
-        if (result.source == this.RESULT_SOURCE.HISTORY) {
-          return "formhistory";
-        }
-        if (result.providerName == "UrlbarProviderTabToSearch") {
-          return "tabtosearch";
-        }
-        if (result.payload.suggestion) {
-          let type = result.payload.trending ? "trending" : "searchsuggestion";
-          if (result.isRichSuggestion) {
-            type += "_rich";
-          }
-          return type;
-        }
-        return "searchengine";
-      case this.RESULT_TYPE.URL:
-        if (result.autofill) {
-          let { type } = result.autofill;
-          if (!type) {
-            type = "other";
-            console.error(
-              new Error(
-                "`result.autofill.type` not set, falling back to 'other'"
-              )
-            );
-          }
-          return `autofill_${type}`;
-        }
-        if (
-          result.source == this.RESULT_SOURCE.OTHER_LOCAL &&
-          result.heuristic
-        ) {
-          return "visiturl";
-        }
-        if (result.providerName == "UrlbarProviderQuickSuggest") {
-          return "quicksuggest";
-        }
-        if (result.providerName == "UrlbarProviderClipboard") {
-          return "clipboard";
-        }
-        {
-          let type =
-            result.source == this.RESULT_SOURCE.BOOKMARKS
-              ? "bookmark"
-              : "history";
-          if (result.providerName == "UrlbarProviderInputHistory") {
-            return type + "adaptive";
-          }
-          return type;
-        }
-      case this.RESULT_TYPE.KEYWORD:
-        return "keyword";
-      case this.RESULT_TYPE.OMNIBOX:
-        return "extension";
-      case this.RESULT_TYPE.REMOTE_TAB:
-        return "remotetab";
-      case this.RESULT_TYPE.TIP:
-        return "tip";
-      case this.RESULT_TYPE.DYNAMIC:
-        if (result.providerName == "UrlbarProviderTabToSearch") {
-          // This is the onboarding result.
-          return "tabtosearch";
-        }
-        return "dynamic";
-      case this.RESULT_TYPE.RESTRICT:
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.BOOKMARK) {
-          return "restrict_keyword_bookmarks";
-        }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.OPENPAGE) {
-          return "restrict_keyword_tabs";
-        }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.HISTORY) {
-          return "restrict_keyword_history";
-        }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.ACTION) {
-          return "restrict_keyword_actions";
-        }
-        break;
-      case this.RESULT_TYPE.AI_CHAT:
-        return "ai_chat";
-    }
-    return "unknown";
   },
 
   /**
@@ -1537,7 +1878,10 @@ export var UrlbarUtils = {
       case this.RESULT_GROUP.OMNIBOX: {
         return "addon";
       }
-      case this.RESULT_GROUP.GENERAL: {
+      // Semantic history results have their own group for sorting purposes but
+      // are reported as "general" results, as they were before the group split.
+      case this.RESULT_GROUP.GENERAL:
+      case this.RESULT_GROUP.SEMANTIC_HISTORY: {
         return "general";
       }
       // Group of UrlbarProviderQuickSuggest is GENERAL_PARENT.
@@ -1595,9 +1939,9 @@ export var UrlbarUtils = {
       }
       if (
         lazy.UrlbarSearchUtils.resultIsSERP(res, [
-          UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
-          UrlbarUtils.RESULT_SOURCE.HISTORY,
-          UrlbarUtils.RESULT_SOURCE.TABS,
+          UrlbarShared.RESULT_SOURCE.BOOKMARKS,
+          UrlbarShared.RESULT_SOURCE.HISTORY,
+          UrlbarShared.RESULT_SOURCE.TABS,
         ])
       ) {
         type += "_serp";
@@ -1606,7 +1950,7 @@ export var UrlbarUtils = {
     }
 
     switch (result.type) {
-      case this.RESULT_TYPE.DYNAMIC:
+      case UrlbarShared.RESULT_TYPE.DYNAMIC:
         switch (result.providerName) {
           case "UrlbarProviderCalculator":
             return "calc";
@@ -1621,20 +1965,23 @@ export var UrlbarUtils = {
             return "action";
         }
         break;
-      case this.RESULT_TYPE.KEYWORD:
+      case UrlbarShared.RESULT_TYPE.KEYWORD:
         return "keyword";
-      case this.RESULT_TYPE.OMNIBOX:
+      case UrlbarShared.RESULT_TYPE.OMNIBOX:
         return "addon";
-      case this.RESULT_TYPE.REMOTE_TAB:
+      case UrlbarShared.RESULT_TYPE.REMOTE_TAB:
         return "remote_tab";
-      case this.RESULT_TYPE.SEARCH:
+      case UrlbarShared.RESULT_TYPE.SEARCH:
         if (result.providerName === "UrlbarProviderTabToSearch") {
           return "tab_to_search";
         }
-        if (result.source == this.RESULT_SOURCE.HISTORY) {
+        if (result.source == UrlbarShared.RESULT_SOURCE.HISTORY) {
           return result.providerName == "UrlbarProviderRecentSearches"
             ? "recent_search"
             : "search_history";
+        }
+        if (result.providerName === "UrlbarProviderAiChat") {
+          return "ai_search_fallback";
         }
         if (result.payload.suggestion) {
           let type = result.payload.trending
@@ -1646,9 +1993,9 @@ export var UrlbarUtils = {
           return type;
         }
         return "search_engine";
-      case this.RESULT_TYPE.TAB_SWITCH:
+      case UrlbarShared.RESULT_TYPE.TAB_SWITCH:
         return checkForSubType("tab", result);
-      case this.RESULT_TYPE.TIP:
+      case UrlbarShared.RESULT_TYPE.TIP:
         if (result.providerName === "UrlbarProviderInterventions") {
           switch (result.payload.type) {
             case lazy.UrlbarProviderInterventions.TIP_TYPE.CLEAR:
@@ -1675,9 +2022,9 @@ export var UrlbarUtils = {
           default:
             return "tip_unknown";
         }
-      case this.RESULT_TYPE.URL:
+      case UrlbarShared.RESULT_TYPE.URL:
         if (
-          result.source === this.RESULT_SOURCE.OTHER_LOCAL &&
+          result.source === UrlbarShared.RESULT_SOURCE.OTHER_LOCAL &&
           result.heuristic
         ) {
           return "url";
@@ -1691,34 +2038,40 @@ export var UrlbarUtils = {
         if (result.providerName === "UrlbarProviderClipboard") {
           return "clipboard";
         }
-        if (result.source === this.RESULT_SOURCE.BOOKMARKS) {
+        if (result.payload.isAutofillFallback) {
+          return "history_autofill_fallback_origin";
+        }
+        if (result.source === UrlbarShared.RESULT_SOURCE.BOOKMARKS) {
           return checkForSubType("bookmark", result);
         }
         return checkForSubType("history", result);
-      case this.RESULT_TYPE.RESTRICT:
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.BOOKMARK) {
+      case UrlbarShared.RESULT_TYPE.RESTRICT:
+        if (result.payload.keyword === UrlbarShared.RESTRICT_TOKENS.BOOKMARK) {
           return "restrict_keyword_bookmarks";
         }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.OPENPAGE) {
+        if (result.payload.keyword === UrlbarShared.RESTRICT_TOKENS.OPENPAGE) {
           return "restrict_keyword_tabs";
         }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.HISTORY) {
+        if (result.payload.keyword === UrlbarShared.RESTRICT_TOKENS.HISTORY) {
           return "restrict_keyword_history";
         }
-        if (result.payload.keyword === lazy.UrlbarTokenizer.RESTRICT.ACTION) {
+        if (result.payload.keyword === UrlbarShared.RESTRICT_TOKENS.ACTION) {
           return "restrict_keyword_actions";
         }
         break;
-      case this.RESULT_TYPE.AI_CHAT:
+      case UrlbarShared.RESULT_TYPE.AI_CHAT:
         return "ai_chat";
     }
 
     return "unknown";
   },
 
-  searchEngagementTelemetryAction(result) {
+  searchEngagementTelemetryAction(result, pickedActionKey = null) {
     if (result.providerName != "UrlbarProviderGlobalActions") {
       return result.payload.action?.key ?? "none";
+    }
+    if (pickedActionKey) {
+      return pickedActionKey;
     }
     return result.payload.actionsResults.map(({ key }) => key).join(",");
   },
@@ -1892,6 +2245,7 @@ export var UrlbarUtils = {
     const MAX_SIG_FIGURES = 10;
     const FULL_NUMBER_MAX_THRESHOLD = 1 * 10 ** 10;
     const FULL_NUMBER_MIN_THRESHOLD = 10 ** -5;
+    const MAX_FLOAT_PRECISION = 15;
 
     let locale = Services.locale.appLocaleAsBCP47;
 
@@ -1912,6 +2266,8 @@ export var UrlbarUtils = {
       return new Intl.NumberFormat(locale, {
         style: "decimal",
         maximumFractionDigits: DECIMAL_PRECISION,
+        maximumSignificantDigits: MAX_FLOAT_PRECISION,
+        roundingPriority: "lessPrecision",
         numberingSystem: "latn",
       }).format(result);
     }
@@ -1920,6 +2276,149 @@ export var UrlbarUtils = {
       maximumSignificantDigits: MAX_SIG_FIGURES,
       numberingSystem: "latn",
     }).format(result);
+  },
+
+  /**
+   * Formats a date and time for display. This is not a general formatting
+   * function. It uses some heuristics to generate formatted strings as used in
+   * urlbar UI. The format chosen will depend on the date.
+   *
+   * @param {Date} date
+   *   A JS `Date` object.
+   * @param {object} options
+   *   Options object
+   * @param {boolean} [options.forceAbsoluteDate]
+   *   Pass true to force the formatted date to be absolute ("May 11") when it
+   *   otherwise would be formatted as relative ("tomorrow").
+   * @param {boolean} [options.capitalizeRelativeDate]
+   *   Whether relative dates should be capitalized ("Tomorrow" instead of
+   *   "tomorrow").
+   * @param {boolean} [options.includeTimeZone]
+   *   When a formatted time is generated, it will include the time zone only if
+   *   this param is true.
+   * @returns {FormatDateResult}
+   *   The result.
+   *
+   * @typedef {object} FormatDateResult
+   * @property {string} formattedDate
+   *   The formatted date.
+   * @property {?string} formattedTime
+   *   The formatted time. Depending on the passed-in date, a formatted time
+   *   might not be generated, and in that case this will be undefined.
+   * @property {boolean} isRelative
+   *   Whether the formatted date is relative ("tomorrow") rather than absolute
+   *   ("May 11").
+   * @property {ParseDateResult} parseDateResult
+   *   This function calls `parseDate()` as part of its operation, and the
+   *   result is included here in case it's useful.
+   */
+  formatDate(
+    date,
+    {
+      forceAbsoluteDate = false,
+      capitalizeRelativeDate = false,
+      includeTimeZone = false,
+    } = {}
+  ) {
+    let parseDateResult = this.parseDate(date);
+    let { zonedNow, zonedDate, daysUntil, isFuture } = parseDateResult;
+
+    // First, format the date.
+    let formattedDate;
+    let isRelative = false;
+    if (Math.abs(daysUntil) <= 1) {
+      // The date is recent. Format it as relative, e.g.: "today", "tomorrow"
+      isRelative = true;
+      formattedDate = new Intl.RelativeTimeFormat(undefined, {
+        numeric: "auto",
+      }).format(daysUntil, "day");
+      if (capitalizeRelativeDate) {
+        formattedDate =
+          formattedDate[0].toLocaleUpperCase() + formattedDate.substring(1);
+      }
+    } else {
+      // The date is not recent. Format it with some combination of year, month,
+      // day, and weekday, e.g.: "May 11", "May 11, 2026", "Mon"
+      let opts = {
+        timeZone: zonedNow.timeZoneId,
+      };
+      if (!forceAbsoluteDate && 0 < daysUntil && daysUntil < 7) {
+        // Include only the weekday.
+        opts.weekday = "short";
+      } else {
+        // Include the month and day and the year if it's not this year.
+        opts.month = "short";
+        opts.day = "numeric";
+        if (zonedDate.year != zonedNow.year) {
+          opts.year = "numeric";
+        }
+      }
+      formattedDate = new Intl.DateTimeFormat(undefined, opts).format(date);
+    }
+
+    // Now format the time.
+    let formattedTime;
+    if (isFuture) {
+      formattedTime = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "numeric",
+        timeZoneName: includeTimeZone ? "short" : undefined,
+        timeZone: zonedNow.timeZoneId,
+      }).format(date);
+    }
+
+    return {
+      isRelative,
+      formattedDate,
+      formattedTime,
+      parseDateResult,
+    };
+  },
+
+  /**
+   * Parses a `Date` and returns some info about it.
+   *
+   * @param {Date} date
+   *   A JS `Date` object.
+   * @returns {ParseDateResult}
+   *   The result.
+   *
+   * @typedef {object} ParseDateResult
+   * @property {Temporal.ZonedDateTime} zonedNow
+   *   The "now" date as a `ZonedDateTime`.
+   * @property {Temporal.ZonedDateTime} zonedDate
+   *   The passed-in date as a `ZonedDateTime`.
+   * @property {boolean} isFuture
+   *   Whether the date is in the future.
+   * @property {number} daysUntil
+   *   The number of calendar days from today to the date. If the date is in the
+   *   future, this number will be positive. If the date is in the past, it will
+   *   be negative. If the date is today, it will be zero.
+   */
+  parseDate(date) {
+    let zonedNow = this._zonedDateTimeISO();
+    let zonedDate = date.toTemporalInstant().toZonedDateTimeISO(zonedNow);
+    let isFuture = Temporal.ZonedDateTime.compare(zonedNow, zonedDate) < 0;
+
+    let today = zonedNow.startOfDay();
+    let dateDay = zonedDate.startOfDay();
+
+    let duration = today.until(dateDay).round("days");
+    let daysUntil = duration.days;
+
+    return {
+      zonedNow,
+      zonedDate,
+      isFuture,
+      daysUntil,
+    };
+  },
+
+  // Thin wrapper around `zonedDateTimeISO` so that tests can easily set a mock
+  // "now" date and time. Use `UrlbarTestUtils.stubNowZonedDateTime()` to stub a
+  // "now".
+  _zonedDateTimeISO() {
+    return Temporal.Now.zonedDateTimeISO();
   },
 };
 
@@ -1963,7 +2462,7 @@ const L10N_SCHEMA = {
  * these schemas using JsonSchemaValidator.sys.mjs.
  */
 UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
-  [UrlbarUtils.RESULT_TYPE.TAB_SWITCH]: {
+  [UrlbarShared.RESULT_TYPE.TAB_SWITCH]: {
     type: "object",
     required: ["url"],
     properties: {
@@ -1987,6 +2486,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
             type: "string",
           },
         },
+      },
+      bookmarkDateMs: {
+        type: "number",
       },
       frecency: {
         type: "number",
@@ -2017,7 +2519,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.SEARCH]: {
+  [UrlbarShared.RESULT_TYPE.SEARCH]: {
     type: "object",
     properties: {
       blockL10n: L10N_SCHEMA,
@@ -2096,11 +2598,14 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.URL]: {
+  [UrlbarShared.RESULT_TYPE.URL]: {
     type: "object",
     required: ["url"],
     properties: {
       blockL10n: L10N_SCHEMA,
+      bookmarkDateMs: {
+        type: "number",
+      },
       bottomTextL10n: L10N_SCHEMA,
       description: {
         type: "string",
@@ -2124,6 +2629,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
       iconBlob: {
         type: "object",
+      },
+      isAutofillFallback: {
+        type: "boolean",
       },
       isBlockable: {
         type: "boolean",
@@ -2179,6 +2687,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       subtype: {
         type: "string",
       },
+      suggestionId: {
+        type: "string",
+      },
       suggestionObject: {
         type: "object",
       },
@@ -2207,7 +2718,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.KEYWORD]: {
+  [UrlbarShared.RESULT_TYPE.KEYWORD]: {
     type: "object",
     required: ["keyword", "url"],
     properties: {
@@ -2231,7 +2742,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.OMNIBOX]: {
+  [UrlbarShared.RESULT_TYPE.OMNIBOX]: {
     type: "object",
     required: ["keyword"],
     properties: {
@@ -2253,7 +2764,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.REMOTE_TAB]: {
+  [UrlbarShared.RESULT_TYPE.REMOTE_TAB]: {
     type: "object",
     required: ["device", "url", "lastUsed"],
     properties: {
@@ -2274,7 +2785,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.TIP]: {
+  [UrlbarShared.RESULT_TYPE.TIP]: {
     type: "object",
     required: ["type"],
     properties: {
@@ -2368,7 +2879,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.DYNAMIC]: {
+  [UrlbarShared.RESULT_TYPE.DYNAMIC]: {
     type: "object",
     required: ["dynamicType"],
     properties: {
@@ -2377,7 +2888,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.RESTRICT]: {
+  [UrlbarShared.RESULT_TYPE.RESTRICT]: {
     type: "object",
     properties: {
       icon: {
@@ -2400,7 +2911,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
     },
   },
-  [UrlbarUtils.RESULT_TYPE.AI_CHAT]: {
+  [UrlbarShared.RESULT_TYPE.AI_CHAT]: {
     type: "object",
     required: ["icon", "query", "title"],
     properties: {
@@ -2419,7 +2930,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
 
 /**
  * @typedef UrlbarSearchModeData
- * @property {Values<typeof UrlbarUtils.RESULT_SOURCE>} source
+ * @property {Values<typeof UrlbarShared.RESULT_SOURCE>} source
  *   The source from which search mode was entered.
  * @property {string} [engineName]
  *   The search engine name associated with the search mode.
@@ -2453,7 +2964,7 @@ export class UrlbarQueryContext {
    * @param {string | null} [options.tabGroup]
    *   The tab group where this context was generated, if any.
    * @param {Array} [options.sources]
-   *   A list of acceptable UrlbarUtils.RESULT_SOURCE for the context.
+   *   A list of acceptable UrlbarShared.RESULT_SOURCE for the context.
    * @param {object} [options.searchMode]
    *   The input's current search mode.  See UrlbarInput.setSearchMode for a
    *   description.
@@ -2490,7 +3001,8 @@ export class UrlbarQueryContext {
      */
     const optionalProperties = [
       ["currentPage", v => typeof v == "string" && !!v.length],
-      ["prohibitRemoteResults", () => true, false],
+      ["excludeSponsoredResults", v => typeof v == "boolean", false],
+      ["prohibitRemoteResults", v => typeof v == "boolean", false],
       ["providers", v => Array.isArray(v) && !!v.length],
       ["searchMode", v => v && typeof v == "object"],
       ["sources", v => Array.isArray(v) && !!v.length],
@@ -2584,6 +3096,12 @@ export class UrlbarQueryContext {
 
   /**
    * @type {boolean}
+   *   Whether or not to exclude sponsored results.
+   */
+  excludeSponsoredResults;
+
+  /**
+   * @type {boolean}
    *   Whether or not to prohibit remote results.
    */
   prohibitRemoteResults;
@@ -2596,7 +3114,7 @@ export class UrlbarQueryContext {
   providers;
 
   /**
-   * @type {?Values<typeof UrlbarUtils.RESULT_SOURCE>}
+   * @type {?Values<typeof UrlbarShared.RESULT_SOURCE>}
    *   Set if this context is restricted to a single source.
    */
   restrictSource;
@@ -2627,13 +3145,30 @@ export class UrlbarQueryContext {
   searchMode;
 
   /**
+   * Utility function to determine whether we should use the existence of
+   * searchMode to restrict the type of results to only search suggestions
+   * or the new behaviour behind `historyInSearchMode` pref that shows all
+   * types of results in searchMode, treating engine searchMode as
+   * "temporarily changed default search engine".
+   *
+   * @returns {boolean}
+   */
+  restrictInSearchMode() {
+    if (lazy.UrlbarPrefs.get("unifiedSearchButton.historyInSearchMode")) {
+      // We still want to restrict local searchModes even if the pref is on.
+      return !!this.searchMode && !this.searchMode.engineName;
+    }
+    return !!this.searchMode;
+  }
+
+  /**
    * @type {string}
    *   The string the user entered in autocomplete.
    */
   searchString;
 
   /**
-   * @type {Values<typeof UrlbarUtils.RESULT_SOURCE>[]}
+   * @type {Values<typeof UrlbarShared.RESULT_SOURCE>[]}
    *   The possible sources of results for this context.
    */
   sources;
@@ -2742,9 +3277,9 @@ export class UrlbarQueryContext {
     // an origin but we've determined a search is allowed, then allow it.
     if (this.tokens.length == 1) {
       switch (this.tokens[0].type) {
-        case lazy.UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN:
+        case UrlbarShared.TOKEN_TYPE.POSSIBLE_ORIGIN:
           return false;
-        case lazy.UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN_BUT_SEARCH_ALLOWED:
+        case UrlbarShared.TOKEN_TYPE.POSSIBLE_ORIGIN_BUT_SEARCH_ALLOWED:
           return true;
       }
     }
@@ -2762,6 +3297,41 @@ export class UrlbarQueryContext {
 
     // Allow remote results.
     return true;
+  }
+
+  /**
+   * Serializes this context to a plain, structured-cloneable object for sending
+   * across the Urlbar actor boundary. The context's own fields survive
+   * structured-clone on their own, but its nested UrlbarResults keep their data
+   * in private fields, so they're replaced with their wire forms.
+   *
+   * @returns {object} The wire representation; reconstruct with fromWire().
+   */
+  toWire() {
+    return {
+      ...this,
+      results: this.results?.map(result => result.toWire()),
+      heuristicResult: this.heuristicResult?.toWire(),
+    };
+  }
+
+  /**
+   * Reconstructs a UrlbarQueryContext from the plain object produced by
+   * toWire(), e.g. after it has crossed the Urlbar actor boundary: structured-
+   * clone preserved the context's own fields but dropped its class identity and
+   * its results' private-field data, so restore the prototype and rebuild the
+   * results.
+   *
+   * @param {object} wire The wire representation from toWire().
+   * @returns {UrlbarQueryContext} The reconstructed context.
+   */
+  static fromWire(wire) {
+    Object.setPrototypeOf(wire, UrlbarQueryContext.prototype);
+    wire.results = wire.results?.map(lazy.UrlbarResult.fromWire) ?? [];
+    if (wire.heuristicResult) {
+      wire.heuristicResult = lazy.UrlbarResult.fromWire(wire.heuristicResult);
+    }
+    return wire;
   }
 }
 
@@ -2799,7 +3369,7 @@ export class UrlbarMuxer {
  */
 export class UrlbarProvider {
   #lazy = XPCOMUtils.declareLazy({
-    logger: () => UrlbarUtils.getLogger({ prefix: `Provider.${this.name}` }),
+    logger: () => UrlbarShared.getLogger({ prefix: `Provider.${this.name}` }),
   });
 
   get logger() {
@@ -2869,7 +3439,7 @@ export class UrlbarProvider {
    *
    * @param {UrlbarQueryContext} [_queryContext]
    *   The query context object
-   * @param {UrlbarController} [_controller]
+   * @param {UrlbarParentController} [_controller]
    *   The current controller.
    * @returns {Promise<boolean>}
    *   Whether this provider should be invoked for the search.
@@ -2904,10 +3474,12 @@ export class UrlbarProvider {
    *   The query context object
    * @param {(provider: UrlbarProvider, result: UrlbarResult) => void} _addCallback
    *   Callback invoked by the provider to add a new result.
+   * @param {UrlbarParentController} _controller
+   *   The current controller.
    * @returns {void|Promise<void>}
    * @abstract
    */
-  startQuery(_queryContext, _addCallback) {
+  startQuery(_queryContext, _addCallback, _controller) {
     throw new Error("Trying to access the base class, must be overridden");
   }
 
@@ -2931,7 +3503,7 @@ export class UrlbarProvider {
    * @param {UrlbarQueryContext} _queryContext
    *   The engagement's query context. It will always be defined for
    *   "engagement" and "abandonment".
-   * @param {UrlbarController} _controller
+   * @param {UrlbarParentController} _controller
    *  The associated controller.
    * @param {object} _details
    *   This object is non-empty only when `state` is "engagement" or
@@ -2958,7 +3530,7 @@ export class UrlbarProvider {
    *       The index of the picked result.
    *   {string} selType
    *       The type of the selected result.  See TelemetryEvent.record() in
-   *       UrlbarController.sys.mjs.
+   *       UrlbarParentController.sys.mjs.
    *   {string} provider
    *       The name of the provider that produced the picked result.
    *
@@ -2976,7 +3548,7 @@ export class UrlbarProvider {
    *
    * @param {UrlbarQueryContext} _queryContext
    *    The query context at the time of abandonment.
-   * @param {UrlbarController} _controller
+   * @param {UrlbarParentController} _controller
    * The associated controller.
    *
    * onAbandonment(_queryContext, _controller) {}
@@ -2996,7 +3568,7 @@ export class UrlbarProvider {
    *    The state of the user interaction, either "engagement" or "abandonment".
    * @param {UrlbarQueryContext} _queryContext
    *    The current query context.
-   * @param {UrlbarController} _controller
+   * @param {UrlbarParentController} _controller
    *    The associated controller.
    * @param {Array} _providerVisibleResults
    *    Array of visible results at the time of either an engagement or
@@ -3021,7 +3593,7 @@ export class UrlbarProvider {
    *
    * @param {UrlbarQueryContext} _queryContext
    *    The current query context.
-   * @param {UrlbarController} _controller
+   * @param {UrlbarParentController} _controller
    *    The associated controller.
    *
    * onSearchSessionEnd(_queryContext, _controller) {}
@@ -3055,6 +3627,85 @@ export class UrlbarProvider {
   onSelection(_result, _element) {}
 
   /**
+   * @typedef {object} ViewTemplate
+   *   A plain object that describes the DOM subtree for a dynamic result type.
+   *   When a dynamic result is shown in the urlbar view, its type's view template
+   *   is used to construct the part of the view that represents the result.
+   *
+   * @property {ViewTemplateElement[]} children
+   *   The elements that make up the subtree for the dynamic result type.
+   */
+
+  /**
+   * @typedef {object} ViewTemplateElement
+   *   Describes the DOM subtree for the given dynamic result type.
+   *   It should be a tree-like nested structure with each object in the nesting
+   *   representing a DOM element to be created.  This tree-like structure is
+   *   achieved using the `children` property described below.  Each object in
+   *   the structure may include the following properties:
+   *
+   * @property {string} tag
+   *   The tag name of the object.  It is required for all objects in the
+   *   structure except the root object and declares the kind of element that
+   *   will be created for the object: span, div, img, etc.
+   *
+   * @property {string} [name]
+   *   The name of the object. This value is required if you need to update
+   *   the object's DOM element at query time. It's also helpful but not
+   *   required if you need to style the element. When defined, it serves two
+   *   important functions:
+   *   (1) The element created for the object will automatically have a class
+   *       named `urlbarView-dynamic-${dynamicType}-${name}`, where
+   *       `dynamicType` is the name of the dynamic result type.  The element
+   *       will also automatically have an attribute "name" whose value is
+   *       this name.  The class and attribute allow the element to be styled
+   *       in CSS.
+   *   (2) The name is used when updating the view.  See
+   *       UrlbarProvider.getViewUpdate().
+   *   Names must be unique within a view template, but they don't need to be
+   *   globally unique.  i.e., two different view templates can use the same
+   *   names, and other DOM elements can use the same names in their IDs and
+   *   classes.  The name also suffixes the dynamic element's ID: an element
+   *   with name `data` will get the ID `urlbarView-row-{unique number}-data`.
+   *   If there is no name provided for the root element, the root element
+   *   will not get an ID.
+   *
+   * @property {object} [attributes]
+   *   An optional mapping from attribute names to values.  For each
+   *   name-value pair, an attribute is added to the element created for the
+   *   object. The `id` attribute is reserved and cannot be set by the
+   *   provider. Element IDs are passed back to the provider in getViewUpdate
+   *   if they are needed.
+   *
+   * @property {ViewTemplateElement[]} [children]
+   *   An optional list of children.  Each item in the array must be an object
+   *   as described here.  For each item, a child element as described by the
+   *   item is created and added to the element created for the parent object.
+   *
+   * @property {string[]} [classList]
+   *   An optional list of classes.  Each class will be added to the element
+   *   created for the object by calling element.classList.add().
+   *
+   * @property {boolean} [overflowable]
+   *   If true, the element's overflow status will be tracked in order to
+   *   fade it out when needed.
+   */
+
+  /**
+   * This is called only for dynamic result types, when the urlbar view creates
+   * the view of one of the results of the provider.
+   *
+   * @param {UrlbarResult} _result
+   *   The result whose view will be created.
+   * @returns {?ViewTemplate}
+   *   The view template describing the DOM to build for the result,
+   *   or null if the provider doesn't define one.
+   */
+  getViewTemplate(_result) {
+    return null;
+  }
+
+  /**
    * This is called only for dynamic result types, when the urlbar view updates
    * the view of one of the results of the provider.  It should return an object
    * describing the view update that looks like this:
@@ -3085,7 +3736,7 @@ export class UrlbarProvider {
    * The object should contain a property for each element to update in the
    * dynamic result type view.  The names of these properties are the names
    * declared in the view template of the dynamic result type; see
-   * UrlbarView.addDynamicViewTemplate().  The values are similar to the nested
+   * UrlbarProvider.getViewTemplate().  The values are similar to the nested
    * objects specified in the view template but not quite the same; see below.
    * For each property, the element in the view subtree with the specified name
    * is updated according to the object in the property's value.  If an
@@ -3140,9 +3791,11 @@ export class UrlbarProvider {
    *
    * @param {UrlbarResult} _result
    *   The menu will be shown for this result.
+   * @param {boolean} _isPrivate
+   *   Whether the query was made in a private browsing context.
    * @returns {?UrlbarResultCommand[]}
    */
-  getResultCommands(_result) {
+  getResultCommands(_result, _isPrivate) {
     return null;
   }
 
@@ -3189,7 +3842,7 @@ export class SkippableTimer {
    * @param {number} [options.time] A delay in milliseconds to wait for
    * @param {boolean} [options.reportErrorOnTimeout] If true and the timer times
    *                  out, an error will be logged with Cu.reportError
-   * @param {ConsoleInstance} [options.logger] An optional logger
+   * @param {Console} [options.logger] An optional logger
    */
   constructor({
     name = "<anonymous timer>",
@@ -3260,468 +3913,6 @@ export class SkippableTimer {
     if (isError) {
       console.error(line);
     }
-  }
-}
-
-/**
- * @typedef L10nCachedMessage
- *   A cached L10n message object is similar to `L10nMessage` (defined in
- *   Localization.webidl) but its attributes are stored differently for
- *   convenience.
- *
- *   For example, if we cache these strings from an ftl file:
- *
- *     foo = Foo's value
- *     bar =
- *       .label = Bar's label value
- *
- *   Then:
- *
- *     cache.get("foo")
- *     // => { value: "Foo's value", attributes: null }
- *     cache.get("bar")
- *     // => { value: null, attributes: { label: "Bar's label value" }}
- * @property {string} [value]
- *   The bare value of the string. If the string does not have a bare value
- *   (i.e., it has only attributes), this will be null.
- * @property {{[key: string]: string}|null} [attributes]
- *   A mapping from attribute names to their values. If the string doesn't have
- *   any attributes, this will be null.
- */
-
-/**
- * This class implements a cache for l10n strings. Cached strings can be
- * accessed synchronously, avoiding the asynchronicity of `data-l10n-id` and
- * `document.l10n.setAttributes`, which can lead to text pop-in and flickering
- * as strings are fetched from Fluent. (`document.l10n.formatValueSync` is also
- * sync but should not be used since it may perform sync I/O.)
- *
- * Values stored and returned by the cache are JS objects similar to
- * `L10nMessage` objects, not bare strings. This allows the cache to store not
- * only l10n strings with bare values but also strings that define attributes
- * (e.g., ".label = My label value"). See `get` for details.
- *
- * The cache stores up to `MAX_ENTRIES_PER_ID` entries per l10n ID, and entries
- * are sorted from least recently cached to most recently cached. This only
- * matters for strings that have arguments. For strings that don't have
- * arguments, there can be only one cached value, so there can be only one cache
- * entry. But for strings that do have arguments, their cached values depend on
- * the arguments they were cached with. The cache will store up to
- * `MAX_ENTRIES_PER_ID` of the most recently cached values for a given l10n ID.
- *
- * For example, given the following string from an ftl file:
- *
- *   foo = My arg value is { $bar }
- *
- * And the following cache calls:
- *
- *   cache.add({ id: "foo", args: { bar: "aaa" }});
- *   cache.add({ id: "foo", args: { bar: "bbb" }});
- *   cache.add({ id: "foo", args: { bar: "ccc" }});
- *
- * Then three different versions of the "foo" string will be cached, from least
- * recently cached to most recently cached:
- *
- *   "My arg value is aaa"
- *   "My arg value is bbb"
- *   "My arg value is ccc"
- *
- * If `MAX_ENTRIES_PER_ID` is 3 and we cache a fourth version like this:
- *
- *   cache.add({ id: "foo", args: { bar: "zzz" }});
- *
- * Then the least recently cached version -- the "aaa" one -- will be evicted
- * from the cache, and the remaining cached versions will be:
- *
- *   "My arg value is bbb"
- *   "My arg value is ccc"
- *   "My arg value is zzz"
- */
-export class L10nCache {
-  static MAX_ENTRIES_PER_ID = 5;
-
-  /**
-   * @param {Localization} l10n
-   *   A `Localization` object like `document.l10n`. This class keeps a weak
-   *   reference to this object, so the caller or something else must hold onto
-   *   it.
-   */
-  constructor(l10n) {
-    this.l10n = Cu.getWeakReference(l10n);
-    this.QueryInterface = ChromeUtils.generateQI([
-      "nsIObserver",
-      "nsISupportsWeakReference",
-    ]);
-    Services.obs.addObserver(this, "intl:app-locales-changed", true);
-  }
-
-  /**
-   * Gets a cached l10n message.
-   *
-   * @param {object} options
-   *   Options
-   * @param {string} options.id
-   *   The string's Fluent ID.
-   * @param {object} [options.args]
-   *   The Fluent arguments as passed to `l10n.setAttributes`. Required if the
-   *   l10n string has arguments.
-   * @returns {L10nCachedMessage|null}
-   *   The cached message or null if it's not cached.
-   */
-  get({ id, args = undefined }) {
-    return this.#messagesByArgsById.get(id)?.get(this.#argsKey(args)) ?? null;
-  }
-
-  /**
-   * Fetches a string from Fluent and caches it.
-   *
-   * @param {object} options
-   *   Options
-   * @param {string} options.id
-   *   The string's Fluent ID.
-   * @param {object} [options.args]
-   *   The Fluent arguments as passed to `l10n.setAttributes`. Required if the
-   *   l10n string has arguments.
-   */
-  async add({ id, args = undefined }) {
-    let l10n = this.l10n.get();
-    if (!l10n) {
-      return;
-    }
-
-    let messages = await l10n.formatMessages([{ id, args }]);
-    if (!messages?.length) {
-      console.error(
-        "l10n.formatMessages returned an unexpected value for ID: ",
-        id
-      );
-      return;
-    }
-
-    /** @type {L10nCachedMessage} */
-    let message = { value: messages[0].value, attributes: null };
-    if (messages[0].attributes) {
-      // Convert `attributes` from an array of `{ name, value }` objects to one
-      // object mapping names to values.
-      message.attributes = messages[0].attributes.reduce(
-        (valuesByName, { name, value }) => {
-          valuesByName[name] = value;
-          return valuesByName;
-        },
-        {}
-      );
-    }
-
-    this.#update({ id, args, message });
-  }
-
-  /**
-   * Ensures that a string is the most recently cached for its ID. If the string
-   * is not already cached, then it's fetched from Fluent. This is just a slight
-   * optimization over `add` that avoids calling into Fluent unnecessarily.
-   *
-   * @param {object} options
-   *   Options
-   * @param {string} options.id
-   *   The string's Fluent ID.
-   * @param {object} [options.args]
-   *   The Fluent arguments as passed to `l10n.setAttributes`. Required if the
-   *   l10n string has arguments.
-   */
-  async ensure({ id, args = undefined }) {
-    let message = this.get({ id, args });
-    if (message) {
-      await this.#update({ id, args, message });
-    } else {
-      await this.add({ id, args });
-    }
-  }
-
-  /**
-   * A version of `ensure` that ensures multiple strings are cached at once.
-   *
-   * @param {object[]} objects
-   *   An array of objects as passed to `ensure()`.
-   */
-  async ensureAll(objects) {
-    let promises = [];
-    for (let obj of objects) {
-      promises.push(this.ensure(obj));
-    }
-    await Promise.all(promises);
-  }
-
-  /**
-   * Removes a cached string.
-   *
-   * @param {object} options
-   *   Options
-   * @param {string} options.id
-   *   The string's Fluent ID.
-   * @param {object} [options.args]
-   *   The Fluent arguments as passed to `l10n.setAttributes`. Required if the
-   *   l10n string has arguments.
-   */
-  delete({ id, args = undefined }) {
-    let messagesByArgs = this.#messagesByArgsById.get(id);
-    if (messagesByArgs) {
-      messagesByArgs.delete(this.#argsKey(args));
-      if (!messagesByArgs.size) {
-        this.#messagesByArgsById.delete(id);
-      }
-    }
-  }
-
-  /**
-   * Removes all cached strings.
-   */
-  clear() {
-    this.#messagesByArgsById.clear();
-  }
-
-  /**
-   * Returns the number of cached messages.
-   */
-  size() {
-    return this.#messagesByArgsById
-      .values()
-      .reduce((total, messagesByArg) => total + messagesByArg.size, 0);
-  }
-
-  /**
-   * Sets an element's content or attribute to a cached l10n string. If the
-   * string isn't cached, then this falls back to the usual
-   * `document.l10n.setAttributes()` using the given l10n ID and args, which
-   * means the string will pop in on a later animation frame.
-   *
-   * This also caches the string so that it will be ready the next time. It
-   * returns a promise that will be resolved when the string has been cached.
-   * Typically there's no need to await it unless you want to be sure the string
-   * is cached before continuing.
-   *
-   * @param {Element} element
-   *   The l10n string will be applied to this element.
-   * @param {object} options
-   *   Options object.
-   * @param {string} options.id
-   *   The l10n string ID.
-   * @param {object} [options.args]
-   *   The l10n string arguments.
-   * @param {object} [options.argsHighlights]
-   *   If this is set, apply substring highlighting to the corresponding l10n
-   *   arguments in `args`. Each value in this object should be an array of
-   *   highlights as returned by `UrlbarUtils.getTokenMatches()` or
-   *   `UrlbarResult.getDisplayableValueAndHighlights()`.
-   * @param {string} [options.attribute]
-   *   If the string applies to an attribute on the element, pass the name of
-   *   the attribute. The string in the Fluent file should define a value for
-   *   the attribute, like ".foo = My value". If the string applies to the
-   *   element's content, leave this undefined.
-   * @param {boolean} [options.parseMarkup]
-   *   This controls whether the cached string is applied to the element's
-   *   `textContent` or its `innerHTML`. It's not relevant if the string is
-   *   applied to an attribute. Typically it should be set to true when the
-   *   string is expected to contain markup. When true, the cached string is
-   *   essentially assigned to the element's `innerHTML`. When false, it's
-   *   assigned to the element's `textContent`.
-   * @returns {Promise}
-   *   A promise that's resolved when the string has been cached. You can ignore
-   *   it and do not need to await it unless you want to make sure the string is
-   *   cached before continuing.
-   */
-  setElementL10n(
-    element,
-    {
-      id,
-      args = undefined,
-      argsHighlights = undefined,
-      attribute = undefined,
-      parseMarkup = false,
-    }
-  ) {
-    // If the message is cached, apply it to the element.
-    let message = this.get({ id, args });
-    if (message) {
-      if (message.attributes) {
-        for (let [name, value] of Object.entries(message.attributes)) {
-          element.setAttribute(name, value);
-        }
-      }
-      if (typeof message.value == "string") {
-        if (!parseMarkup) {
-          element.textContent = message.value;
-        } else {
-          element.innerHTML = "";
-          element.append(
-            lazy.parserUtils.parseFragment(
-              message.value,
-              Ci.nsIParserUtils.SanitizerDropNonCSSPresentation |
-                Ci.nsIParserUtils.SanitizerDropForms |
-                Ci.nsIParserUtils.SanitizerDropMedia,
-              false,
-              Services.io.newURI(element.ownerDocument.documentURI),
-              element
-            )
-          );
-        }
-      }
-    }
-
-    // If the message isn't cached and args highlights were specified, apply
-    // them now.
-    if (!message && !attribute && argsHighlights) {
-      // To avoid contaminated args because we cache it, create a new instance.
-      args = { ...args };
-
-      let span = element.ownerDocument.createElement("span");
-      for (let key in argsHighlights) {
-        UrlbarUtils.addTextContentWithHighlights(
-          span,
-          args[key],
-          argsHighlights[key]
-        );
-        args[key] = span.innerHTML;
-      }
-    }
-
-    // If an attribute was passed in, make sure it's allowed to be localized by
-    // setting `data-l10n-attrs`. This isn't required for attrbutes already in
-    // the Fluent allowlist but it doesn't hurt.
-    if (attribute) {
-      element.setAttribute("data-l10n-attrs", attribute);
-    } else {
-      element.removeAttribute("data-l10n-attrs");
-    }
-
-    // Set the l10n attributes. If the message wasn't cached, `DOMLocalization`
-    // will do its asynchronous translation and the text content will pop in. If
-    // the message was cached, then we already set the cached attributes and
-    // text content above, but we set the l10n attributes anyway because some
-    // tests rely on them being set. It shouldn't hurt anyway.
-    element.ownerDocument.l10n.setAttributes(element, id, args);
-
-    // Cache the string. We specifically do not do this first and await it
-    // because the whole point of the l10n cache is to synchronously update the
-    // element's content when possible. Here, we return a promise rather than
-    // making this function async and awaiting so it's clearer to callers that
-    // they probably don't need to wait for caching to finish.
-    return this.ensure({ id, args });
-  }
-
-  /**
-   * Removes content and attributes set by `setElementL10n()`.
-   *
-   * @param {Element} element
-   *   The content and attributes will be removed from this element.
-   * @param {object} [options]
-   *   Options object.
-   * @param {string} [options.attribute]
-   *   If you passed an attribute to `setElementL10n()`, pass it here too.
-   */
-  removeElementL10n(element, { attribute = undefined } = {}) {
-    if (attribute) {
-      element.removeAttribute(attribute);
-      element.removeAttribute("data-l10n-attrs");
-    } else {
-      element.textContent = "";
-    }
-    element.removeAttribute("data-l10n-id");
-    element.removeAttribute("data-l10n-args");
-  }
-
-  /**
-   * Observer method from Services.obs.addObserver.
-   *
-   * @param {nsISupports} subject
-   *   The subject of the notification.
-   * @param {string} topic
-   *   The topic of the notification.
-   */
-  async observe(subject, topic) {
-    switch (topic) {
-      case "intl:app-locales-changed": {
-        this.clear();
-        break;
-      }
-    }
-  }
-
-  /**
-   * L10n ID => l10n args cache key => cached message object
-   *
-   * We rely on the fact that `Map` remembers insertion order to keep track of
-   * which cache entries are least recent, per l10n ID. The inner `Map`s will
-   * iterate their entries in order from least recently inserted to most
-   * recently inserted, i.e., least recently cached to most recently cached.
-   *
-   * @type {Map<string, Map<string, L10nCachedMessage>>}
-   */
-  #messagesByArgsById = new Map();
-
-  /**
-   * Max entries per l10n ID for this cache.
-   *
-   * @type {number}
-   */
-  #maxEntriesPerId = L10nCache.MAX_ENTRIES_PER_ID;
-
-  /**
-   * Inserts a message into the cache and makes it most recently cached.
-   *
-   * @param {object} options
-   *   Options
-   * @param {string} options.id
-   *   The string's Fluent ID.
-   * @param {object} options.args
-   *   The Fluent arguments as passed to `l10n.setAttributes`.
-   * @param {L10nCachedMessage} options.message
-   *   The message to cache.
-   */
-  #update({ id, args, message }) {
-    let messagesByArgs = this.#messagesByArgsById.get(id);
-    if (!messagesByArgs) {
-      messagesByArgs = new Map();
-      this.#messagesByArgsById.set(id, messagesByArgs);
-    }
-
-    // We rely on the fact that `Map` remembers insertion order to keep track of
-    // which cache entries are least recent. To make `message` the most recent
-    // for its ID, delete it from `messagesByArgs` (step 1) and then reinsert it
-    // (step 2). That way it will move to the end of iteration.
-    let argsKey = this.#argsKey(args);
-
-    // step 1
-    messagesByArgs.delete(argsKey);
-
-    if (messagesByArgs.size == this.#maxEntriesPerId) {
-      // The cache entries are full for this ID. Remove the least recently
-      // cached entry, which will be the first entry returned by the map's
-      // iterator.
-      messagesByArgs.delete(messagesByArgs.keys().next().value);
-    }
-
-    // step 2
-    messagesByArgs.set(argsKey, message);
-  }
-
-  /**
-   * Returns a cache key for the inner `Maps` inside `#messagesByArgsById`.
-   * These `Map`s are keyed on l10n args.
-   *
-   * @param {object} args
-   *   The Fluent arguments as passed to `l10n.setAttributes`.
-   * @returns {string}
-   *   The args cache key.
-   */
-  #argsKey(args) {
-    // `JSON.stringify` doesn't guarantee a particular ordering of object
-    // properties, so instead of stringifying `args` as is, sort its entries by
-    // key and then pull out the values. The final key is a JSON'ed array of
-    // sorted-by-key `args` values.
-    let argValues = Object.entries(args ?? [])
-      .sort(([key1], [key2]) => key1.localeCompare(key2))
-      .map(([_, value]) => value);
-    return JSON.stringify(argValues);
   }
 }
 

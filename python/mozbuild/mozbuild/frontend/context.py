@@ -14,6 +14,7 @@ If you are looking for the absolute authority on what moz.build files can
 contain, you've come to the right place.
 """
 
+import functools
 import itertools
 import operator
 import os
@@ -23,7 +24,11 @@ from types import FunctionType
 import mozpack.path as mozpath
 
 from mozbuild.util import (
+    CCompilerFlag,
+    CxxCompilerFlag,
     HierarchicalStringList,
+    HostCCompilerFlag,
+    HostCxxCompilerFlag,
     ImmutableStrictOrderingOnAppendList,
     KeyedDefaultDict,
     List,
@@ -33,8 +38,6 @@ from mozbuild.util import (
     StrictOrderingOnAppendListWithFlagsFactory,
     TypedList,
     TypedNamedTuple,
-    memoize,
-    memoized_property,
 )
 
 from .. import schedules
@@ -79,6 +82,8 @@ class Context(KeyedDefaultDict):
 
     config is the ConfigEnvironment for this context.
     """
+
+    __hash__ = object.__hash__
 
     def __init__(self, allowed_variables={}, config=None, finder=None):
         self._allowed_variables = allowed_variables
@@ -147,11 +152,11 @@ class Context(KeyedDefaultDict):
             return []
         return self._all_paths[self._all_paths.index(self.main_path) :]
 
-    @memoized_property
+    @functools.cached_property
     def objdir(self):
         return mozpath.join(self.config.topobjdir, self.relobjdir).rstrip("/")
 
-    @memoize
+    @functools.cache
     def _srcdir(self, path):
         return mozpath.join(self.config.topsrcdir, self._relsrcdir(path)).rstrip("/")
 
@@ -159,7 +164,7 @@ class Context(KeyedDefaultDict):
     def srcdir(self):
         return self._srcdir(self.current_path or self.main_path)
 
-    @memoize
+    @functools.cache
     def _relsrcdir(self, path):
         return mozpath.relpath(mozpath.dirname(path), self.config.topsrcdir)
 
@@ -168,7 +173,7 @@ class Context(KeyedDefaultDict):
         assert self.main_path
         return self._relsrcdir(self.current_path or self.main_path)
 
-    @memoized_property
+    @functools.cached_property
     def relobjdir(self):
         assert self.main_path
         return mozpath.relpath(mozpath.dirname(self.main_path), self.config.topsrcdir)
@@ -661,12 +666,12 @@ class CompileFlags(TargetCompileFlags):
             ),
             (
                 "WARNINGS_CFLAGS",
-                context.config.substs.get("WARNINGS_CFLAGS"),
+                context.config.substs.get("WARNINGS_CFLAGS", []),
                 ("CFLAGS",),
             ),
             (
                 "WARNINGS_CXXFLAGS",
-                context.config.substs.get("WARNINGS_CXXFLAGS"),
+                context.config.substs.get("WARNINGS_CXXFLAGS", []),
                 ("CXXFLAGS",),
             ),
             ("MOZBUILD_CFLAGS", None, ("CFLAGS",)),
@@ -834,14 +839,22 @@ class PathMeta(type):
             assert isinstance(context, Context)
             if isinstance(value, Path):
                 context = value.context
+        # A (source, target_basename) tuple requests installation under a
+        # different base name than the source's own.
+        target_basename = None
         if not issubclass(cls, (SourcePath, ObjDirPath, AbsolutePath)):
+            if isinstance(value, tuple):
+                value, target_basename = value
             if value.startswith("!"):
                 cls = ObjDirPath
             elif value.startswith("%"):
                 cls = AbsolutePath
             else:
                 cls = SourcePath
-        return super().__call__(context, value)
+        path = super().__call__(context, value)
+        if target_basename is not None:
+            path._target_basename = target_basename
+        return path
 
 
 class Path(ContextDerivedValue, str, metaclass=PathMeta):
@@ -903,9 +916,11 @@ class Path(ContextDerivedValue, str, metaclass=PathMeta):
     def __hash__(self):
         return hash(self.full_path)
 
-    @memoized_property
+    @property
     def target_basename(self):
-        return mozpath.basename(self.full_path)
+        return getattr(self, "_target_basename", None) or mozpath.basename(
+            self.full_path
+        )
 
 
 class SourcePath(Path):
@@ -929,7 +944,7 @@ class SourcePath(Path):
         self.full_path = mozpath.normpath(path)
         return self
 
-    @memoized_property
+    @functools.cached_property
     def translated(self):
         """Returns the corresponding path in the objdir.
 
@@ -943,10 +958,10 @@ class SourcePath(Path):
 class RenamedSourcePath(SourcePath):
     """Like SourcePath, but with a different base name when installed.
 
-    The constructor takes a tuple of (source, target_basename).
-
-    This class is not meant to be exposed to moz.build sandboxes as of now,
-    and is not supported by the RecursiveMake backend.
+    The constructor takes a tuple of (source, target_basename). In moz.build
+    files the same effect is achieved by appending a (source, target_basename)
+    tuple to a ``*_FILES`` variable; this class is kept for direct internal
+    construction (e.g. from jar manifests).
     """
 
     def __new__(cls, context, value):
@@ -955,10 +970,6 @@ class RenamedSourcePath(SourcePath):
         self = super().__new__(cls, context, source)
         self._target_basename = target_basename
         return self
-
-    @property
-    def target_basename(self):
-        return self._target_basename
 
 
 class ObjDirPath(Path):
@@ -990,7 +1001,7 @@ class AbsolutePath(Path):
         return self
 
 
-@memoize
+@functools.cache
 def ContextDerivedTypedList(klass, base_class=List):
     """Specialized TypedList for use with ContextDerivedValue types."""
     assert issubclass(klass, ContextDerivedValue)
@@ -1008,7 +1019,7 @@ def ContextDerivedTypedList(klass, base_class=List):
     return _TypedList
 
 
-@memoize
+@functools.cache
 def ContextDerivedTypedListWithItems(type, base_class=List):
     """Specialized TypedList for use with ContextDerivedValue types."""
 
@@ -1020,7 +1031,7 @@ def ContextDerivedTypedListWithItems(type, base_class=List):
     return _TypedListWithItems
 
 
-@memoize
+@functools.cache
 def ContextDerivedTypedRecord(*fields):
     """Factory for objects with certain properties and dynamic
     type checks.
@@ -1133,10 +1144,15 @@ class Schedules:
         return Schedules(inclusive=inclusive, exclusive=exclusive)
 
 
-@memoize
-def ContextDerivedTypedHierarchicalStringList(type):
+@functools.cache
+def ContextDerivedTypedHierarchicalStringList(type, allow_renames=False):
     """Specialized HierarchicalStringList for use with ContextDerivedValue
-    types."""
+    types.
+
+    With ``allow_renames``, entries may also be ``(source, target_basename)``
+    tuples requesting installation under a different base name. Only the
+    variables whose backend honors this (``FINAL_TARGET_FILES`` and
+    ``OBJDIR_FILES``) enable it."""
 
     class _TypedListWithItems(ContextDerivedValue, HierarchicalStringList):
         __slots__ = ("_strings", "_children", "_context")
@@ -1153,6 +1169,18 @@ def ContextDerivedTypedHierarchicalStringList(type):
             if not child:
                 child = self._children[name] = _TypedListWithItems(self._context)
             return child
+
+        if allow_renames:
+
+            def _check_list(self, value):
+                if not isinstance(value, list):
+                    raise ValueError(f"Expected a list, not {value.__class__}")
+                for v in value:
+                    if not isinstance(v, (str, tuple)):
+                        raise ValueError(
+                            "Expected a list of strings or (source, target_basename) "
+                            f"tuples, not an element of {v.__class__}"
+                        )
 
     return _TypedListWithItems
 
@@ -1192,6 +1220,7 @@ SchedulingComponents = ContextDerivedTypedRecord(
 GeneratedFilesList = StrictOrderingOnAppendListWithFlagsFactory({
     "script": str,
     "inputs": list,
+    "extra_deps": list,
     "force": bool,
     "flags": list,
 })
@@ -1516,13 +1545,14 @@ VARIABLES = {
         Unless you have a reason not to, use the GeneratedFile template rather
         than referencing GENERATED_FILES directly. The GeneratedFile template
         has all the same arguments as the attributes listed below (``script``,
-        ``inputs``, ``flags``, ``force``), plus an additional ``entry_point``
-        argument to specify a particular function to run in the given script.
+        ``inputs``, ``extra_deps``, ``flags``, ``force``), plus an additional
+        ``entry_point`` argument to specify a particular function to run in
+        the given script.
 
         This variable contains a list of files for the build system to
         generate at export time. The generation method may be declared
-        with optional ``script``, ``inputs``, ``flags``, and ``force``
-        attributes on individual entries.
+        with optional ``script``, ``inputs``, ``extra_deps``, ``flags``,
+        and ``force`` attributes on individual entries.
         If the optional ``script`` attribute is not present on an entry, it
         is assumed that rules for generating the file are present in
         the associated Makefile.in.
@@ -1560,6 +1590,16 @@ VARIABLES = {
 
         When the ``flags`` attribute is present, the given list of flags is
         passed as extra arguments following the inputs.
+
+        When the ``extra_deps`` attribute is present, the listed paths are
+        added as build-graph prerequisites for the generation step but are
+        not passed to ``script`` as positional arguments. Use this when the
+        script opens additional files itself at runtime (e.g. via the
+        preprocessor's #include @TOPOBJDIR@/...) and those files must
+        therefore exist on disk before the step runs. An objdir-relative
+        path like ``"!/source-repo.h"`` resolves against ``$topobjdir``,
+        and a plain path resolves relative to the directory containing the
+        moz.build file.
 
         When the ``force`` attribute is present, the file is generated every
         build, regardless of whether it is stale.  This is special to the
@@ -1621,7 +1661,7 @@ VARIABLES = {
         """,
     ),
     "FINAL_TARGET_FILES": (
-        ContextDerivedTypedHierarchicalStringList(Path),
+        ContextDerivedTypedHierarchicalStringList(Path, allow_renames=True),
         list,
         """List of files to be installed into the application directory.
 
@@ -1736,8 +1776,21 @@ VARIABLES = {
         of the omni.ja, maintaining the path that they have in the source dir.
         """,
     ),
+    "JS_SHELL_ARCHIVE_FILES": (
+        ContextDerivedTypedList(Path),
+        list,
+        """List of files to include in the JS shell zip archive.
+
+        Each entry is a Path, typically of the form ``!/dist/bin/<basename>``
+        for files built into ``$(DIST)/bin``, or ``%/absolute/path`` for files
+        outside the build tree. The build backend writes the basenames to
+        <topobjdir>/jsshell-archive.list; the packager reads it via
+        --files-from when producing the archive named by JSSHELL_NAME (from
+        package-name.mk).
+        """,
+    ),
     "OBJDIR_FILES": (
-        ContextDerivedTypedHierarchicalStringList(Path),
+        ContextDerivedTypedHierarchicalStringList(Path, allow_renames=True),
         list,
         """List of files to be installed anywhere in the objdir. Use sparingly.
 
@@ -1751,6 +1804,23 @@ VARIABLES = {
         ContextDerivedTypedHierarchicalStringList(Path),
         list,
         """Like ``OBJDIR_FILES``, with preprocessing. Use sparingly.
+        """,
+    ),
+    "PP_FILES_EXTRA_DEPS": (
+        ContextDerivedTypedList(Path, StrictOrderingOnAppendList),
+        list,
+        """Extra build-graph dependencies for preprocessed files in this directory.
+
+        Applies to every entry in ``FINAL_TARGET_PP_FILES``,
+        ``OBJDIR_PP_FILES``, ``LOCALIZED_PP_FILES``, and the
+        ``EXTRA_PP_*`` variants in this moz.build. Use this when those
+        entries reference generated files via
+        ``#include @TOPOBJDIR@/...``: the preprocessor opens those files
+        at build time, so they must exist before the preprocess step runs.
+
+        Path syntax matches ``GENERATED_FILES``'s ``extra_deps``: an
+        objdir-relative path like ``"!/source-repo.h"`` resolves against
+        ``$topobjdir``; a plain path resolves against the source tree.
         """,
     ),
     "FINAL_LIBRARY": (
@@ -1870,6 +1940,22 @@ VARIABLES = {
         """The output category for this context's rust library. If set this will
         correspond to the build command that will build this rust library, and
         the library will not be built as part of the default build.
+        """,
+    ),
+    "RUST_PROGRAM_OUTPUT_CATEGORY": (
+        str,
+        str,
+        """The output category for this context's Rust program(s). If set this will
+        correspond to the build command that will build these Rust programs, and
+        the programs will not be built as part of the default build.
+        """,
+    ),
+    "HOST_RUST_PROGRAM_OUTPUT_CATEGORY": (
+        str,
+        str,
+        """The output category for this context's host Rust program(s). If set this will
+        correspond to the build command that will build these host Rust programs, and
+        the programs will not be built as part of the default build.
         """,
     ),
     "IS_FRAMEWORK": (
@@ -2244,12 +2330,6 @@ VARIABLES = {
         """List of manifest files defining browser chrome tests.
         """,
     ),
-    "ANDROID_INSTRUMENTATION_MANIFESTS": (
-        ManifestparserManifestList,
-        list,
-        """List of manifest files defining Android instrumentation tests.
-        """,
-    ),
     "FIREFOX_UI_FUNCTIONAL_MANIFESTS": (
         ManifestparserManifestList,
         list,
@@ -2467,7 +2547,7 @@ VARIABLES = {
         """,
     ),
     "CFLAGS": (
-        List,
+        TypedList(CCompilerFlag),
         list,
         """Flags passed to the C compiler for all of the C source files
            declared in this directory.
@@ -2478,7 +2558,7 @@ VARIABLES = {
         """,
     ),
     "CXXFLAGS": (
-        List,
+        TypedList(CxxCompilerFlag),
         list,
         """Flags passed to the C++ compiler for all of the C++ source files
            declared in this directory.
@@ -2580,7 +2660,7 @@ VARIABLES = {
         """,
     ),
     "HOST_CFLAGS": (
-        List,
+        TypedList(HostCCompilerFlag),
         list,
         """Flags passed to the host C compiler for all of the C source files
            declared in this directory.
@@ -2591,7 +2671,7 @@ VARIABLES = {
         """,
     ),
     "HOST_CXXFLAGS": (
-        List,
+        TypedList(HostCxxCompilerFlag),
         list,
         """Flags passed to the host C++ compiler for all of the C++ source files
            declared in this directory.
@@ -2621,6 +2701,18 @@ VARIABLES = {
            Note that the ordering of flags matters here; these flags will be
            added to the linker's command line in the same order as they
            appear in the moz.build file.
+        """,
+    ),
+    "EXTRA_LINK_DEPS": (
+        ContextDerivedTypedList(Path, StrictOrderingOnAppendList),
+        list,
+        """Extra prerequisites for the programs and shared libraries
+           declared in this directory.
+
+           Use this for files referenced by LDFLAGS that the linker reads
+           at link time (sectcreate inputs, response files, version
+           scripts) so backends can declare them as prerequisites of the
+           link target.
         """,
     ),
     "EXTRA_DSO_LDOPTS": (
@@ -2919,9 +3011,7 @@ SPECIAL_VARIABLES = {
         """,
     ),
     "CONFIG": (
-        lambda context: ReadOnlyKeyedDefaultDict(
-            lambda key: context.config.substs.get(key)
-        ),
+        lambda context: ReadOnlyKeyedDefaultDict(context.config.substs.get),
         dict,
         """Dictionary containing the current configuration variables.
 

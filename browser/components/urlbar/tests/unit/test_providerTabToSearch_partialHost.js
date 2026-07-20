@@ -26,6 +26,12 @@ add_setup(async function () {
     "browser.search.separatePrivateDefault.ui.enabled",
     false
   );
+  // The test seeds the engine domain via an unvisited bookmark; bookmark-
+  // driven autofill is disabled when adaptive autofill is on.
+  Services.prefs.setBoolPref(
+    "browser.urlbar.autoFill.adaptiveHistory.enabled",
+    false
+  );
 
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref("browser.urlbar.suggest.searches");
@@ -35,6 +41,9 @@ add_setup(async function () {
     );
     Services.prefs.clearUserPref(
       "browser.urlbar.tabToSearch.onboard.interactionsLeft"
+    );
+    Services.prefs.clearUserPref(
+      "browser.urlbar.autoFill.adaptiveHistory.enabled"
     );
   });
 });
@@ -213,7 +222,7 @@ add_task(async function test() {
   let searchStr = "w";
   let context = createContext(searchStr, {
     isPrivate: false,
-    sources: [UrlbarUtils.RESULT_SOURCE.BOOKMARKS],
+    sources: [UrlbarShared.RESULT_SOURCE.BOOKMARKS],
   });
   let host = await UrlbarProviderAutofill.getTopHostOverThreshold(context, [
     wikiEngine.searchUrlDomain,
@@ -249,7 +258,7 @@ add_task(async function test() {
   info("Restricting to history should not autofill our bookmark");
   context = createContext("ex", {
     isPrivate: false,
-    sources: [UrlbarUtils.RESULT_SOURCE.HISTORY],
+    sources: [UrlbarShared.RESULT_SOURCE.HISTORY],
   });
   let controller = UrlbarTestUtils.newMockController();
   await providersManager.startQuery(context, controller);

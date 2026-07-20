@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -717,9 +715,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM {
   }
 
   CodeOffset movWithPatch(ImmWord imm, Register dest) {
-    CodeOffset label = CodeOffset(currentOffset());
-    ma_movPatchable(Imm32(imm.value), dest, Always);
-    return label;
+    BufferOffset offset = ma_movPatchable(Imm32(imm.value), dest, Always);
+    return CodeOffset(offset.getOffset());
   }
   CodeOffset movWithPatch(ImmPtr imm, Register dest) {
     return movWithPatch(ImmWord(uintptr_t(imm.value)), dest);
@@ -1239,8 +1236,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM {
   void store32(Register src, AbsoluteAddress address);
   FaultingCodeOffset store32(Register src, const Address& address);
   FaultingCodeOffset store32(Register src, const BaseIndex& address);
-  void store32(Imm32 src, const Address& address);
-  void store32(Imm32 src, const BaseIndex& address);
+  FaultingCodeOffset store32(Imm32 src, const Address& address);
+  FaultingCodeOffset store32(Imm32 src, const BaseIndex& address);
 
   template <typename S, typename T>
   void store32Unaligned(const S& src, const T& dest) {
@@ -1276,8 +1273,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM {
     store64(src, dest);
   }
 
-  void storePtr(ImmWord imm, const Address& address);
-  void storePtr(ImmWord imm, const BaseIndex& address);
+  FaultingCodeOffset storePtr(ImmWord imm, const Address& address);
+  FaultingCodeOffset storePtr(ImmWord imm, const BaseIndex& address);
   void storePtr(ImmPtr imm, const Address& address);
   void storePtr(ImmPtr imm, const BaseIndex& address);
   void storePtr(ImmGCPtr imm, const Address& address);

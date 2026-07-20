@@ -30,6 +30,8 @@ const LOG_DISABLED = -1;
 // List of options supported by this target configuration actor.
 /* eslint sort-keys: "error" */
 const SUPPORTED_OPTIONS = {
+  // Set a custom animations playback rate (called from Animations panel)
+  animationsPlayBackRateMultiplier: true,
   // Disable network request caching.
   cacheDisabled: true,
   // Enable color scheme simulation.
@@ -38,10 +40,15 @@ const SUPPORTED_OPTIONS = {
   customFormatters: true,
   // Set a custom user agent
   customUserAgent: true,
+  // List of highlighters enabled globally, which should be preserved across navigations
+  enabledHighlighters: true,
   // Is the tracer experimental feature manually enabled by the user?
   isTracerFeatureEnabled: true,
   // Enable JavaScript
   javascriptEnabled: true,
+  // Maximum number of bytes used to save all network request/response body
+  // Set it to 0 to have unlimited recording.
+  networkBodyLimit: true,
   // Force a custom device pixel ratio (used in RDM). Set to null to restore origin ratio.
   overrideDPPX: true,
   // Enable print simulation mode.
@@ -107,7 +114,7 @@ class TargetConfigurationActor extends Actor {
       this._onBfCacheNavigation
     );
 
-    this._browsingContext = this.watcherActor.browserElement?.browsingContext;
+    this._browsingContext = this.watcherActor.browsingContext;
   }
 
   // Value of `logging.console` pref, before starting recording JS Traces
@@ -183,7 +190,7 @@ class TargetConfigurationActor extends Actor {
       this._restoreParentProcessConfiguration();
     }
 
-    // We need to store the browsing context as this.watcherActor.browserElement.browsingContext
+    // We need to store the browsing context as this.watcherActor.browsingContext
     // can still refer to the previous browsing context at this point.
     this._browsingContext = browsingContext;
 
@@ -245,9 +252,12 @@ class TargetConfigurationActor extends Actor {
    * @param {object} configuration: See `updateConfiguration`
    */
   _updateParentProcessConfiguration(configuration) {
-    // Process "tracerOptions" for all session types, as this isn't specific to tab debugging
+    // Process "tracerOptions" and "networkBodyLimit" for all session types, as this isn't specific to tab debugging
     if ("tracerOptions" in configuration) {
       this._setTracerOptions(configuration.tracerOptions);
+    }
+    if ("networkBodyLimit" in configuration) {
+      this._setNetworkBodyLimit(configuration.networkBodyLimit);
     }
 
     if (!this._shouldHandleConfigurationInParentProcess()) {
@@ -257,6 +267,9 @@ class TargetConfigurationActor extends Actor {
     let shouldReload = false;
     for (const [key, value] of Object.entries(configuration)) {
       switch (key) {
+        case "animationsPlayBackRateMultiplier":
+          this._setAnimationsPlayBackRateMultiplier(value);
+          break;
         case "colorSchemeSimulation":
           this._setColorSchemeSimulation(value);
           break;
@@ -349,6 +362,8 @@ class TargetConfigurationActor extends Actor {
     if (this._initialTouchEventsOverride !== undefined) {
       this._setTouchEventsOverride(this._initialTouchEventsOverride);
     }
+
+    this._setAnimationsPlayBackRateMultiplier(1);
   }
 
   /**
@@ -571,6 +586,38 @@ class TargetConfigurationActor extends Actor {
       LOG_DISABLED
     );
     Services.prefs.setIntPref("logging.PageMessages", LOG_VERBOSE);
+  }
+
+  _setNetworkBodyLimit(networkBodyLimit) {
+    const networkParentActor =
+      this.watcherActor.getExistingNetworkParentActor();
+    if (networkParentActor) {
+      networkParentActor.setBodyLimit(networkBodyLimit);
+    }
+  }
+
+  /**
+   * Queried by network observing logic to know about current request/response body limit.
+   *
+   * @return {number}
+   */
+  getNetworkBodyLimit() {
+    return this._getConfiguration().networkBodyLimit;
+  }
+
+  /**
+   * Sets browsingContext's animationsPlayBackRateMultiplier, that allows to speed up/down
+   * all the animations on the page.
+   *
+   * @param {number} animationsPlayBackRateMultiplier
+   */
+  _setAnimationsPlayBackRateMultiplier(animationsPlayBackRateMultiplier) {
+    // Avoid trying to set the multiplier if the related context is being destroyed
+    if (!this._browsingContext || this._browsingContext.isDiscarded) {
+      return;
+    }
+    this._browsingContext.animationsPlayBackRateMultiplier =
+      animationsPlayBackRateMultiplier;
   }
 }
 

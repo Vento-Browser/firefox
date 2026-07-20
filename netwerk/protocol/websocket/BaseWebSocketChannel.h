@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,12 +6,12 @@
 #define mozilla_net_BaseWebSocketChannel_h
 
 #include "mozilla/DataMutex.h"
-#include "nsIWebSocketChannel.h"
-#include "nsIWebSocketListener.h"
+#include "nsCOMPtr.h"
 #include "nsIProtocolHandler.h"
 #include "nsIThread.h"
 #include "nsIThreadRetargetableRequest.h"
-#include "nsCOMPtr.h"
+#include "nsIWebSocketChannel.h"
+#include "nsIWebSocketListener.h"
 #include "nsString.h"
 
 namespace mozilla {
@@ -54,13 +52,13 @@ class BaseWebSocketChannel : public nsIWebSocketChannel,
   NS_IMETHOD SetPingInterval(uint32_t aSeconds) override;
   NS_IMETHOD GetPingTimeout(uint32_t* aSeconds) override;
   NS_IMETHOD SetPingTimeout(uint32_t aSeconds) override;
-  NS_IMETHOD InitLoadInfoNative(nsINode* aLoadingNode,
-                                nsIPrincipal* aLoadingPrincipal,
-                                nsIPrincipal* aTriggeringPrincipal,
-                                nsICookieJarSettings* aCookieJarSettings,
-                                uint32_t aSecurityFlags,
-                                nsContentPolicyType aContentPolicyType,
-                                uint32_t aSandboxFlags) override;
+  NS_IMETHOD InitLoadInfoNative(
+      nsINode* aLoadingNode, nsIPrincipal* aLoadingPrincipal,
+      nsIPrincipal* aTriggeringPrincipal,
+      nsICookieJarSettings* aCookieJarSettings, uint32_t aSecurityFlags,
+      nsContentPolicyType aContentPolicyType,
+      const Maybe<mozilla::dom::ClientInfo>& aClientInfo,
+      uint32_t aSandboxFlags) override;
   NS_IMETHOD InitLoadInfo(nsINode* aLoadingNode,
                           nsIPrincipal* aLoadingPrincipal,
                           nsIPrincipal* aTriggeringPrincipal,
@@ -98,7 +96,6 @@ class BaseWebSocketChannel : public nsIWebSocketChannel,
   virtual ~BaseWebSocketChannel();
   nsCOMPtr<nsIURI> mOriginalURI;
   nsCOMPtr<nsIURI> mURI;
-  RefPtr<ListenerAndContextContainer> mListenerMT;
   nsCOMPtr<nsIInterfaceRequestor> mCallbacks;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
   nsCOMPtr<nsILoadInfo> mLoadInfo;

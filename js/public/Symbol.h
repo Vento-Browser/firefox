@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,13 +7,12 @@
 #ifndef js_Symbol_h
 #define js_Symbol_h
 
-#include "js/shadow/Symbol.h"  // JS::shadow::Symbol::WellKnownAPILimit
-
 #include <stddef.h>  // size_t
 #include <stdint.h>  // uintptr_t, uint32_t
 
 #include "jstypes.h"  // JS_PUBLIC_API
 
+#include "js/shadow/Symbol.h"  // JS::shadow::Symbol::WellKnownAPILimit
 #include "js/TypeDecls.h"
 
 namespace JS {

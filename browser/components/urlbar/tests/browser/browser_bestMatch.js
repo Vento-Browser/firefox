@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-// Tests best match rows in the view.
+// Tests best match (a.k.a. top pick) rows in the view.
 
 "use strict";
 
@@ -130,6 +130,11 @@ async function checkBestMatchRow({ result, hasHelpUrl = false }) {
   let details = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
   let { row } = details.element;
 
+  Assert.ok(
+    row.hasAttribute("is-top-pick"),
+    "Row should have is-top-pick attribute"
+  );
+
   let favicon = row._elements.get("favicon");
   Assert.ok(favicon, "Row has a favicon");
 
@@ -179,8 +184,8 @@ async function withProvider(result, callback) {
 
 function makeBestMatchResult(payloadExtra = {}) {
   return new UrlbarResult({
-    type: UrlbarUtils.RESULT_TYPE.URL,
-    source: UrlbarUtils.RESULT_SOURCE.SEARCH,
+    type: UrlbarShared.RESULT_TYPE.URL,
+    source: UrlbarShared.RESULT_SOURCE.SEARCH,
     isBestMatch: true,
     payload: {
       title: "Test best match",

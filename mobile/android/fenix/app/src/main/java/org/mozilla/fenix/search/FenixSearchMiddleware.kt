@@ -8,7 +8,9 @@ import androidx.annotation.VisibleForTesting
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.coroutineScope
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +40,7 @@ import org.mozilla.fenix.GleanMetrics.History
 import org.mozilla.fenix.GleanMetrics.Toolbar
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.NimbusComponents
 import org.mozilla.fenix.components.UseCases
@@ -47,9 +50,7 @@ import org.mozilla.fenix.components.search.BOOKMARKS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.ext.components
-import org.mozilla.fenix.ext.navigateSafe
 import org.mozilla.fenix.ext.telemetryName
-import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.search.SearchFragmentAction.Init
 import org.mozilla.fenix.search.SearchFragmentAction.PrivateSuggestionsCardAccepted
 import org.mozilla.fenix.search.SearchFragmentAction.SearchEnginesSelectedActions
@@ -65,6 +66,8 @@ import org.mozilla.fenix.search.awesomebar.SearchSuggestionsProvidersBuilder
 import org.mozilla.fenix.search.awesomebar.toSearchProviderState
 import org.mozilla.fenix.telemetry.ACTION_SEARCH_ENGINE_SELECTED
 import org.mozilla.fenix.telemetry.SOURCE_ADDRESS_BAR
+import org.mozilla.fenix.telemetry.SURFACE_BROWSER
+import org.mozilla.fenix.telemetry.SURFACE_HOME
 import org.mozilla.fenix.utils.Settings
 import mozilla.components.lib.state.Action as MVIAction
 
@@ -80,6 +83,7 @@ import mozilla.components.lib.state.Action as MVIAction
  * @param browserStore [BrowserStore] to sync search related data with.
  * @param toolbarStore [BrowserToolbarStore] used for querying and updating the toolbar state.
  * @param navController [NavController] to use for navigating to other in-app destinations.
+ * @param browsingModeManager [BrowsingModeManager] used for querying and updating the browsing mode.
  */
 @Suppress("LongParameterList")
 class FenixSearchMiddleware(
@@ -92,6 +96,7 @@ class FenixSearchMiddleware(
     private val browserStore: BrowserStore,
     private val toolbarStore: BrowserToolbarStore,
     private val navController: NavController,
+    private val browsingModeManager: BrowsingModeManager,
 ) : Middleware<SearchFragmentState, SearchFragmentAction> {
     private var observeSearchEnginesChangeJob: Job? = null
 
@@ -115,7 +120,7 @@ class FenixSearchMiddleware(
                 store.dispatch(
                     SearchFragmentAction.UpdateSearchState(
                         browserStore.state.search,
-                        true,
+                        isPrivate = browsingModeManager.mode.isPrivate,
                     ),
                 )
             }
@@ -167,7 +172,12 @@ class FenixSearchMiddleware(
 
             is SuggestionSelected -> {
                 action.suggestion.editSuggestion?.let {
-                    toolbarStore.dispatch(BrowserEditToolbarAction.SearchQueryUpdated(BrowserToolbarQuery(it)))
+                    toolbarStore.dispatch(
+                        BrowserEditToolbarAction.SearchQueryUpdated(
+                            query = BrowserToolbarQuery(it),
+                            isQueryPrefilled = true,
+                        ),
+                    )
                 }
             }
 
@@ -228,10 +238,10 @@ class FenixSearchMiddleware(
     ) {
         val shouldShowTrendingSearches = store.state.run {
             (showTrendingSearches || showRecentSearches) &&
-                (searchStartedForCurrentUrl || FxNimbus.features.searchSuggestionsOnHomepage.value().enabled)
+                (searchStartedForCurrentUrl || settings.enableHomepageTrendingRecentSearch)
         }
         val shouldShowSearchSuggestions = with(store.state) {
-            ((url != query && query.isNotBlank()) || showSearchShortcuts)
+            url != query && query.isNotBlank()
         }
         val shouldShowSuggestions = shouldShowTrendingSearches || shouldShowSearchSuggestions
 
@@ -239,8 +249,8 @@ class FenixSearchMiddleware(
 
         val showPrivatePrompt = with(store.state) {
             !settings.showSearchSuggestionsInPrivateOnboardingFinished &&
-                    appStore.state.mode.isPrivate &&
-                    !isSearchSuggestionsFeatureEnabled() && !showSearchShortcuts &&
+                    browsingModeManager.mode.isPrivate &&
+                    !isSearchSuggestionsFeatureEnabled() &&
                     query.isNotBlank() && url != query
         }
 
@@ -258,12 +268,7 @@ class FenixSearchMiddleware(
         val suggestionsProvidersBuilder = suggestionsProvidersBuilder ?: return
         store.dispatch(
             SearchProvidersUpdated(
-                buildList {
-                    if (store.state.showSearchShortcuts) {
-                        add(suggestionsProvidersBuilder.shortcutsEnginePickerProvider)
-                    }
-                    addAll((suggestionsProvidersBuilder.getProvidersToAdd(store.state.toSearchProviderState())))
-                },
+                suggestionsProvidersBuilder.getProvidersToAdd(store.state.toSearchProviderState()).toList(),
             ),
         )
     }
@@ -276,6 +281,8 @@ class FenixSearchMiddleware(
 
         return SearchSuggestionsProvidersBuilder(
             components = uiContext.components,
+            scope = ProcessLifecycleOwner.get().lifecycleScope,
+            browsingModeManager = browsingModeManager,
             includeSelectedTab = store.state.tabId == null,
             loadUrlUseCase = loadUrlUseCase(store),
             searchUseCase = searchUseCase(store),
@@ -285,9 +292,7 @@ class FenixSearchMiddleware(
                 DefaultSearchEngineProvider(uiContext.components.core.store),
             ),
             suggestionIconProvider = DefaultSuggestionIconProvider(uiContext),
-            onSearchEngineShortcutSelected = ::handleSearchEngineSuggestionClicked,
             onSearchEngineSuggestionSelected = ::handleSearchEngineSuggestionClicked,
-            onSearchEngineSettingsClicked = { handleClickSearchEngineSettings() },
         )
     }
 
@@ -308,7 +313,7 @@ class FenixSearchMiddleware(
                 } else {
                     store.state.tabId == null
                 },
-                usePrivateMode = appStore.state.mode.isPrivate,
+                usePrivateMode = browsingModeManager.mode.isPrivate,
                 flags = flags,
             )
 
@@ -336,7 +341,7 @@ class FenixSearchMiddleware(
                 } else {
                     store.state.tabId == null
                 },
-                usePrivateMode = appStore.state.mode.isPrivate,
+                usePrivateMode = browsingModeManager.mode.isPrivate,
                 forceSearch = true,
                 searchEngine = searchEngine,
             )
@@ -410,6 +415,7 @@ class FenixSearchMiddleware(
                 source = SOURCE_ADDRESS_BAR,
                 item = ACTION_SEARCH_ENGINE_SELECTED,
                 extra = searchEngine.telemetryName(),
+                surface = if (store.state.tabId == null) SURFACE_HOME else SURFACE_BROWSER,
             ),
         )
     }
@@ -439,7 +445,7 @@ class FenixSearchMiddleware(
                 store.dispatch(
                     SearchFragmentAction.SearchDefaultEngineSelected(
                         engine = searchEngine,
-                        browsingMode = appStore.state.mode,
+                        browsingMode = browsingModeManager.mode,
                         settings = settings,
                     ),
                 )
@@ -448,7 +454,7 @@ class FenixSearchMiddleware(
                 store.dispatch(
                     SearchFragmentAction.SearchShortcutEngineSelected(
                         engine = searchEngine,
-                        browsingMode = appStore.state.mode,
+                        browsingMode = browsingModeManager.mode,
                         settings = settings,
                     ),
                 )
@@ -458,13 +464,6 @@ class FenixSearchMiddleware(
 
     private fun handleSearchEngineSuggestionClicked(searchEngine: SearchEngine) {
         appStore.dispatch(SearchEngineSelected(searchEngine, true))
-    }
-
-    @VisibleForTesting
-    internal fun handleClickSearchEngineSettings() {
-        val directions = SearchDialogFragmentDirections.actionGlobalSearchEngineFragment()
-        navController.navigateSafe(R.id.searchDialogFragment, directions)
-        browserStore.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
     }
 
     private inline fun <S : State, A : MVIAction> Store<S, A>.observeWhileActive(
@@ -492,7 +491,7 @@ class FenixSearchMiddleware(
      */
     @VisibleForTesting
     internal fun isSearchSuggestionsFeatureEnabled(): Boolean {
-        return when (appStore.state.mode) {
+        return when (browsingModeManager.mode) {
             BrowsingMode.Normal -> settings.shouldShowSearchSuggestions
             BrowsingMode.Private ->
                 settings.shouldShowSearchSuggestions && settings.shouldShowSearchSuggestionsInPrivate

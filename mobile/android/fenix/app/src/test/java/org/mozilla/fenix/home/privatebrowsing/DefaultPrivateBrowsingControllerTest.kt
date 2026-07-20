@@ -10,8 +10,6 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
-import mozilla.components.browser.state.action.TabListAction
-import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.support.test.robolectric.testContext
 import org.junit.Assert.assertEquals
@@ -22,8 +20,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.GleanMetrics.Homepage
 import org.mozilla.fenix.R
-import org.mozilla.fenix.browser.BrowserFragmentDirections
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppState
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
@@ -38,9 +36,10 @@ class DefaultPrivateBrowsingControllerTest {
     @get:Rule
     val gleanTestRule = FenixGleanTestRule(testContext)
 
-    private lateinit var appStore: AppStore
+    private val appStore: AppStore = mockk(relaxed = true)
     private val navController: NavController = mockk(relaxed = true)
     private val settings: Settings = mockk(relaxed = true)
+    private val browsingModeManager: BrowsingModeManager = mockk(relaxed = true)
     private val fenixBrowserUseCases: FenixBrowserUseCases = mockk(relaxed = true)
 
     private lateinit var store: BrowserStore
@@ -49,13 +48,14 @@ class DefaultPrivateBrowsingControllerTest {
     @Before
     fun setup() {
         store = BrowserStore()
-        appStore = AppStore(AppState())
         controller = DefaultPrivateBrowsingController(
-            appStore = appStore,
             navController = navController,
+            browsingModeManager = browsingModeManager,
             fenixBrowserUseCases = fenixBrowserUseCases,
             settings = settings,
         )
+
+        every { appStore.state } returns AppState()
 
         every { navController.currentDestination } returns mockk {
             every { id } returns R.id.homeFragment
@@ -114,72 +114,8 @@ class DefaultPrivateBrowsingControllerTest {
         assertEquals(1, snapshot.size)
 
         verify {
+            browsingModeManager.mode = newMode
             settings.incrementNumTimesPrivateModeOpened()
-        }
-        assertEquals(newMode, appStore.state.mode)
-    }
-
-    @Test
-    fun `WHEN private mode is selected on home from behind search THEN handle mode change`() {
-        every { navController.currentDestination } returns mockk {
-            every { id } returns R.id.searchDialogFragment
-        }
-
-        every { settings.incrementNumTimesPrivateModeOpened() } just Runs
-
-        val url = "https://mozilla.org"
-        val tab = createTab(
-            id = "otherTab",
-            url = url,
-            private = false,
-            engineSession = mockk(relaxed = true),
-        )
-        store.dispatch(TabListAction.AddTabAction(tab, select = true))
-
-        val newMode = BrowsingMode.Private
-
-        controller.handlePrivateModeButtonClicked(newMode)
-
-        assertEquals(newMode, appStore.state.mode)
-        verify {
-            settings.incrementNumTimesPrivateModeOpened()
-            navController.navigate(
-                BrowserFragmentDirections.actionGlobalSearchDialog(
-                    sessionId = null,
-                ),
-            )
-        }
-    }
-
-    @Test
-    fun `WHEN private mode is deselected on home from behind search THEN handle mode change`() {
-        every { navController.currentDestination } returns mockk {
-            every { id } returns R.id.searchDialogFragment
-        }
-
-        val url = "https://mozilla.org"
-        val tab = createTab(
-            id = "otherTab",
-            url = url,
-            private = true,
-            engineSession = mockk(relaxed = true),
-        )
-        store.dispatch(TabListAction.AddTabAction(tab, select = true))
-
-        val newMode = BrowsingMode.Normal
-
-        controller.handlePrivateModeButtonClicked(newMode)
-
-        verify(exactly = 0) {
-            settings.incrementNumTimesPrivateModeOpened()
-        }
-        assertEquals(newMode, appStore.state.mode)
-        verify {
-            navController.navigate(
-                BrowserFragmentDirections.actionGlobalSearchDialog(
-                    sessionId = null,
-                ),
-            )
         }
     }
 
@@ -200,8 +136,8 @@ class DefaultPrivateBrowsingControllerTest {
         val snapshot = Homepage.privateModeIconTapped.testGetValue()!!
         assertEquals(1, snapshot.size)
 
-        assertEquals(newMode, appStore.state.mode)
         verify {
+            browsingModeManager.mode = newMode
             fenixBrowserUseCases.addNewHomepageTab(private = false)
         }
     }
@@ -223,8 +159,8 @@ class DefaultPrivateBrowsingControllerTest {
         val snapshot = Homepage.privateModeIconTapped.testGetValue()!!
         assertEquals(1, snapshot.size)
 
-        assertEquals(newMode, appStore.state.mode)
         verify {
+            browsingModeManager.mode = newMode
             fenixBrowserUseCases.addNewHomepageTab(private = true)
             settings.incrementNumTimesPrivateModeOpened()
         }

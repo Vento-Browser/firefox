@@ -1,5 +1,3 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,27 +5,28 @@
 #ifndef NETWERK_SCTP_DATACHANNEL_DATACHANNEL_H_
 #define NETWERK_SCTP_DATACHANNEL_DATACHANNEL_H_
 
+#include <errno.h>
+
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-#include <errno.h>
-#include "nsISupports.h"
-#include "nsCOMPtr.h"
+
+#include "DataChannelProtocol.h"
+#include "MediaEventSource.h"
 #include "mozilla/MozPromise.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/StopGapEventTarget.h"
 #include "mozilla/WeakPtr.h"
-#include "mozilla/dom/RTCStatsReportBinding.h"
-#include "nsString.h"
-#include "nsThreadUtils.h"
-#include "nsTArray.h"
-#include "nsDeque.h"
 #include "mozilla/dom/Blob.h"
-#include "mozilla/Mutex.h"
-#include "DataChannelProtocol.h"
+#include "mozilla/dom/RTCStatsReportBinding.h"
 #include "mozilla/net/NeckoTargetHolder.h"
-#include "MediaEventSource.h"
-
+#include "nsCOMPtr.h"
+#include "nsDeque.h"
+#include "nsISupports.h"
+#include "nsString.h"
+#include "nsTArray.h"
+#include "nsThreadUtils.h"
 #include "transport/transportlayer.h"  // For TransportLayer::State
 
 namespace mozilla {
@@ -39,6 +38,7 @@ class MediaTransportHandler;
 namespace dom {
 class RTCDataChannel;
 struct RTCStatsCollection;
+class RTCErrorParams;
 };  // namespace dom
 
 enum class DataChannelConnectionState { Connecting, Open, Closed };
@@ -218,7 +218,9 @@ class DataChannelConnection : public net::NeckoTargetHolder {
                           const uint16_t aLocalPort,
                           const uint16_t aRemotePort);
   void TransportStateChange(const std::string& aTransportId,
-                            TransportLayer::State aState);
+                            TransportLayer::State aState,
+                            const nsTArray<nsTArray<uint8_t>>& aRemoteCerts,
+                            Maybe<dom::RTCErrorParams>);
   void SetSignals(const std::string& aTransportId);
 
   [[nodiscard]] already_AddRefed<DataChannel> Open(
@@ -441,13 +443,7 @@ class DataChannel {
   // Called when there will be no more data sent
   void EndOfStream();
 
-  dom::RTCDataChannel* GetDomDataChannel() const {
-    MOZ_ASSERT(mDomEventTarget->IsOnCurrentThread());
-    if (NS_IsMainThread()) {
-      return mMainthreadDomDataChannel;
-    }
-    return mWorkerDomDataChannel;
-  }
+  RefPtr<dom::RTCDataChannel> GetDomDataChannel() const;
 
  private:
   nsresult AddDataToBinaryMsg(const char* data, uint32_t size);

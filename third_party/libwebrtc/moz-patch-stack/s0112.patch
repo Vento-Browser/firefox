@@ -1,26 +1,29 @@
 From: Michael Froman <mfroman@mozilla.com>
-Date: Fri, 7 Feb 2025 15:53:00 -0600
-Subject: Bug 1942428 - (fix-882b32d00f) fix
- -Wtautological-unsigned-zero-compare in payload_type.h
+Date: Thu, 7 Aug 2025 11:37:00 -0500
+Subject: Bug 1980479 - (fix-50544d8dc4) add missing stub implementations for
+ SSLStreamAdapter static methods.
 
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f3ed04250e9ec1b22731ac690eb66bc96ff894d6
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/8fee7e6d9736f8d1dfe78e9bc2c4676ca86d0405
 ---
- call/payload_type.h | 4 ++++
- 1 file changed, 4 insertions(+)
+ rtc_base/ssl_stream_adapter.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
 
-diff --git a/call/payload_type.h b/call/payload_type.h
-index d91da50fcc..a5e120417e 100644
---- a/call/payload_type.h
-+++ b/call/payload_type.h
-@@ -33,7 +33,11 @@ class PayloadType : public StrongAlias<class PayloadTypeTag, uint8_t> {
-     if (rtcp_mux && (id > 63 && id < 96)) {
-       return false;
-     }
-+#if defined(WEBRTC_MOZILLA_BUILD)
-+    return id <= 127; // id is unsigned, therefor always >= 0
-+#else
-     return id >= 0 && id <= 127;
-+#endif
-   }
-   template <typename Sink>
-   friend void AbslStringify(Sink& sink, const PayloadType pt) {
+diff --git a/rtc_base/ssl_stream_adapter.h b/rtc_base/ssl_stream_adapter.h
+index 0568bd0310..499c76e151 100644
+--- a/rtc_base/ssl_stream_adapter.h
++++ b/rtc_base/ssl_stream_adapter.h
+@@ -270,11 +270,12 @@ class SSLStreamAdapter : public StreamInterface {
+   static bool IsAcceptableCipher(int cipher, KeyType key_type);
+   static bool IsAcceptableCipher(absl::string_view cipher, KeyType key_type);
+ 
+-  static std::set<uint16_t> GetSupportedEphemeralKeyExchangeCipherGroups();
++  static std::set<uint16_t> GetSupportedEphemeralKeyExchangeCipherGroups()
++      { return {}; }
+   static std::optional<std::string> GetEphemeralKeyExchangeCipherGroupName(
+       uint16_t group_id);
+   static std::vector<uint16_t> GetDefaultEphemeralKeyExchangeCipherGroups(
+-      const FieldTrialsView* field_trials);
++      const FieldTrialsView* field_trials) { return {}; }
+ 
+   ////////////////////////////////////////////////////////////////////////////
+   // Testing only member functions

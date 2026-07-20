@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -9,14 +7,16 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 
+#include <bit>
+
 #include "jit/Bailouts.h"
 #include "jit/BaselineFrame.h"
 #include "jit/JitFrames.h"
 #include "jit/JitRuntime.h"
 #include "jit/MacroAssembler.h"
-#include "jit/mips64/Simulator-mips64.h"
 #include "jit/MoveEmitter.h"
 #include "jit/SharedICRegisters.h"
+#include "jit/Simulator.h"
 #include "util/Memory.h"
 #include "vm/JitActivation.h"  // js::jit::JitActivation
 #include "vm/JSContext.h"
@@ -238,7 +238,7 @@ void MacroAssemblerMIPS64::ma_li(Register dest, ImmWord imm) {
     }
     as_dsll(dest, dest, 16);
   } else {
-    uint32_t trailingZeroes = mozilla::CountTrailingZeroes64(value);
+    uint32_t trailingZeroes = std::countr_zero(uint64_t(value));
     if (Imm16::IsInSignedRange(value >> trailingZeroes)) {
       as_addiu(dest, zero, int32_t(value >> trailingZeroes));
       as_dsll32(dest, dest, trailingZeroes);
@@ -869,9 +869,9 @@ FaultingCodeOffset MacroAssemblerMIPS64::ma_load(Register dest, Address address,
   return fco;
 }
 
-void MacroAssemblerMIPS64::ma_store(ImmWord imm, const BaseIndex& dest,
-                                    LoadStoreSize size,
-                                    LoadStoreExtension extension) {
+FaultingCodeOffset MacroAssemblerMIPS64::ma_store(
+    ImmWord imm, const BaseIndex& dest, LoadStoreSize size,
+    LoadStoreExtension extension) {
   UseScratchRegisterScope temps(*this);
   Register scratch2 = temps.Acquire();
 
@@ -884,16 +884,16 @@ void MacroAssemblerMIPS64::ma_store(ImmWord imm, const BaseIndex& dest,
 
   // with offset=0 scratch will not be used in ma_store()
   // so we can use it as a parameter here
-  ma_store(scratch, Address(scratch2, 0), size, extension);
+  return ma_store(scratch, Address(scratch2, 0), size, extension);
 }
 
-void MacroAssemblerMIPS64::ma_store(ImmWord imm, Address address,
-                                    LoadStoreSize size,
-                                    LoadStoreExtension extension) {
+FaultingCodeOffset MacroAssemblerMIPS64::ma_store(
+    ImmWord imm, Address address, LoadStoreSize size,
+    LoadStoreExtension extension) {
   UseScratchRegisterScope temps(*this);
   Register scratch2 = temps.Acquire();
   ma_li(scratch2, imm);
-  ma_store(scratch2, address, size, extension);
+  return ma_store(scratch2, address, size, extension);
 }
 
 FaultingCodeOffset MacroAssemblerMIPS64::ma_store(
@@ -1644,13 +1644,14 @@ FaultingCodeOffset MacroAssemblerMIPS64Compat::store32(Register src,
 }
 
 template <typename T>
-void MacroAssemblerMIPS64Compat::storePtr(ImmWord imm, T address) {
-  ma_store(imm, address, SizeDouble);
+FaultingCodeOffset MacroAssemblerMIPS64Compat::storePtr(ImmWord imm,
+                                                        T address) {
+  return ma_store(imm, address, SizeDouble);
 }
 
-template void MacroAssemblerMIPS64Compat::storePtr<Address>(ImmWord imm,
-                                                            Address address);
-template void MacroAssemblerMIPS64Compat::storePtr<BaseIndex>(
+template FaultingCodeOffset MacroAssemblerMIPS64Compat::storePtr<Address>(
+    ImmWord imm, Address address);
+template FaultingCodeOffset MacroAssemblerMIPS64Compat::storePtr<BaseIndex>(
     ImmWord imm, BaseIndex address);
 
 template <typename T>
@@ -2455,7 +2456,7 @@ void MacroAssemblerMIPS64Compat::handleFailureWithHandlerTail(
 
   // Found a wasm catch handler, restore state and jump to it.
   bind(&wasmCatch);
-  wasm::GenerateJumpToCatchHandler(asMasm(), sp, a1, a2);
+  wasm::GenerateJumpToCatchHandler(asMasm(), sp, a1, a2, a3);
 }
 
 CodeOffset MacroAssemblerMIPS64Compat::toggledJump(Label* label) {

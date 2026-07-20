@@ -103,6 +103,7 @@ config = {
                 "--certificate-path=tests/certs",
                 "--quiet",
                 "--log-errorsummary=%(error_summary_file)s",
+                "--log-testsummary=%(test_summary_file)s",
                 "--screenshot-on-fail",
                 "--cleanup-crashes",
                 "--marionette-startup-timeout=180",
@@ -129,6 +130,7 @@ config = {
                 "--self-test",
                 "--symbols-path=%(symbols_path)s",
                 "--log-errorsummary=%(error_summary_file)s",
+                "--log-testsummary=%(test_summary_file)s",
                 "--utility-path=tests/bin",
                 "--manifest=tests/xpcshell/tests/xpcshell.toml",
             ],
@@ -244,7 +246,8 @@ config = {
                     if REQUIRE_GPU and (platform.uname().version == "10.0.19045")
                     else (
                         "--platform=win11-hw"
-                        if REQUIRE_GPU and (platform.uname().version == "10.0.26100")
+                        if REQUIRE_GPU
+                        and platform.uname().version in ("10.0.26100", "10.0.26200")
                         else "--platform=win7"
                     )
                 ),
@@ -479,8 +482,6 @@ config = {
     "vcs_output_timeout": 1000,
     "minidump_save_path": "%(abs_work_dir)s/../minidumps",
     "unstructured_flavors": {
-        "gtest": [],
-        "cppunittest": [],
         "jittest": [],
     },
     "nodejs_path": NODEJS_PATH,

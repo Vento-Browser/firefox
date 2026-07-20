@@ -29,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppAction.ContentRecommendationsAction
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.UpdateMessageToShow
@@ -43,6 +44,7 @@ import org.mozilla.fenix.home.pocket.POCKET_STORIES_DEFAULT_CATEGORY_NAME
 import org.mozilla.fenix.home.pocket.PocketImpression
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesSelectedCategory
+import org.mozilla.fenix.home.pocket.controller.StoriesImpressionSource
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTab
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTabState
 import org.mozilla.fenix.home.recenttabs.RecentTab
@@ -51,12 +53,14 @@ import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryGrou
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryHighlight
 import org.mozilla.fenix.messaging.FenixMessageSurfaceId
 import org.mozilla.fenix.onboarding.FenixOnboarding
+import mozilla.components.ui.icons.R as iconsR
 
 @RunWith(AndroidJUnit4::class)
 class AppStoreTest {
     private lateinit var context: Context
     private lateinit var accountManager: FxaAccountManager
     private lateinit var onboarding: FenixOnboarding
+    private lateinit var browsingModeManager: BrowsingModeManager
     private lateinit var appState: AppState
     private lateinit var appStore: AppStore
     private lateinit var recentSyncedTabsList: List<RecentSyncedTab>
@@ -66,6 +70,7 @@ class AppStoreTest {
         context = mockk(relaxed = true)
         accountManager = mockk(relaxed = true)
         onboarding = mockk(relaxed = true)
+        browsingModeManager = mockk(relaxed = true)
         recentSyncedTabsList = listOf(
             RecentSyncedTab(
                 deviceDisplayName = "",
@@ -78,13 +83,13 @@ class AppStoreTest {
 
         every { context.components.backgroundServices.accountManager } returns accountManager
         every { onboarding.userHasBeenOnboarded() } returns true
+        every { browsingModeManager.mode } returns BrowsingMode.Normal
 
         appState = AppState(
             collections = emptyList(),
             expandedCollections = emptySet(),
-            mode = BrowsingMode.Normal,
+            mode = browsingModeManager.mode,
             topSites = emptyList(),
-            showCollectionPlaceholder = true,
             recentTabs = emptyList(),
             recentSyncedTabState = RecentSyncedTabState.Success(recentSyncedTabsList),
         )
@@ -237,15 +242,6 @@ class AppStoreTest {
     }
 
     @Test
-    fun `Test changing hiding collections placeholder`() = runTest {
-        assertTrue(appStore.state.showCollectionPlaceholder)
-
-        appStore.dispatch(AppAction.RemoveCollectionsPlaceholder)
-
-        assertFalse(appStore.state.showCollectionPlaceholder)
-    }
-
-    @Test
     fun `Test changing the expanded collections in AppStore`() = runTest {
         val collection: TabCollection = mockk<TabCollection>().apply {
             every { id } returns 0
@@ -298,7 +294,6 @@ class AppStoreTest {
                     collections = collections,
                     mode = BrowsingMode.Private,
                     topSites = topSites,
-                    showCollectionPlaceholder = true,
                     recentTabs = recentTabs,
                     bookmarks = bookmarks,
                     recentHistory = recentHistory,
@@ -571,6 +566,7 @@ class AppStoreTest {
                     PocketImpression(story = sponsoredContent, position = 0),
                     PocketImpression(story = sponsoredContent3, position = 2),
                 ),
+                source = StoriesImpressionSource.HOMEPAGE,
             ),
         )
 
@@ -621,6 +617,7 @@ class AppStoreTest {
                     PocketImpression(story = recommendation1, position = 0),
                     PocketImpression(story = recommendation3, position = 2),
                 ),
+                source = StoriesImpressionSource.HOMEPAGE,
             ),
         )
 
@@ -795,7 +792,7 @@ class AppStoreTest {
                 ChecklistItem.Task(
                     type = ChecklistItem.Task.Type.SET_AS_DEFAULT,
                     title = R.string.setup_checklist_task_default_browser,
-                    icon = R.drawable.ic_addons_extensions,
+                    icon = iconsR.drawable.mozac_ic_extension_24,
                     isCompleted = false,
                 ),
             ),
@@ -807,7 +804,7 @@ class AppStoreTest {
                 ChecklistItem.Task(
                     type = ChecklistItem.Task.Type.INSTALL_SEARCH_WIDGET,
                     title = R.string.setup_checklist_task_search_widget_2,
-                    icon = R.drawable.ic_addons_extensions,
+                    icon = iconsR.drawable.mozac_ic_extension_24,
                     isCompleted = false,
                 ),
             ),
@@ -840,7 +837,7 @@ class AppStoreTest {
         val task = ChecklistItem.Task(
             type = ChecklistItem.Task.Type.EXPLORE_EXTENSION,
             title = R.string.setup_checklist_task_default_browser,
-            icon = R.drawable.ic_addons_extensions,
+            icon = iconsR.drawable.mozac_ic_extension_24,
             isCompleted = false,
         )
 
@@ -857,7 +854,7 @@ class AppStoreTest {
         val task = ChecklistItem.Task(
             type = ChecklistItem.Task.Type.EXPLORE_EXTENSION,
             title = R.string.setup_checklist_task_default_browser,
-            icon = R.drawable.ic_addons_extensions,
+            icon = iconsR.drawable.mozac_ic_extension_24,
             isCompleted = false,
         )
 
@@ -878,13 +875,13 @@ class AppStoreTest {
         val updatedTask = ChecklistItem.Task(
             type = ChecklistItem.Task.Type.SET_AS_DEFAULT,
             title = R.string.setup_checklist_task_default_browser,
-            icon = R.drawable.ic_addons_extensions,
+            icon = iconsR.drawable.mozac_ic_extension_24,
             isCompleted = false,
         )
         val nonUpdatedTask = ChecklistItem.Task(
             type = ChecklistItem.Task.Type.INSTALL_SEARCH_WIDGET,
             title = R.string.setup_checklist_task_search_widget_2,
-            icon = R.drawable.ic_addons_extensions,
+            icon = iconsR.drawable.mozac_ic_extension_24,
             isCompleted = false,
         )
         val group = ChecklistItem.Group(

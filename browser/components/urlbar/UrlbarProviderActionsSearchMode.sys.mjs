@@ -21,7 +21,8 @@ const DYNAMIC_TYPE_NAME = "actions";
 ChromeUtils.defineESModuleGetters(lazy, {
   ActionsProviderQuickActions:
     "moz-src:///browser/components/urlbar/ActionsProviderQuickActions.sys.mjs",
-  UrlbarResult: "moz-src:///browser/components/urlbar/UrlbarResult.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
 });
 
 /**
@@ -36,7 +37,9 @@ export class UrlbarProviderActionsSearchMode extends UrlbarProvider {
   }
 
   async isActive(queryContext) {
-    return queryContext.searchMode?.source == UrlbarUtils.RESULT_SOURCE.ACTIONS;
+    return (
+      queryContext.searchMode?.source == lazy.UrlbarShared.RESULT_SOURCE.ACTIONS
+    );
   }
 
   /**
@@ -54,28 +57,50 @@ export class UrlbarProviderActionsSearchMode extends UrlbarProvider {
     });
     results.forEach(resultKey => {
       let result = new lazy.UrlbarResult({
-        type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
-        source: UrlbarUtils.RESULT_SOURCE.ACTIONS,
+        type: lazy.UrlbarShared.RESULT_TYPE.DYNAMIC,
+        source: lazy.UrlbarShared.RESULT_SOURCE.ACTIONS,
         payload: {
           key: resultKey,
           dynamicType: DYNAMIC_TYPE_NAME,
+          inputLength: queryContext.trimmedLowerCaseSearchString.length,
         },
       });
       addCallback(this, result);
     });
   }
 
+  /**
+   * Whether an action's button is shown disabled (inactive or hidden). Shared
+   * by the view template and the engagement handler so both agree without the
+   * latter reading the picked DOM element.
+   *
+   * @param {object} action The quick action, from `getAction`.
+   * @returns {boolean} Whether the action is inactive.
+   */
+  #isActionInactive(action) {
+    return (
+      ("isActive" in action && !action.isActive()) ||
+      !(action.isVisible?.() ?? true)
+    );
+  }
+
   onEngagement(queryContext, controller, details) {
+    let { key, inputLength } = details.result.payload;
+    let action = lazy.ActionsProviderQuickActions.getAction(key);
+    if (this.#isActionInactive(action)) {
+      return;
+    }
     lazy.ActionsProviderQuickActions.pickAction(
       queryContext,
       controller,
-      details.element
+      key,
+      inputLength
     );
   }
 
   getViewTemplate(result) {
     let action = lazy.ActionsProviderQuickActions.getAction(result.payload.key);
-    let inActive = "isActive" in action && !action.isActive();
+    let inActive = this.#isActionInactive(action);
     return {
       children: [
         {
@@ -84,7 +109,7 @@ export class UrlbarProviderActionsSearchMode extends UrlbarProvider {
           attributes: {
             "data-action": result.payload.key,
             "data-input-length": result.payload.inputLength,
-            role: inActive ? "" : "button",
+            role: "button",
             disabled: inActive,
           },
           children: [

@@ -26,6 +26,7 @@ add_setup(async function () {
       // that specifically address onboarding.
       ["browser.urlbar.tabToSearch.onboard.interactionsLeft", 0],
       ["browser.urlbar.scotchBonnet.enableOverride", false],
+      ["browser.urlbar.autoFill.adaptiveHistory.enabled", false],
     ],
   });
 
@@ -523,7 +524,7 @@ add_task(async function onboard_limit() {
     );
     Assert.equal(
       tabToSearchResult.type,
-      UrlbarUtils.RESULT_TYPE.DYNAMIC,
+      UrlbarShared.RESULT_TYPE.DYNAMIC,
       "The tab-to-search result is an onboarding result."
     );
     Assert.equal(
@@ -585,7 +586,7 @@ add_task(async function onboard_limit() {
   );
   Assert.notEqual(
     tabToSearchResult.type,
-    UrlbarUtils.RESULT_TYPE.DYNAMIC,
+    UrlbarShared.RESULT_TYPE.DYNAMIC,
     "Now that interactionsLeft is 0, we don't show onboarding results."
   );
 
@@ -640,7 +641,7 @@ add_task(async function onboard_multipleEnginesForHostname() {
   );
   Assert.equal(
     secondResult.type,
-    UrlbarUtils.RESULT_TYPE.DYNAMIC,
+    UrlbarShared.RESULT_TYPE.DYNAMIC,
     "The tab-to-search result is the only onboarding result."
   );
   await UrlbarTestUtils.promisePopupClose(window, () => gURLBar.blur());

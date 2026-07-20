@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2; -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,20 +5,19 @@
 #ifndef Telemetry_Comms_h_
 #define Telemetry_Comms_h_
 
+#include <type_traits>
 #include "ipc/IPCMessageUtils.h"
 #include "ipc/IPCMessageUtilsSpecializations.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TelemetryProcessEnums.h"
+#include "mozilla/TelemetryHistogramEnums.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Variant.h"
-#include "mozilla/ParamTraits_TiedFields.h"
 #include "nsITelemetry.h"
 
 namespace mozilla {
 namespace Telemetry {
-
-// Histogram accumulation types.
-enum HistogramID : uint32_t;
 
 struct HistogramAccumulation {
   mozilla::Telemetry::HistogramID mId;
@@ -101,44 +99,30 @@ struct DiscardedData {
 namespace IPC {
 
 template <>
-struct ParamTraits<mozilla::Telemetry::HistogramAccumulation> {
-  typedef mozilla::Telemetry::HistogramAccumulation paramType;
+struct ParamTraits<mozilla::Telemetry::HistogramID>
+    : public ContiguousEnumSerializer<
+          mozilla::Telemetry::HistogramID,
+          mozilla::Telemetry::HistogramID::A11Y_CONSUMERS,
+          mozilla::Telemetry::HistogramID::HistogramCount> {};
 
-  static void Write(MessageWriter* aWriter, const paramType& aParam) {
-    aWriter->WriteUInt32(aParam.mId);
-    WriteParam(aWriter, aParam.mSample);
-  }
-
-  static bool Read(MessageReader* aReader, paramType* aResult) {
-    if (!aReader->ReadUInt32(reinterpret_cast<uint32_t*>(&(aResult->mId))) ||
-        !ReadParam(aReader, &(aResult->mSample))) {
-      return false;
-    }
-
-    return true;
-  }
-};
+static_assert(
+    static_cast<std::underlying_type_t<mozilla::Telemetry::HistogramID>>(
+        mozilla::Telemetry::HistogramID::A11Y_CONSUMERS) == 0,
+    "Update ParamTraits<HistogramID> implementation");
 
 template <>
-struct ParamTraits<mozilla::Telemetry::KeyedHistogramAccumulation> {
-  typedef mozilla::Telemetry::KeyedHistogramAccumulation paramType;
+struct MOZ_ENUM_SERIALIZER_ALLOW_SENTINEL_UPPER_BOUND
+    ParamTraits<mozilla::Telemetry::ScalarActionType>
+    : public ContiguousEnumSerializerInclusive<
+          mozilla::Telemetry::ScalarActionType,
+          mozilla::Telemetry::ScalarActionType::eSet,
+          mozilla::Telemetry::ScalarActionType::eSetMaximum> {};
 
-  static void Write(MessageWriter* aWriter, const paramType& aParam) {
-    aWriter->WriteUInt32(aParam.mId);
-    WriteParam(aWriter, aParam.mSample);
-    WriteParam(aWriter, aParam.mKey);
-  }
+DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::Telemetry::HistogramAccumulation,
+                                  mId, mSample);
 
-  static bool Read(MessageReader* aReader, paramType* aResult) {
-    if (!aReader->ReadUInt32(reinterpret_cast<uint32_t*>(&(aResult->mId))) ||
-        !ReadParam(aReader, &(aResult->mSample)) ||
-        !ReadParam(aReader, &(aResult->mKey))) {
-      return false;
-    }
-
-    return true;
-  }
-};
+DEFINE_IPC_SERIALIZER_WITH_FIELDS(
+    mozilla::Telemetry::KeyedHistogramAccumulation, mId, mSample, mKey);
 
 /**
  * IPC scalar data message serialization and de-serialization.
@@ -149,9 +133,9 @@ struct ParamTraits<mozilla::Telemetry::ScalarAction> {
 
   static void Write(MessageWriter* aWriter, const paramType& aParam) {
     // Write the message type
-    aWriter->WriteUInt32(aParam.mId);
+    WriteParam(aWriter, aParam.mId);
     WriteParam(aWriter, aParam.mDynamic);
-    WriteParam(aWriter, static_cast<uint32_t>(aParam.mActionType));
+    WriteParam(aWriter, aParam.mActionType);
 
     if (aParam.mData.isNothing()) {
       MOZ_CRASH("There is no data in the ScalarAction.");
@@ -181,10 +165,9 @@ struct ParamTraits<mozilla::Telemetry::ScalarAction> {
   static bool Read(MessageReader* aReader, paramType* aResult) {
     // Read the scalar ID and the scalar type.
     uint32_t scalarType = 0;
-    if (!aReader->ReadUInt32(reinterpret_cast<uint32_t*>(&(aResult->mId))) ||
-        !ReadParam(aReader, reinterpret_cast<bool*>(&(aResult->mDynamic))) ||
-        !ReadParam(aReader,
-                   reinterpret_cast<uint32_t*>(&(aResult->mActionType))) ||
+    if (!ReadParam(aReader, &aResult->mId) ||
+        !ReadParam(aReader, &aResult->mDynamic) ||
+        !ReadParam(aReader, &aResult->mActionType) ||
         !ReadParam(aReader, &scalarType)) {
       return false;
     }
@@ -236,9 +219,9 @@ struct ParamTraits<mozilla::Telemetry::KeyedScalarAction> {
 
   static void Write(MessageWriter* aWriter, const paramType& aParam) {
     // Write the message type
-    aWriter->WriteUInt32(static_cast<uint32_t>(aParam.mId));
+    WriteParam(aWriter, aParam.mId);
     WriteParam(aWriter, aParam.mDynamic);
-    WriteParam(aWriter, static_cast<uint32_t>(aParam.mActionType));
+    WriteParam(aWriter, aParam.mActionType);
     WriteParam(aWriter, aParam.mKey);
 
     if (aParam.mData.isNothing()) {
@@ -270,11 +253,10 @@ struct ParamTraits<mozilla::Telemetry::KeyedScalarAction> {
   static bool Read(MessageReader* aReader, paramType* aResult) {
     // Read the scalar ID and the scalar type.
     uint32_t scalarType = 0;
-    if (!aReader->ReadUInt32(reinterpret_cast<uint32_t*>(&(aResult->mId))) ||
-        !ReadParam(aReader, reinterpret_cast<bool*>(&(aResult->mDynamic))) ||
-        !ReadParam(aReader,
-                   reinterpret_cast<uint32_t*>(&(aResult->mActionType))) ||
-        !ReadParam(aReader, &(aResult->mKey)) ||
+    if (!ReadParam(aReader, &aResult->mId) ||
+        !ReadParam(aReader, &aResult->mDynamic) ||
+        !ReadParam(aReader, &aResult->mActionType) ||
+        !ReadParam(aReader, &aResult->mKey) ||
         !ReadParam(aReader, &scalarType)) {
       return false;
     }
@@ -315,76 +297,14 @@ struct ParamTraits<mozilla::Telemetry::KeyedScalarAction> {
   }
 };
 
-template <>
-struct ParamTraits<mozilla::Telemetry::DynamicScalarDefinition> {
-  typedef mozilla::Telemetry::DynamicScalarDefinition paramType;
+DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::Telemetry::DynamicScalarDefinition,
+                                  type, dataset, expired, keyed, name);
 
-  static void Write(MessageWriter* aWriter, const paramType& aParam) {
-    nsCString name;
-    WriteParam(aWriter, aParam.type);
-    WriteParam(aWriter, aParam.dataset);
-    WriteParam(aWriter, aParam.expired);
-    WriteParam(aWriter, aParam.keyed);
-    WriteParam(aWriter, aParam.name);
-  }
+DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::Telemetry::ChildEventData, timestamp,
+                                  category, method, object, value, extra);
 
-  static bool Read(MessageReader* aReader, paramType* aResult) {
-    if (!ReadParam(aReader, reinterpret_cast<uint32_t*>(&(aResult->type))) ||
-        !ReadParam(aReader, reinterpret_cast<uint32_t*>(&(aResult->dataset))) ||
-        !ReadParam(aReader, reinterpret_cast<bool*>(&(aResult->expired))) ||
-        !ReadParam(aReader, reinterpret_cast<bool*>(&(aResult->keyed))) ||
-        !ReadParam(aReader, &(aResult->name))) {
-      return false;
-    }
-    return true;
-  }
-};
-
-template <>
-struct ParamTraits<mozilla::Telemetry::ChildEventData> {
-  typedef mozilla::Telemetry::ChildEventData paramType;
-
-  static void Write(MessageWriter* aWriter, const paramType& aParam) {
-    WriteParam(aWriter, aParam.timestamp);
-    WriteParam(aWriter, aParam.category);
-    WriteParam(aWriter, aParam.method);
-    WriteParam(aWriter, aParam.object);
-    WriteParam(aWriter, aParam.value);
-    WriteParam(aWriter, aParam.extra);
-  }
-
-  static bool Read(MessageReader* aReader, paramType* aResult) {
-    if (!ReadParam(aReader, &(aResult->timestamp)) ||
-        !ReadParam(aReader, &(aResult->category)) ||
-        !ReadParam(aReader, &(aResult->method)) ||
-        !ReadParam(aReader, &(aResult->object)) ||
-        !ReadParam(aReader, &(aResult->value)) ||
-        !ReadParam(aReader, &(aResult->extra))) {
-      return false;
-    }
-
-    return true;
-  }
-};
-
-template <>
-struct ParamTraits<mozilla::Telemetry::EventExtraEntry> {
-  typedef mozilla::Telemetry::EventExtraEntry paramType;
-
-  static void Write(MessageWriter* aWriter, const paramType& aParam) {
-    WriteParam(aWriter, aParam.key);
-    WriteParam(aWriter, aParam.value);
-  }
-
-  static bool Read(MessageReader* aReader, paramType* aResult) {
-    if (!ReadParam(aReader, &(aResult->key)) ||
-        !ReadParam(aReader, &(aResult->value))) {
-      return false;
-    }
-
-    return true;
-  }
-};
+DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::Telemetry::EventExtraEntry, key,
+                                  value);
 
 template <>
 struct ParamTraits<mozilla::Telemetry::DiscardedData>

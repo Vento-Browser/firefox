@@ -8,6 +8,11 @@
 
 "use strict";
 
+ChromeUtils.defineESModuleGetters(this, {
+  ConfigSearchEngine:
+    "moz-src:///toolkit/components/search/ConfigSearchEngine.sys.mjs",
+});
+
 const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
@@ -170,7 +175,7 @@ async function doDelayedUpdatePlaceholderTest({ defaultEngine }) {
   info("Simulate user interaction");
   let urlTab = BrowserTestUtils.addTab(newWin.gBrowser, "about:mozilla");
   await BrowserTestUtils.switchTab(newWin.gBrowser, urlTab);
-  if (defaultEngine.isConfigEngine) {
+  if (defaultEngine instanceof ConfigSearchEngine) {
     await TestUtils.waitForCondition(
       () => newWin.gURLBar.placeholder == expectedString,
       "The placeholder should include the engine name for built-in engines."
@@ -284,7 +289,7 @@ add_task(async function test_search_mode_engine_web() {
 
   await doSearchModeTest(
     {
-      source: UrlbarUtils.RESULT_SOURCE.SEARCH,
+      source: UrlbarShared.RESULT_SOURCE.SEARCH,
       engineName: "generalEngine",
     },
     {
@@ -306,21 +311,21 @@ add_task(async function test_search_mode_engine_other() {
 
 add_task(async function test_search_mode_bookmarks() {
   await doSearchModeTest(
-    { source: UrlbarUtils.RESULT_SOURCE.BOOKMARKS },
+    { source: UrlbarShared.RESULT_SOURCE.BOOKMARKS },
     { id: "urlbar-placeholder-search-mode-other-bookmarks", args: null }
   );
 });
 
 add_task(async function test_search_mode_tabs() {
   await doSearchModeTest(
-    { source: UrlbarUtils.RESULT_SOURCE.TABS },
+    { source: UrlbarShared.RESULT_SOURCE.TABS },
     { id: "urlbar-placeholder-search-mode-other-tabs", args: null }
   );
 });
 
 add_task(async function test_search_mode_history() {
   await doSearchModeTest(
-    { source: UrlbarUtils.RESULT_SOURCE.HISTORY },
+    { source: UrlbarShared.RESULT_SOURCE.HISTORY },
     { id: "urlbar-placeholder-search-mode-other-history", args: null }
   );
 });

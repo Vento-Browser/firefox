@@ -23,10 +23,13 @@ export const TRAINHOP_SCHEDULED_UPDATE_STATE_TIMEOUT_PREF =
 const FLUENT_SOURCE_NAME = "newtab";
 const TOPIC_LOCALES_CHANGED = "intl:app-locales-changed";
 const TOPIC_SHUTDOWN = "profile-before-change";
+const TOPIC_LANGPACK_STARTUP = "webextension-langpack-startup";
+const TOPIC_LANGPACK_SHUTDOWN = "webextension-langpack-shutdown";
 
 const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonSettings: "resource://gre/modules/addons/AddonSettings.sys.mjs",
+  Langpack: "resource://gre/modules/Extension.sys.mjs",
   AboutHomeStartupCache: "resource:///modules/AboutHomeStartupCache.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
@@ -90,15 +93,34 @@ export var AboutNewTabResourceMapping = {
   _builtinVersion: null,
   _updateAddonStateDeferredTask: null,
   _supportedLocales: null,
+  _langpackShadowSources: null,
+  _inObserveHandler: false,
 
   /**
    * Returns the version string for whichever version of New Tab is currently
-   * being used.
+   * being used. This is exposed to Nimbus / Experimenter for advanced targeting
+   * based on the currently used newtab version.
+   *
+   * The reason that we expose this specially and cannot simply use
+   * addonsInfo.addons["newtab@mozilla.org"] to do this kind of advanced
+   * targeting is documented in bug 1983928 (essentially, the addonsInfo
+   * route doesn't take into account that the addon might be disabled or
+   * bypassed via the `DISABLE_NEWTAB_AS_ADDON_PREF` pref).
    *
    * @type {string}
    */
   get addonVersion() {
     return this._addonVersion;
+  },
+
+  /**
+   * Returns true if an train-hopped XPI is in use, or false if we're using
+   * the built-in instance of newtab.
+   *
+   * @type {string}
+   */
+  get addonIsXPI() {
+    return this._addonIsXPI;
   },
 
   /**
@@ -177,6 +199,53 @@ export var AboutNewTabResourceMapping = {
     }
   },
 
+  isXPIInCurrentProfile(rootURI) {
+    try {
+      const { file: xpiFile } = rootURI
+        .QueryInterface(Ci.nsIJARURI)
+        .JARFile.QueryInterface(Ci.nsIFileURL);
+      // NOTE: this logic is expecting the XPI file to be located
+      // in PROFILE_DIR/extensions/newtab@mozilla.org and so for
+      // xpiFile.parent.parent.path to be matching the path
+      // returned by PathUtils.profileDir.
+      const xpiIsInsideProfile =
+        PathUtils.profileDir === xpiFile.parent.parent.path;
+      if (!xpiIsInsideProfile) {
+        this.logger.warn(
+          "Detected newtab XPI as located outside of the current Firefox profile"
+        );
+      }
+      return xpiIsInsideProfile;
+    } catch (err) {
+      this.logger.error(
+        "Unexpected error on verifying newtab XPI path is inside the current Firefox profile",
+        err
+      );
+    }
+    // If we failed to confirm the XPIFile is located inside the current Firefox
+    // profile, then let's fallback to built-in add-on resources.
+    return false;
+  },
+
+  /**
+   * Gather details from the newtab active addon, used by getPreferredMapping
+   * as part of determining if the newtab resource to be mapped should be the
+   * one from the built-in or from the train-hop version (and it is stubbed
+   * in tests that verify fallback to built-in resources under edge cases like
+   * relocated Firefox profiles, see Bug 2007810).
+   *
+   * @returns {{ version: ?string, rootURI: ?nsIURI, isPrivileged: ?boolean}}
+   *   Returns version, rootURI and isPrivileged properties from the newtab
+   *   WebExtensionPolicy instance that is currently active.
+   */
+  getActiveAddonInfo() {
+    const policy = WebExtensionPolicy.getByID(BUILTIN_ADDON_ID);
+    // Retrieve the mapping url (but fallback to the known url for the
+    // newtab resources bundled in the Desktop omni jar if that fails).
+    let { version, rootURI, isPrivileged } = policy?.extension ?? {};
+    return { version, rootURI, isPrivileged };
+  },
+
   /**
    * Gets the preferred mapping for newtab resources. This method tries to retrieve
    * the rootURI from the WebExtensionPolicy instance of the newtab add-on, or falling
@@ -192,10 +261,9 @@ export var AboutNewTabResourceMapping = {
    */
   getPreferredMapping() {
     const { inSafeMode, newTabAsAddonDisabled } = this;
-    const policy = WebExtensionPolicy.getByID(BUILTIN_ADDON_ID);
     // Retrieve the mapping url (but fallback to the known url for the
     // newtab resources bundled in the Desktop omni jar if that fails).
-    let { version, rootURI } = policy?.extension ?? {};
+    let { version, rootURI, isPrivileged } = this.getActiveAddonInfo();
     let isXPI = rootURI?.spec.endsWith(".xpi!/");
 
     // If we failed to retrieve the builtin add-on version, avoid mapping
@@ -203,6 +271,13 @@ export var AboutNewTabResourceMapping = {
     // wouldn't be possible to check if the builtin version is more recent
     // than the train-hop add-on version that may be already installed.
     if (isXPI && this._builtinVersion === null) {
+      rootURI = null;
+      isXPI = false;
+    }
+
+    // If the XPI path is not inside the current Firefox instance profile,
+    // fallback to use the resources bundled with Firefox itself (see Bug 2007810)
+    if (isXPI && !this.isXPIInCurrentProfile(rootURI)) {
       rootURI = null;
       isXPI = false;
     }
@@ -222,13 +297,13 @@ export var AboutNewTabResourceMapping = {
     const shouldUninstallXPI = isXPI
       ? lazy.trainhopAddonXPIVersion === "" ||
         Services.vc.compare(this._builtinVersion, version) >= 0 ||
-        (lazy.AddonSettings.REQUIRE_SIGNING && !policy.isPrivileged)
+        (lazy.AddonSettings.REQUIRE_SIGNING && !isPrivileged)
       : false;
 
     if (!rootURI || inSafeMode || newTabAsAddonDisabled || shouldUninstallXPI) {
       const builtinAddonsURI = lazy.resProto.getSubstitution("builtin-addons");
       rootURI = Services.io.newURI("newtab/", null, builtinAddonsURI);
-      version = null;
+      version = this._builtinVersion;
       isXPI = false;
     }
     return { isXPI, version, rootURI };
@@ -247,8 +322,8 @@ export var AboutNewTabResourceMapping = {
       this._addonVersion = version;
       this._addonIsXPI = isXPI;
       this.logger.log(
-        this.newTabAsAddonDisabled || !version
-          ? `Mapping newtab resources from ${rootURI.spec}`
+        this.newTabAsAddonDisabled
+          ? `Train-hopping disabled - mapping newtab resources from ${rootURI.spec}`
           : `Mapping newtab resources from ${isXPI ? "XPI" : "built-in add-on"} version ${version} ` +
               `on application version ${AppConstants.MOZ_APP_VERSION_DISPLAY}`
       );
@@ -267,6 +342,7 @@ export var AboutNewTabResourceMapping = {
         // may have Fluent files or Glean pings/metrics to register dynamically.
         this.registerFluentSources(rootURI);
         this.registerMetricsFromJson();
+        this.reevaluateNimbusRecipes();
       }
       lazy.aboutRedirector.wrappedJSObject.notifyBuiltInAddonInitialized();
       Glean.newtab.addonReadySuccess.set(true);
@@ -298,18 +374,75 @@ export var AboutNewTabResourceMapping = {
         )
       );
 
+      this._langpackShadowSources = new Set();
+
       // Set up observers so that if the user changes the list of available
       // locales, we'll re-register.
       Services.obs.addObserver(this, TOPIC_LOCALES_CHANGED);
       Services.obs.addObserver(this, TOPIC_SHUTDOWN);
-      // Now actually do the registration.
+      Services.obs.addObserver(this, TOPIC_LANGPACK_STARTUP);
+      Services.obs.addObserver(this, TOPIC_LANGPACK_SHUTDOWN);
+      // Register the primary newtab source in the "app" metasource so that
+      // its strings are available wherever app strings are resolved (notably
+      // the en-US fallback chain when no langpack is active).
       this._updateFluentSourcesRegistration();
+
+      // For each already-active langpack, also register a shadow newtab
+      // source inside that langpack's metasource. This lets the L10nRegistry
+      // solver produce a bundle where the langpack provides every other
+      // resource in the active locale while the newtab XPI provides its own
+      // (possibly newer) newtab.ftl entries. Without this, train-hop-only
+      // strings (added in the XPI but not yet in any langpack) would never
+      // appear in a non-English locale: the (locale, app) bundle can't be
+      // built because the rest of the app sources are en-US only, and the
+      // (locale, langpack) bundle would only contain the langpack's older
+      // newtab.ftl. See Bug 2046945.
+      //
+      // Batch the registration into a single registerSources call so we
+      // emit one intl:l10n-sources-changed / intl:app-locales-changed
+      // broadcast for the whole set of active langpacks rather than one
+      // per langpack. Profiles in Bug 2049845 showed the per-langpack
+      // path multiplying observer cascades at startup on installations
+      // with multiple langpacks (Flatpak/Snap/MSIX).
+      const shadowSources = [];
+      for (const langpackId of lazy.Langpack.activeLangpackIds) {
+        if (this._langpackShadowSources.has(langpackId)) {
+          continue;
+        }
+        const sourceName = `${FLUENT_SOURCE_NAME}-${langpackId}`;
+        shadowSources.push(this._buildNewtabFileSource(sourceName, langpackId));
+        this._langpackShadowSources.add(langpackId);
+      }
+      if (shadowSources.length) {
+        L10nRegistry.getInstance().registerSources(shadowSources);
+      }
     } catch (e) {
       // TODO: consider if we should collect this in telemetry.
       this.logger.error(
         `Error on registering fluent files from ${rootURI.spec}:`,
         e
       );
+    }
+  },
+
+  /**
+   * This is run during `init` after the addonVersion has been updated, and only
+   * if an XPI is being used. We tell Nimbus to re-evaluate any recipes in case
+   * the XPI is being used for an experiment.
+   *
+   * @returns {Promise<void>}
+   */
+  async reevaluateNimbusRecipes() {
+    // Tell Experimenter to re-evaluate experiment recipe targeting in case we
+    // just installed an XPI.
+    try {
+      await lazy.ExperimentAPI._rsLoader.finishedUpdating();
+      await lazy.ExperimentAPI._rsLoader.updateRecipes("newtab-trainhop", {
+        onlyFeatureIds: new Set(["newtabTrainhop"]),
+      });
+    } catch (e) {
+      // TODO: consider if we should collect this in telemetry.
+      this.logger.error("Error when re-evaluating Nimbus recipes:", e);
     }
   },
 
@@ -323,11 +456,9 @@ export var AboutNewTabResourceMapping = {
     let availableSupportedLocales =
       this._supportedLocales.intersection(availableLocales);
 
-    const newtabFileSource = new L10nFileSource(
+    const newtabFileSource = this._buildNewtabFileSource(
       FLUENT_SOURCE_NAME,
-      "app",
-      [...availableSupportedLocales],
-      `resource://newtab/locales/{locale}/`
+      "app"
     );
 
     let registry = L10nRegistry.getInstance();
@@ -346,17 +477,146 @@ export var AboutNewTabResourceMapping = {
     }
   },
 
-  observe(_subject, topic, _data) {
-    switch (topic) {
-      case TOPIC_LOCALES_CHANGED: {
-        this._updateFluentSourcesRegistration();
-        break;
+  /**
+   * Builds an L10nFileSource for the newtab Fluent files with a given name
+   * and metasource, using the current intersection of the XPI's supported
+   * locales and the locales known to the L10nRegistry.
+   *
+   * @param {string} name
+   *   The source name. Must be unique per metasource.
+   * @param {string} metasource
+   *   The metasource the source belongs to. "app" for the primary source,
+   *   a langpack id for shadow sources.
+   * @returns {L10nFileSource}
+   */
+  _buildNewtabFileSource(name, metasource) {
+    let availableLocales = new Set(Services.locale.availableLocales);
+    let availableSupportedLocales =
+      this._supportedLocales.intersection(availableLocales);
+    return new L10nFileSource(
+      name,
+      metasource,
+      [...availableSupportedLocales],
+      `resource://newtab/locales/{locale}/`
+    );
+  },
+
+  /**
+   * Registers a shadow L10nFileSource for the newtab XPI inside a langpack's
+   * metasource. This lets the L10nRegistry solver produce a bundle where the
+   * langpack provides every required resource in the active locale except
+   * browser/newtab/newtab.ftl, which is satisfied by the train-hopped XPI's
+   * (possibly newer) copy. Without this, train-hop-only strings — those
+   * present in the XPI but not yet in any langpack — are unreachable in any
+   * non-English locale and fall through to en-US. No-op if a shadow is
+   * already registered for this langpack. See Bug 2046945.
+   *
+   * @param {string} langpackId
+   *   The langpack's L10nRegistry metasource string, as stored on
+   *   `Langpack.langpackId`. This is NOT the langpack add-on's `id` —
+   *   its shape is `langpack-${manifest.langpack_id}-${productCodeName}`,
+   *   e.g. "langpack-es-ES-browser" on desktop Firefox.
+   */
+  _registerLangpackShadow(langpackId) {
+    if (this._langpackShadowSources.has(langpackId)) {
+      return;
+    }
+    const sourceName = `${FLUENT_SOURCE_NAME}-${langpackId}`;
+    const shadowSource = this._buildNewtabFileSource(sourceName, langpackId);
+    L10nRegistry.getInstance().registerSources([shadowSource]);
+    this._langpackShadowSources.add(langpackId);
+    this.logger.debug(
+      `Registered newtab shadow source in metasource ${langpackId}`
+    );
+  },
+
+  /**
+   * Removes a previously-registered shadow source for the given langpack.
+   * Called when a langpack shuts down (is uninstalled or disabled) so we
+   * don't leave an orphan source keeping the langpack's now-empty metasource
+   * alive. No-op if no shadow was registered for this langpack.
+   *
+   * @param {string} langpackId
+   *   The langpack metasource string whose shadow source should be removed.
+   *   Same shape as the argument to `_registerLangpackShadow`.
+   */
+  _unregisterLangpackShadow(langpackId) {
+    if (!this._langpackShadowSources.has(langpackId)) {
+      return;
+    }
+    const sourceName = `${FLUENT_SOURCE_NAME}-${langpackId}`;
+    L10nRegistry.getInstance().removeSources([sourceName]);
+    this._langpackShadowSources.delete(langpackId);
+    this.logger.debug(
+      `Removed newtab shadow source from metasource ${langpackId}`
+    );
+  },
+
+  /**
+   * Re-issues every currently-registered shadow source against the current
+   * intersection of the XPI's supported locales and the L10nRegistry's known
+   * available locales. Called on `intl:app-locales-changed` so shadow sources
+   * track locale-set changes the same way the primary "app" source does.
+   */
+  _updateLangpackShadows() {
+    let registry = L10nRegistry.getInstance();
+    for (const langpackId of this._langpackShadowSources) {
+      const sourceName = `${FLUENT_SOURCE_NAME}-${langpackId}`;
+      registry.updateSources([
+        this._buildNewtabFileSource(sourceName, langpackId),
+      ]);
+    }
+  },
+
+  observe(subject, topic, _data) {
+    // The TOPIC_LOCALES_CHANGED, TOPIC_LANGPACK_STARTUP, and
+    // TOPIC_LANGPACK_SHUTDOWN handlers all call L10nRegistry.{register,
+    // update,remove}Sources, and each of those calls fires
+    // intl:l10n-sources-changed (and, because LocaleService::
+    // SetAvailableLocales compares as an order-sensitive nsTArray against
+    // an array built from a Rust HashSet, spuriously fires
+    // intl:app-locales-changed too). Without this guard, those broadcasts can
+    // re-enter observe synchronously and the resulting cascade can pump
+    // unbounded source mutations through the registry at startup,
+    // exploding memory on installations with downloaded langpacks
+    // (Flatpak/Snap/MSIX). The first invocation does its work; any
+    // synchronous re-entries during that work are coalesced away. See
+    // Bug 2049845.
+    if (this._inObserveHandler) {
+      return;
+    }
+    this._inObserveHandler = true;
+    try {
+      switch (topic) {
+        case TOPIC_LOCALES_CHANGED: {
+          this._updateFluentSourcesRegistration();
+          this._updateLangpackShadows();
+          break;
+        }
+        case TOPIC_LANGPACK_STARTUP: {
+          const langpackId = subject?.wrappedJSObject?.langpack?.langpackId;
+          if (langpackId) {
+            this._registerLangpackShadow(langpackId);
+          }
+          break;
+        }
+        case TOPIC_LANGPACK_SHUTDOWN: {
+          const langpackId = subject?.wrappedJSObject?.langpack?.langpackId;
+          if (langpackId) {
+            this._unregisterLangpackShadow(langpackId);
+          }
+          break;
+        }
+        case TOPIC_SHUTDOWN: {
+          Services.obs.removeObserver(this, TOPIC_LOCALES_CHANGED);
+          Services.obs.removeObserver(this, TOPIC_SHUTDOWN);
+          Services.obs.removeObserver(this, TOPIC_LANGPACK_STARTUP);
+          Services.obs.removeObserver(this, TOPIC_LANGPACK_SHUTDOWN);
+          break;
+        }
       }
-      case TOPIC_SHUTDOWN: {
-        Services.obs.removeObserver(this, TOPIC_LOCALES_CHANGED);
-        Services.obs.removeObserver(this, TOPIC_SHUTDOWN);
-        break;
-      }
+    } finally {
+      this._inObserveHandler = false;
     }
   },
 
@@ -768,6 +1028,7 @@ export var AboutNewTabResourceMapping = {
 
     await lazy.AddonManager.readyPromise;
     await this.updateTrainhopAddonState(true /* forceRestartlessInstall */);
+
     this.logger.debug("First startup - new profile done");
   },
 };

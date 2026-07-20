@@ -1,6 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- *
+/*
  * Copyright 2021 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +18,7 @@
 #define wasm_type_decls_h
 
 #include "NamespaceImports.h"
+
 #include "gc/Barrier.h"
 #include "js/GCVector.h"
 #include "js/HashTable.h"
@@ -48,8 +47,6 @@ using WasmGlobalObjectVector =
     GCVector<WasmGlobalObject*, 0, SystemAllocPolicy>;
 using WasmTagObjectVector = GCVector<WasmTagObject*, 0, SystemAllocPolicy>;
 
-struct CodeMetadataForAsmJS;
-
 namespace wasm {
 
 struct ModuleMetadata;
@@ -60,6 +57,10 @@ class Decoder;
 class GeneratedSourceMap;
 class Instance;
 class Module;
+#ifdef ENABLE_WASM_COMPONENTS
+class Component;
+class ComponentInstance;
+#endif
 
 class Code;
 using SharedCode = RefPtr<const Code>;

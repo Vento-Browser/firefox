@@ -55,7 +55,7 @@ add_task(async function test_check_form_autofill_module_detect() {
   // old address available pref follows the main module pref
   Assert.equal(
     Services.prefs.getCharPref("extensions.formautofill.addresses.supported"),
-    "detect"
+    "on"
   );
   ensureOldPrefsAreCleared();
 });

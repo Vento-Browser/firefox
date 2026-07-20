@@ -8,11 +8,13 @@ support-files = ["data/engine.xml"]
 
 ["test_000_frecency.js"]
 
-["test_UrlbarController_integration.js"]
+["test_UrlbarChildController_unit.js"]
 
-["test_UrlbarController_telemetry.js"]
+["test_UrlbarParentController_integration.js"]
 
-["test_UrlbarController_unit.js"]
+["test_UrlbarParentController_telemetry.js"]
+
+["test_UrlbarParentController_unit.js"]
 
 ["test_UrlbarPrefs.js"]
 
@@ -28,15 +30,33 @@ support-files = ["data/engine.xml"]
 
 ["test_UrlbarResult_getDisplayableValueAndHighlights.js"]
 
+["test_UrlbarResult_wireSerialization.js"]
+
+["test_UrlbarTelemetryUtils_wireSerialization.js"]
+
 ["test_UrlbarSearchUtils.js"]
+
+["test_UrlbarShared_deepEqual.js"]
+
+["test_UrlbarUtils_addToInputHistoryWhenReady.js"]
 
 ["test_UrlbarUtils_addToUrlbarHistory.js"]
 
+["test_UrlbarUtils_autofillBackspaceCount.js"]
+
+["test_UrlbarUtils_autofillBlock.js"]
+
 ["test_UrlbarUtils_copySnakeKeysToCamel.js"]
+
+["test_UrlbarUtils_formatDate.js"]
+
+["test_UrlbarUtils_getBackspaceBlock.js"]
 
 ["test_UrlbarUtils_getShortcutOrURIAndPostData.js"]
 
 ["test_UrlbarUtils_getTokenMatches.js"]
+
+["test_UrlbarUtils_isOriginUrl.js"]
 
 ["test_UrlbarUtils_skippableTimer.js"]
 
@@ -46,6 +66,14 @@ support-files = ["data/engine.xml"]
 
 ["test_autofill_adaptiveHistory.js"]
 requesttimeoutfactor = 3  # Slow on Mac debug
+
+["test_autofill_adaptiveHistory_bookmarks.js"]
+
+["test_autofill_adaptiveHistory_history_disabled.js"]
+
+["test_autofill_adaptive_origin_fallback.js"]
+
+["test_autofill_blocking.js"]
 
 ["test_autofill_bookmarked.js"]
 
@@ -123,6 +151,8 @@ prefs = [
 
 ["test_muxer.js"]
 
+["test_muxer_excludeSponsoredResults.js"]
+
 ["test_pages_alt_frecency.js"]
 prefs = [
   "places.frecency.pages.alternative.featureGate=true",
@@ -176,6 +206,8 @@ requesttimeoutfactor = 2  # Slow on Linux and Windows
 
 ["test_query_url.js"]
 
+["test_quickaction_telemetry.js"]
+
 ["test_quickactions.js"]
 
 ["test_remote_tabs.js"]
@@ -189,6 +221,8 @@ prefs = [
 ]
 
 ["test_resultGroups.js"]
+
+["test_resultGroups_smartbar.js"]
 
 ["test_result_highlights.js"]
 

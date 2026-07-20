@@ -1,21 +1,19 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=4 sw=2 sts=2 et cin: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <android/multinetwork.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <resolv.h>
+
 #include "GetAddrInfo.h"
+#include "mozilla/Atomics.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/StaticPrefs_network.h"
 #include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/net/DNSPacket.h"
 #include "nsIDNSService.h"
-#include "mozilla/Maybe.h"
-#include "mozilla/Atomics.h"
-#include "mozilla/StaticPrefs_network.h"
-
-#include <netinet/in.h>
-#include <resolv.h>
-#include <poll.h>
-#include <android/multinetwork.h>
 
 namespace mozilla::net {
 

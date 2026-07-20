@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +6,7 @@
 #include "mozilla/XREAppData.h"
 #include "XREChildData.h"
 #include "XREShellData.h"
-#include "application.ini.h"
+#include "ApplicationData.h"
 #include "mozilla/Bootstrap.h"
 #include "mozilla/ProcessType.h"
 #include "mozilla/RuntimeExceptionModule.h"
@@ -44,7 +43,7 @@
 #  define strcasecmp _stricmp
 #  ifdef MOZ_SANDBOX
 #    include "mozilla/sandboxing/SandboxInitialization.h"
-#    include "mozilla/sandboxing/sandboxLogging.h"
+#    include "mozilla/sandboxing/TargetGeckoServices.h"
 #  endif
 #endif
 #include "BinaryPath.h"
@@ -246,7 +245,7 @@ static int do_main(int argc, char* argv[], char* envp[]) {
     config.appDataPath = appDataFile;
   } else {
     // no -app flag so we use the compiled-in app data
-    config.appData = &sAppData;
+    config.appData = kStaticAppData;
     config.appDataPath = kDesktopFolder;
   }
 
@@ -460,7 +459,8 @@ int main(int argc, char* argv[], char* envp[]) {
         return 1;
       }
 
-      childData.ProvideLogFunction = mozilla::sandboxing::ProvideLogFunction;
+      childData.setTargetGeckoServices =
+          mozilla::sandboxing::SetTargetGeckoServices;
     }
 #  endif
 

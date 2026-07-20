@@ -1,6 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=2:tabstop=2:
- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,15 +5,14 @@
 #ifndef NS_ACCESSIBLE_RELATION_WRAP_H
 #define NS_ACCESSIBLE_RELATION_WRAP_H
 
-#include "MsaaAccessible.h"
-#include "IUnknownImpl.h"
-
 #include <utility>
-#include "nsTArray.h"
 
-#include "mozilla/a11y/RelationType.h"
-#include "mozilla/a11y/Accessible.h"
 #include "AccessibleRelation.h"
+#include "IUnknownImpl.h"
+#include "MsaaAccessible.h"
+#include "mozilla/a11y/Accessible.h"
+#include "mozilla/a11y/RelationType.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 namespace a11y {
