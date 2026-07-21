@@ -68,11 +68,20 @@ function setLoading(form, loading) {
   }
 }
 
+function dismissGate() {
+  state.connected = true;
+  const { VentoAuth } = ChromeUtils.importESModule(
+    "chrome://browser/content/vento/VentoAuth.sys.mjs"
+  );
+  // The gate lives inside gVentoLoginOverlay; tell VentoAuth to hide the
+  // overlay in every browser window rather than closing a standalone window.
+  VentoAuth.notifyLoggedIn();
+}
+
 function onSuccess(accessToken) {
   Services.prefs.setStringPref("browser.logingate.serverUrl", state.server);
   Services.prefs.setStringPref("browser.logingate.accessToken", accessToken);
-  state.connected = true;
-  window.close();
+  dismissGate();
 }
 
 document.getElementById("loginForm").addEventListener("submit", async e => {
@@ -379,7 +388,7 @@ document.querySelectorAll("[data-back]").forEach(btn => {
 });
 
 document.getElementById("continue-btn").addEventListener("click", () => {
-  window.close();
+  dismissGate();
 });
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
@@ -413,15 +422,3 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 }
 
 checkExistingSession();
-
-window.addEventListener("unload", () => {
-  if (!state.connected) {
-    const isReauth = Services.prefs.getBoolPref(
-      "browser.logingate.reauth",
-      false
-    );
-    if (!isReauth) {
-      Services.startup.quit(Services.startup.eAttemptQuit);
-    }
-  }
-});

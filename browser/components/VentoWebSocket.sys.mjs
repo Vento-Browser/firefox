@@ -14,6 +14,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const PREF_ACCESS_TOKEN = "browser.logingate.accessToken";
 const PREF_SERVER_URL = "browser.logingate.serverUrl";
+
+// Notified (data = "required" | "done") whenever the forced-update state
+// changes. Each browser window observes this to show/hide its in-window update
+// overlay (gVentoUpdateOverlay in browser-init.js), which frames the update
+// gate page instead of a separate modal window that could float above other
+// applications.
+const TOPIC_UPDATE_CHANGED = "vento-update-changed";
 const AUTH_INTERVAL_MS = 10_000;
 const RECONNECT_DELAY_MS = 5_000;
 const PROXY_CHECK_INTERVAL_MS = 15_000;
@@ -33,9 +40,19 @@ export const VentoWebSocket = {
   _status: "disconnected",
   _quality: null,
   _updateGateShown: false,
+  _updateRequired: false,
+  _updateParams: "",
 
   get status() {
     return this._status;
+  },
+
+  get updateRequired() {
+    return this._updateRequired;
+  },
+
+  get updateParams() {
+    return this._updateParams;
   },
 
   get quality() {
@@ -284,7 +301,7 @@ export const VentoWebSocket = {
   /**
    * Force update: when the server requires a newer client, keep the proxy in
    * blocking state (only the backend and the download host stay reachable)
-   * and show the modal update gate once per session.
+   * and show the in-window update overlay once per session.
    *
    * @param {object} msg - Parsed auth_ok message from the server.
    * @returns {boolean} true when the client is outdated and auth_ok must not
@@ -317,15 +334,39 @@ export const VentoWebSocket = {
         current: Services.appinfo.version,
         download: downloadUrl,
       });
-      Services.ww.openWindow(
-        null,
-        `chrome://browser/content/updateGate.html?${params}`,
-        "_blank",
-        "chrome,centerscreen,modal,resizable=no,width=460,height=420",
-        null
-      );
+      this._requireUpdate(params.toString());
     }
     return true;
+  },
+
+  /**
+   * Flags a forced update as required. Shows the update overlay in every open
+   * browser window; windows opened while an update is required paint it on
+   * startup (gVentoUpdateOverlay). No separate modal window is opened.
+   *
+   * @param {string} params - Query string (required/current/download) passed
+   *        to the update gate page.
+   */
+  _requireUpdate(params) {
+    if (this._updateRequired) {
+      return;
+    }
+    this._updateRequired = true;
+    this._updateParams = params;
+    Services.obs.notifyObservers(null, TOPIC_UPDATE_CHANGED, "required");
+  },
+
+  /**
+   * Called by the update gate page once the user chose to download the update
+   * (the download tab opens on the allow-listed host, so the browser stays
+   * usable). Hides the update overlay in every window.
+   */
+  dismissUpdate() {
+    if (!this._updateRequired) {
+      return;
+    }
+    this._updateRequired = false;
+    Services.obs.notifyObservers(null, TOPIC_UPDATE_CHANGED, "done");
   },
 
   _openLoginGate() {

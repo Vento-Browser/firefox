@@ -13,9 +13,6 @@
 const { VentoLockService } = ChromeUtils.importESModule(
   "chrome://browser/content/vento/VentoLockService.sys.mjs"
 );
-const { VentoAuth } = ChromeUtils.importESModule(
-  "chrome://browser/content/vento/VentoAuth.sys.mjs"
-);
 
 function lockOverlay() {
   return document.getElementById("vento-lock-overlay");
@@ -29,29 +26,6 @@ function overlayShown() {
     window.getComputedStyle(overlay).display !== "none"
   );
 }
-
-add_task(async function test_helper_hides_and_restores() {
-  // withBrowserWindowsHidden still backs the (separate) login gate; the lock
-  // overlay does not use it, but the contract must hold.
-  let obscuredInside;
-  const result = VentoAuth.withBrowserWindowsHidden(() => {
-    obscuredInside =
-      document.documentElement.hasAttribute("vento-obscured") &&
-      window.getComputedStyle(document.body).visibility === "hidden";
-    return "ret";
-  });
-  Assert.equal(result, "ret", "helper returns fn's value");
-  Assert.equal(
-    obscuredInside,
-    true,
-    "browser window contents must be hidden while fn runs"
-  );
-  Assert.equal(
-    document.documentElement.hasAttribute("vento-obscured"),
-    false,
-    "browser window contents must be restored after fn returns"
-  );
-});
 
 add_task(async function test_lock_overlay_covers_content() {
   // The real unlock path shows a native OS auth dialog, which cannot be mocked

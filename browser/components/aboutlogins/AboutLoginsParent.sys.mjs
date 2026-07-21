@@ -107,7 +107,11 @@ async function ventoFetch(path, opts = {}) {
       headers["Content-Type"] = "application/json";
     }
     const resp = await fetch(base + path, { ...opts, headers });
-    if (resp.status === 401 && attempt === 0 && lazy.VentoAuth.promptReauth()) {
+    if (
+      resp.status === 401 &&
+      attempt === 0 &&
+      (await lazy.VentoAuth.promptReauth())
+    ) {
       // The user re-authenticated; retry once with the new token.
       continue;
     }

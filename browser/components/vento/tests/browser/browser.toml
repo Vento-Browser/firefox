@@ -17,6 +17,10 @@ support-files = [
 
 ["browser_vento_login_load_error.js"]
 
+["browser_vento_login_overlay.js"]
+
 ["browser_vento_no_mozilla_account.js"]
 
 ["browser_vento_perm_help.js"]
+
+["browser_vento_update_overlay.js"]

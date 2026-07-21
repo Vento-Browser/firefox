@@ -8,102 +8,88 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const PREF_ACCESS_TOKEN = "browser.logingate.accessToken";
-const PREF_REAUTH = "browser.logingate.reauth";
+
+// Notified (data = "required" | "done") whenever the login state changes.
+// Each browser window observes this to show/hide its in-window login overlay
+// (gVentoLoginOverlay in browser-init.js), which frames the login gate page.
+const TOPIC_LOGIN_CHANGED = "vento-login-changed";
 
 /**
- * Single entry point for re-authentication. Any Vento component that gets a
- * 401 from the backend calls promptReauth() instead of opening the login gate
- * itself, so concurrent failures produce a single modal window.
+ * Single entry point for authentication. Any Vento component that gets a 401
+ * from the backend calls promptReauth() instead of showing the login gate
+ * itself, so concurrent failures produce a single in-window login overlay.
+ * Like the lock overlay, the login gate is painted inside every browser window
+ * rather than in a separate modal window that could float above other
+ * applications or be closed to reveal the tabs behind it.
  */
 export const VentoAuth = {
-  _gateOpen: false,
+  _loginRequired: false,
+  _loginWaiters: [],
 
   get token() {
     return Services.prefs.getStringPref(PREF_ACCESS_TOKEN, "");
   },
 
+  get loginRequired() {
+    return this._loginRequired;
+  },
+
   /**
-   * Hides every open browser window for the lifetime of fn, then restores
-   * only the windows this call hid. Used around the modal lock/login gates
-   * so tab contents are never visible behind them.
+   * Requests the login gate. Shows the login overlay in every open browser
+   * window; windows opened while login is required paint it on startup.
    *
-   * @param {Function} fn - Synchronous function (typically a modal
-   *        openWindow call that spins a nested event loop).
-   * @returns {*} fn's return value.
+   * @returns {Promise<boolean>} resolves true once the user completes login
+   *          (the login page calls notifyLoggedIn). The overlay cannot be
+   *          dismissed, so it never resolves false.
    */
-  withBrowserWindowsHidden(fn) {
-    const hidden = [];
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      try {
-        // Blank the window contents (CSS rule on vento-obscured in
-        // browser.css) and hide the window at the widget level.
-        win.document.documentElement.setAttribute("vento-obscured", "true");
-        hidden.push(Cu.getWeakReference(win));
-        win.docShell.treeOwner
-          .QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsIBaseWindow).visibility = false;
-      } catch {}
+  requireLogin() {
+    if (!this._loginRequired) {
+      this._loginRequired = true;
+      Services.obs.notifyObservers(null, TOPIC_LOGIN_CHANGED, "required");
     }
-    try {
-      return fn();
-    } finally {
-      for (const ref of hidden) {
-        try {
-          const win = ref.get();
-          if (win && !win.closed) {
-            win.document.documentElement.removeAttribute("vento-obscured");
-            win.docShell.treeOwner
-              .QueryInterface(Ci.nsIInterfaceRequestor)
-              .getInterface(Ci.nsIBaseWindow).visibility = true;
-          }
-        } catch {}
-      }
+    return new Promise(resolve => this._loginWaiters.push(resolve));
+  },
+
+  /**
+   * Called by the login gate page once a new session is established (a valid
+   * access token was written). Hides the overlay in every window and resolves
+   * every pending requireLogin()/promptReauth() promise.
+   */
+  notifyLoggedIn() {
+    if (!this._loginRequired) {
+      return;
+    }
+    this._loginRequired = false;
+    Services.obs.notifyObservers(null, TOPIC_LOGIN_CHANGED, "done");
+    const waiters = this._loginWaiters;
+    this._loginWaiters = [];
+    for (const resolve of waiters) {
+      try {
+        resolve(true);
+      } catch {}
     }
   },
 
   /**
-   * Opens the modal login gate and blocks until it closes. The reauth pref
-   * tells the gate's unload handler not to quit the browser on cancel.
+   * Shows the in-window login overlay and resolves once the user re-logs in.
+   * Callers that got a 401 use this instead of showing a gate themselves, so
+   * concurrent failures share a single overlay.
    *
-   * @returns {boolean} true if the user completed a login (a new access
-   *          token was written), false on cancel or when a gate is already
-   *          open.
+   * @returns {Promise<boolean>} resolves true once login completes.
    */
   promptReauth() {
-    if (this._gateOpen) {
-      return false;
-    }
-    this._gateOpen = true;
-    const tokenBefore = this.token;
-    Services.prefs.setBoolPref(PREF_REAUTH, true);
-    try {
-      // The login ("Connect") window must never show tab contents behind it.
-      this.withBrowserWindowsHidden(() =>
-        Services.ww.openWindow(
-          null,
-          "chrome://browser/content/loginGate.html",
-          "_blank",
-          "chrome,centerscreen,modal,resizable=no,width=460,height=640",
-          null
-        )
-      );
-    } finally {
-      Services.prefs.clearUserPref(PREF_REAUTH);
-      this._gateOpen = false;
-    }
-    const tokenAfter = this.token;
-    return !!tokenAfter && tokenAfter !== tokenBefore;
+    return this.requireLogin();
   },
 
   /**
    * Full logout: seals the browsing state into the encrypted vault (while the
    * token is still valid), clears the token, wipes all browsing data, and —
-   * unless promptLogin is false — shows the login gate. If the user does not
-   * log back in, the browser quits: a logged-out browser has nothing to show.
+   * unless promptLogin is false — shows the login overlay and waits for the
+   * user to log back in.
    *
    * @param {object} [options]
    * @param {boolean} [options.promptLogin=true] false when the caller manages
-   *        the login UI itself (lock window, login gate).
+   *        the login UI itself (lock overlay, login overlay).
    * @returns {Promise<boolean>} true if the user logged back in.
    */
   async logout({ promptLogin = true } = {}) {
@@ -121,10 +107,6 @@ export const VentoAuth = {
     if (!promptLogin) {
       return false;
     }
-    const loggedIn = this.promptReauth();
-    if (!loggedIn) {
-      Services.startup.quit(Services.startup.eAttemptQuit);
-    }
-    return loggedIn;
+    return this.requireLogin();
   },
 };

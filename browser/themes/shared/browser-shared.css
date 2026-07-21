@@ -1062,6 +1062,40 @@ menupopup::part(drop-indicator) {
   }
 }
 
+/* Vento login overlay — frames the login gate page in-window while VentoAuth
+   reports login as required, so there is no separate modal window that could
+   float above other applications or be closed to reveal the tabs behind it.
+   Set by gVentoLoginOverlay. */
+#vento-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background-color: var(--background-color-canvas, Canvas);
+
+  & .vento-login-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+}
+
+/* Vento forced-update overlay — frames the update gate page in-window while
+   VentoWebSocket reports a forced update as required, so there is no separate
+   modal window that could float above other applications. Set by
+   gVentoUpdateOverlay. */
+#vento-update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background-color: var(--background-color-canvas, Canvas);
+
+  & .vento-update-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+}
+
 /* Content analysis indicator */
 .content-analysis-indicator {
   :root:not([contentanalysisactive]) &,
@@ -2015,11 +2049,4 @@ popupnotificationcontent {
 #BMB_bookmarksToolbar,
 #bookmarksToolbarFolderMenu {
   --menuitem-icon: url("chrome://browser/skin/places/bookmarksToolbar.svg");
-}
-
-/* Vento: blank the whole window while a lock/login gate is shown, so tab
-   contents are never visible behind the modal (set by
-   VentoAuth.withBrowserWindowsHidden). */
-:root[vento-obscured] body {
-  visibility: hidden;
 }

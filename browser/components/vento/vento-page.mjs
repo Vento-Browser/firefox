@@ -565,7 +565,7 @@ function logout() {
   currentMetrics = null;
   activePage = "dashboard";
   // Seals the encrypted vault, wipes browsing data (closing this tab), and
-  // shows the login gate; quits the browser if the user does not log back in.
+  // shows the in-window login overlay until the user logs back in.
   // Fire-and-forget: this page is destroyed while it runs.
   VentoAuth.logout();
 }

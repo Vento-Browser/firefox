@@ -769,6 +769,8 @@ var gBrowserInit = {
 
     gVentoWsIndicator.init();
     gVentoLockOverlay.init();
+    gVentoLoginOverlay.init();
+    gVentoUpdateOverlay.init();
 
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
@@ -1257,6 +1259,8 @@ var gBrowserInit = {
       );
       gVentoWsIndicator.uninit();
       gVentoLockOverlay.uninit();
+      gVentoLoginOverlay.uninit();
+      gVentoUpdateOverlay.uninit();
     }
 
     BrowserUtils.callModulesFromCategory(
@@ -1531,9 +1535,8 @@ var gVentoLockOverlay = {
     );
     this._signoutBtn.disabled = true;
     try {
-      // Seals the vault, wipes browsing data and prompts login (quitting if
-      // the user does not log back in). Only lift the lock once a new session
-      // is established.
+      // Seals the vault, wipes browsing data and shows the in-window login
+      // overlay. Only lift the lock once a new session is established.
       if (await VentoAuth.logout()) {
         VentoLockService.unlock();
       }
@@ -1574,5 +1577,174 @@ var gVentoLockOverlay = {
       this._overlay.remove();
       this._overlay = null;
     }
+  },
+};
+
+// Full-window login overlay. Frames the Vento login gate
+// (chrome://browser/content/loginGate.html) inside every browser window while
+// VentoAuth reports that login is required, so there is no separate modal
+// window that could float above other applications or be closed to reveal the
+// tabs behind it. Mirrors gVentoLockOverlay.
+var gVentoLoginOverlay = {
+  _observer: null,
+  _overlay: null,
+  _keyBlocker: null,
+
+  init() {
+    const { VentoAuth } = ChromeUtils.importESModule(
+      "chrome://browser/content/vento/VentoAuth.sys.mjs"
+    );
+    this._observer = {
+      observe: (_subject, _topic, data) =>
+        this._setRequired(data === "required"),
+    };
+    Services.obs.addObserver(this._observer, "vento-login-changed");
+    if (VentoAuth.loginRequired) {
+      this._setRequired(true);
+    }
+  },
+
+  _setRequired(required) {
+    if (required) {
+      this._show();
+    } else {
+      this._hide();
+    }
+  },
+
+  _show() {
+    if (this._overlay) {
+      return;
+    }
+    const NS = "http://www.w3.org/1999/xhtml";
+    const overlay = document.createElementNS(NS, "div");
+    overlay.id = "vento-login-overlay";
+
+    const frame = document.createElementNS(NS, "iframe");
+    frame.className = "vento-login-frame";
+    // A fresh load each time re-runs the gate's session check, so a re-auth
+    // prompt starts from the login form rather than a stale profile view.
+    frame.setAttribute("src", "chrome://browser/content/loginGate.html");
+    overlay.appendChild(frame);
+
+    document.body.appendChild(overlay);
+    this._overlay = overlay;
+
+    // Block every browser keyboard shortcut whose target is outside the gate
+    // (the gate runs in its own document, so its own typing is unaffected).
+    this._keyBlocker = e => {
+      if (this._overlay?.contains(e.target)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    document.documentElement.setAttribute("vento-login-required", "true");
+    window.addEventListener("keydown", this._keyBlocker, { capture: true });
+  },
+
+  _hide() {
+    if (!this._overlay) {
+      return;
+    }
+    window.removeEventListener("keydown", this._keyBlocker, { capture: true });
+    this._keyBlocker = null;
+    document.documentElement.removeAttribute("vento-login-required");
+    this._overlay.remove();
+    this._overlay = null;
+  },
+
+  uninit() {
+    if (this._observer) {
+      Services.obs.removeObserver(this._observer, "vento-login-changed");
+      this._observer = null;
+    }
+    this._hide();
+  },
+};
+
+// Full-window forced-update overlay. Frames the Vento update gate
+// (chrome://browser/content/updateGate.html) inside every browser window while
+// VentoWebSocket reports that a forced update is required, so there is no
+// separate modal window that could float above other applications. Mirrors
+// gVentoLoginOverlay.
+var gVentoUpdateOverlay = {
+  _observer: null,
+  _overlay: null,
+  _keyBlocker: null,
+
+  init() {
+    const { VentoWebSocket } = ChromeUtils.importESModule(
+      "resource:///modules/VentoWebSocket.sys.mjs"
+    );
+    this._observer = {
+      observe: (_subject, _topic, data) =>
+        this._setRequired(data === "required"),
+    };
+    Services.obs.addObserver(this._observer, "vento-update-changed");
+    if (VentoWebSocket.updateRequired) {
+      this._setRequired(true);
+    }
+  },
+
+  _setRequired(required) {
+    if (required) {
+      this._show();
+    } else {
+      this._hide();
+    }
+  },
+
+  _show() {
+    if (this._overlay) {
+      return;
+    }
+    const { VentoWebSocket } = ChromeUtils.importESModule(
+      "resource:///modules/VentoWebSocket.sys.mjs"
+    );
+    const NS = "http://www.w3.org/1999/xhtml";
+    const overlay = document.createElementNS(NS, "div");
+    overlay.id = "vento-update-overlay";
+
+    const frame = document.createElementNS(NS, "iframe");
+    frame.className = "vento-update-frame";
+    const params = VentoWebSocket.updateParams;
+    frame.setAttribute(
+      "src",
+      `chrome://browser/content/updateGate.html${params ? `?${params}` : ""}`
+    );
+    overlay.appendChild(frame);
+
+    document.body.appendChild(overlay);
+    this._overlay = overlay;
+
+    this._keyBlocker = e => {
+      if (this._overlay?.contains(e.target)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    document.documentElement.setAttribute("vento-update-required", "true");
+    window.addEventListener("keydown", this._keyBlocker, { capture: true });
+  },
+
+  _hide() {
+    if (!this._overlay) {
+      return;
+    }
+    window.removeEventListener("keydown", this._keyBlocker, { capture: true });
+    this._keyBlocker = null;
+    document.documentElement.removeAttribute("vento-update-required");
+    this._overlay.remove();
+    this._overlay = null;
+  },
+
+  uninit() {
+    if (this._observer) {
+      Services.obs.removeObserver(this._observer, "vento-update-changed");
+      this._observer = null;
+    }
+    this._hide();
   },
 };

@@ -74,6 +74,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
+  VentoAuth: "chrome://browser/content/vento/VentoAuth.sys.mjs",
   VentoLockService: "chrome://browser/content/vento/VentoLockService.sys.mjs",
   VentoMcp: "chrome://browser/content/vento/VentoMcp.sys.mjs",
   VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
@@ -399,16 +400,14 @@ BrowserGlue.prototype = {
 
     lazy.VentoWebSocket.applyBlockingProxy();
 
-    // Test-only escape hatch for the automated leak tests: skips the modal
-    // login window, never the proxy enforcement above.
+    // Test-only escape hatch for the automated leak tests: skips the login
+    // gate, never the proxy enforcement above.
     if (!Services.env.get("VENTO_TEST_NO_LOGIN_GATE")) {
-      Services.ww.openWindow(
-        null,
-        "chrome://browser/content/loginGate.html",
-        "_blank",
-        "chrome,centerscreen,modal,resizable=no,width=460,height=640",
-        null
-      );
+      // Flag login as required before the first browser window opens; each
+      // window paints the in-window login overlay (gVentoLoginOverlay) until
+      // the user completes login or confirms their existing session. No
+      // separate modal window is opened.
+      lazy.VentoAuth.requireLogin();
     }
 
     lazy.VentoWebSocket.init();

@@ -4,7 +4,6 @@
 
 const params = new URLSearchParams(window.location.search);
 const downloadUrl = params.get("download") ?? "";
-let resolved = false;
 
 document.getElementById("current-version").textContent =
   params.get("current") ?? Services.appinfo.version;
@@ -18,19 +17,16 @@ document.getElementById("download-btn").addEventListener("click", () => {
       win.switchToTabHavingURI(downloadUrl, true);
     }
   }
-  resolved = true;
-  window.close();
+  // The gate lives inside gVentoUpdateOverlay; tell VentoWebSocket to hide the
+  // overlay in every browser window rather than closing a standalone window.
+  // The download tab opens on the allow-listed host, so the browser stays
+  // usable to fetch the update.
+  const { VentoWebSocket } = ChromeUtils.importESModule(
+    "resource:///modules/VentoWebSocket.sys.mjs"
+  );
+  VentoWebSocket.dismissUpdate();
 });
 
 document.getElementById("quit-btn").addEventListener("click", () => {
   Services.startup.quit(Services.startup.eAttemptQuit);
-});
-
-// Closing the window without choosing means the browser cannot be used
-// (the proxy stays in blocking state), so treat it like Quit. The download
-// path sets `resolved` so the browser stays alive to fetch the update.
-window.addEventListener("unload", () => {
-  if (!resolved) {
-    Services.startup.quit(Services.startup.eAttemptQuit);
-  }
 });
