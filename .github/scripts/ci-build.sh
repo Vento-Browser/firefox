@@ -12,6 +12,16 @@ export MOZCONFIG="$PWD/mozconfig-ci"
 # supply its own value.
 export MOZ_BUILD_DATE="${MOZ_BUILD_DATE:-$(date -u +%Y%m%d%H%M%S)}"
 
+# Expose the exact source revision on about:buildconfig so the "Built from"
+# link points at the Vento fork. MPL 2.0 (3.2) requires that recipients of
+# the binaries can obtain the corresponding Source Code Form; about:license
+# refers them to this page for the URL. Without these the source section is
+# omitted (source-repo.h is empty) and there is no link to the modified
+# source. configure reads these from the environment.
+export MOZ_SOURCE_REPO="${MOZ_SOURCE_REPO:-https://github.com/Vento-Browser/firefox}"
+export MOZ_SOURCE_CHANGESET="${MOZ_SOURCE_CHANGESET:-${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}}"
+export MOZ_INCLUDE_SOURCE_INFO=1
+
 # The local root mozconfig is gitignored upstream, so define the full
 # CI config here (keep in sync with the local mozconfig).
 cat > "$MOZCONFIG" <<'EOF'
