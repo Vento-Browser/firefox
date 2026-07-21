@@ -185,6 +185,30 @@ class RemoteAgentParentProcess {
     return enabled;
   }
 
+  /**
+   * Enable the Remote Agent from Vento's own preferences instead of the
+   * `--remote-debugging-port` command line flag.
+   *
+   * Vento bundles a native MCP server (see VentoMcp.sys.mjs) that drives the
+   * browser over WebDriver BiDi. Regular users never pass command line flags,
+   * so when `browser.vento.mcp.enabled` is set we start the endpoint on the
+   * configured `browser.vento.mcp.port` as if the flag had been given.
+   *
+   * @returns {boolean}
+   *     Return `true` if the Vento MCP preference requested the endpoint.
+   */
+  #handleVentoMcpPref() {
+    try {
+      if (!Services.prefs.getBoolPref("browser.vento.mcp.enabled", false)) {
+        return false;
+      }
+      this.#port = Services.prefs.getIntPref("browser.vento.mcp.port", 9223);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   #handleAllowHostsFlag(cmdLine) {
     try {
       const hosts = cmdLine.handleFlagWithParam("remote-allow-hosts", false);
@@ -432,7 +456,9 @@ class RemoteAgentParentProcess {
         this.#allowOrigins = this.#handleAllowOriginsFlag(subject);
         this.allowSystemAccess = this.#handleAllowSystemAccessFlag(subject);
 
-        this.#enabled = this.#handleRemoteDebuggingPortFlag(subject);
+        this.#enabled =
+          this.#handleRemoteDebuggingPortFlag(subject) ||
+          this.#handleVentoMcpPref();
 
         if (this.#enabled) {
           // Add annotation to crash report to indicate whether the

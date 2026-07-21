@@ -55,6 +55,13 @@ pref("signon.management.page.breach-alerts.enabled", false);
 // DevTools console paste enabled
 pref("devtools.selfxss.count", 5);
 
+// Native MCP server (see VentoMcp.sys.mjs). When enabled, RemoteAgent opens a
+// WebDriver BiDi endpoint on the port below so the bundled `vento-mcp` binary
+// can drive the browser for AI clients. Off by default: it is an automation
+// surface and must be opted into.
+pref("browser.vento.mcp.enabled", false);
+pref("browser.vento.mcp.port", 9223);
+
 // ── Background Mozilla/Google connections ──────────────────────────────────
 // Rationale and the full connection inventory: docs/mozilla-connections-audit.md
 // Everything that stays enabled goes through vento_proxy anyway.

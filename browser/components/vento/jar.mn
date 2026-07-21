@@ -16,3 +16,4 @@ browser.jar:
     content/browser/vento/VentoLoginSyncService.sys.mjs
     content/browser/vento/VentoFormDetectorParent.sys.mjs
     content/browser/vento/VentoFormDetectorChild.sys.mjs
+    content/browser/vento/VentoMcp.sys.mjs

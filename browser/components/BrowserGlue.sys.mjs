@@ -75,6 +75,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
   VentoLockService: "chrome://browser/content/vento/VentoLockService.sys.mjs",
+  VentoMcp: "chrome://browser/content/vento/VentoMcp.sys.mjs",
   VentoLoginCache: "chrome://browser/content/vento/VentoLoginCache.sys.mjs",
   VentoLoginSyncService:
     "chrome://browser/content/vento/VentoLoginSyncService.sys.mjs",
@@ -415,6 +416,7 @@ BrowserGlue.prototype = {
     lazy.VentoLoginSyncService.init();
     lazy.VentoLockService.init();
     lazy.VentoNetworkObserver.init();
+    lazy.VentoMcp.init();
     // Runs after the modal login gate above has closed, so on a logged-in
     // startup init() immediately sees the token and restores a pending vault.
     lazy.VentoSessionVault.init();
