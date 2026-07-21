@@ -1438,6 +1438,7 @@ var gVentoLockOverlay = {
   _unlockBtn: null,
   _signoutBtn: null,
   _keyBlocker: null,
+  _focusTrap: null,
 
   init() {
     const { VentoLockService } = ChromeUtils.importESModule(
@@ -1506,6 +1507,16 @@ var gVentoLockOverlay = {
       e.preventDefault();
       e.stopImmediatePropagation();
     };
+
+    // Keep focus trapped inside the overlay. Without this, tabbing out of the
+    // unlock buttons (or the content browser regaining focus) would let the
+    // keyboard reach the tab hidden behind the overlay, defeating the lock.
+    this._focusTrap = e => {
+      if (this._overlay && !this._overlay.contains(e.target)) {
+        e.stopImmediatePropagation();
+        this._unlockBtn.focus();
+      }
+    };
   },
 
   async _onUnlock() {
@@ -1552,6 +1563,7 @@ var gVentoLockOverlay = {
       this._overlay.style.display = "flex";
       document.documentElement.setAttribute("vento-locked", "true");
       window.addEventListener("keydown", this._keyBlocker, { capture: true });
+      window.addEventListener("focusin", this._focusTrap, { capture: true });
       this._unlockBtn.focus();
     } else if (this._overlay) {
       this._overlay.style.display = "none";
@@ -1559,6 +1571,7 @@ var gVentoLockOverlay = {
       window.removeEventListener("keydown", this._keyBlocker, {
         capture: true,
       });
+      window.removeEventListener("focusin", this._focusTrap, { capture: true });
     }
   },
 
@@ -1572,6 +1585,10 @@ var gVentoLockOverlay = {
         capture: true,
       });
       this._keyBlocker = null;
+    }
+    if (this._focusTrap) {
+      window.removeEventListener("focusin", this._focusTrap, { capture: true });
+      this._focusTrap = null;
     }
     if (this._overlay) {
       this._overlay.remove();

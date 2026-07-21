@@ -52,6 +52,19 @@ add_task(async function test_lock_overlay_covers_content() {
     "the lock overlay must cover the window while locked"
   );
 
+  // Focus must stay trapped inside the overlay: moving focus to the content
+  // browser (or tabbing out of the unlock buttons) would let the keyboard reach
+  // the tab hidden behind the overlay, defeating the lock.
+  gBrowser.selectedBrowser.focus();
+  await TestUtils.waitForCondition(
+    () => lockOverlay().contains(document.activeElement),
+    "focus is pulled back into the lock overlay"
+  );
+  Assert.ok(
+    lockOverlay().contains(document.activeElement),
+    "focus cannot leave the lock overlay while locked"
+  );
+
   // Clicking Unlock authenticates (stubbed) and lifts the lock.
   lockOverlay().querySelector(".vento-lock-primary-btn").click();
   await TestUtils.waitForCondition(
