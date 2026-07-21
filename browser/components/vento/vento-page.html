@@ -63,6 +63,9 @@
           <button class="category" name="groups" id="nav-groups">
             <span class="category-name">User Groups</span>
           </button>
+          <button class="category" name="mcp">
+            <span class="category-name">MCP Server</span>
+          </button>
           <button class="category" name="profile">
             <span class="category-name">Profile</span>
           </button>
@@ -360,6 +363,56 @@
               </thead>
               <tbody id="groups-tbody"></tbody>
             </table>
+          </section>
+
+          <!-- MCP Server -->
+          <section id="page-mcp" class="page" hidden>
+            <moz-card heading="MCP Server">
+              <p class="mcp-intro">
+                Vento ships a native Model Context Protocol server that lets AI
+                clients (such as Claude Code) drive this browser. It is off by
+                default because it is an automation surface.
+              </p>
+              <label class="mcp-toggle-row">
+                <input type="checkbox" id="mcp-enabled" />
+                <span>Enable the MCP server</span>
+              </label>
+              <div class="mcp-status-grid">
+                <div class="mcp-status-item">
+                  <span class="info-label">Status</span>
+                  <span class="badge" id="mcp-status-badge"></span>
+                </div>
+                <div class="mcp-status-item">
+                  <span class="info-label">Port</span>
+                  <span id="mcp-port"></span>
+                </div>
+              </div>
+              <p class="form-hint" id="mcp-restart-hint" hidden>
+                The listening port only opens or closes on the next browser
+                restart.
+              </p>
+            </moz-card>
+
+            <moz-card heading="Access permissions">
+              <p class="mcp-intro">
+                Choose which tools the server may expose. Unchecked tools are
+                hidden from clients and refused if called.
+              </p>
+              <div class="mcp-tools-actions">
+                <moz-button type="ghost" size="small" id="mcp-select-all"
+                  >Select all</moz-button
+                >
+                <moz-button type="ghost" size="small" id="mcp-select-none"
+                  >Select none</moz-button
+                >
+              </div>
+              <div class="mcp-tools-list" id="mcp-tools-list"></div>
+              <div class="form-actions">
+                <moz-button type="primary" size="small" id="btn-save-mcp"
+                  >Save</moz-button
+                >
+              </div>
+            </moz-card>
           </section>
 
           <!-- Profile -->

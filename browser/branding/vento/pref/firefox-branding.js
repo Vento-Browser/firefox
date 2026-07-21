@@ -61,6 +61,11 @@ pref("devtools.selfxss.count", 5);
 // surface and must be opted into.
 pref("browser.vento.mcp.enabled", false);
 pref("browser.vento.mcp.port", 9223);
+// Per-tool access policy passed to the bundled binary as --allowed-tools.
+// Empty means every tool is allowed. A comma-separated list restricts the
+// server to those tool names; the value "none" (not a real tool) disables all.
+// Managed from the MCP Server section of the Vento panel.
+pref("browser.vento.mcp.allowed_tools", "");
 
 // ── Background Mozilla/Google connections ──────────────────────────────────
 // Rationale and the full connection inventory: docs/mozilla-connections-audit.md

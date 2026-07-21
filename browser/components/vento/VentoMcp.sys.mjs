@@ -9,6 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const PREF_ENABLED = "browser.vento.mcp.enabled";
 const PREF_PORT = "browser.vento.mcp.port";
+const PREF_ALLOWED_TOOLS = "browser.vento.mcp.allowed_tools";
 const DEFAULT_PORT = 9223;
 
 // Written into the profile so AI clients (Claude Code, etc.) can be pointed at
@@ -35,16 +36,33 @@ export const VentoMcp = {
     }
     this._initialized = true;
 
-    if (!Services.prefs.getBoolPref(PREF_ENABLED, false)) {
-      return;
-    }
-    this._writeRegistration().catch(e =>
-      console.error(`VentoMcp: failed to write MCP registration: ${e}`)
+    this.refresh();
+  },
+
+  /**
+   * Reconcile the on-disk registration with the current prefs. Writes
+   * `vento-mcp.json` when the server is enabled and removes it otherwise, so
+   * the Vento panel can toggle the integration without a restart (the BiDi
+   * endpoint itself still starts at launch — see RemoteAgent).
+   */
+  refresh() {
+    const enabled = Services.prefs.getBoolPref(PREF_ENABLED, false);
+    const op = enabled ? this._writeRegistration() : this._removeRegistration();
+    op.catch(e =>
+      console.error(`VentoMcp: failed to update MCP registration: ${e}`)
     );
   },
 
   get port() {
     return Services.prefs.getIntPref(PREF_PORT, DEFAULT_PORT);
+  },
+
+  /**
+   * The `--allowed-tools` value from prefs, or "" when unrestricted (every
+   * tool allowed).
+   */
+  get allowedTools() {
+    return Services.prefs.getStringPref(PREF_ALLOWED_TOOLS, "").trim();
   },
 
   /**
@@ -64,22 +82,35 @@ export const VentoMcp = {
    * clients.
    */
   registration() {
+    const args = ["--bidi-port", String(this.port)];
+    const allowed = this.allowedTools;
+    if (allowed) {
+      args.push("--allowed-tools", allowed);
+    }
     return {
       mcpServers: {
         vento: {
           command: this.binaryPath,
-          args: ["--bidi-port", String(this.port)],
+          args,
         },
       },
     };
   },
 
-  async _writeRegistration() {
-    const path = PathUtils.join(
+  get _registrationPath() {
+    return PathUtils.join(
       Services.dirsvc.get("ProfD", Ci.nsIFile).path,
       REGISTRATION_FILENAME
     );
+  },
+
+  async _writeRegistration() {
+    const path = this._registrationPath;
     await IOUtils.writeJSON(path, this.registration());
     console.info(`VentoMcp: MCP server registration written to ${path}`);
+  },
+
+  async _removeRegistration() {
+    await IOUtils.remove(this._registrationPath, { ignoreAbsent: true });
   },
 };

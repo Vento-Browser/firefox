@@ -20,6 +20,55 @@ try {
 const { VentoAuth } = ChromeUtils.importESModule(
   "chrome://browser/content/vento/VentoAuth.sys.mjs"
 );
+const { VentoMcp } = ChromeUtils.importESModule(
+  "chrome://browser/content/vento/VentoMcp.sys.mjs"
+);
+
+const MCP_ENABLED_PREF = "browser.vento.mcp.enabled";
+const MCP_PORT_PREF = "browser.vento.mcp.port";
+const MCP_ALLOWED_TOOLS_PREF = "browser.vento.mcp.allowed_tools";
+// Must mirror the tool catalogue in vento_mcp/src/tools.rs.
+const MCP_TOOLS = [
+  { name: "list_tabs", label: "List tabs", desc: "Enumerate open tabs." },
+  {
+    name: "open_tab",
+    label: "Open tab",
+    desc: "Open a new tab, optionally at a URL.",
+  },
+  { name: "close_tab", label: "Close tab", desc: "Close a tab." },
+  { name: "navigate", label: "Navigate", desc: "Load a URL in a tab." },
+  {
+    name: "get_page_text",
+    label: "Read page text",
+    desc: "Read a page's visible text.",
+  },
+  {
+    name: "get_page_html",
+    label: "Read page HTML",
+    desc: "Read a page's full HTML.",
+  },
+  {
+    name: "get_page_title",
+    label: "Read page title",
+    desc: "Read a page's title.",
+  },
+  {
+    name: "click",
+    label: "Click element",
+    desc: "Click an element by CSS selector.",
+  },
+  { name: "type_text", label: "Type text", desc: "Type into a form field." },
+  {
+    name: "run_script",
+    label: "Run script",
+    desc: "Evaluate arbitrary JavaScript in a page.",
+  },
+  {
+    name: "screenshot",
+    label: "Screenshot",
+    desc: "Capture a screenshot of a tab.",
+  },
+];
 
 const VENTO_TOKEN_PREF = "browser.logingate.accessToken";
 const VENTO_API_URL_PREF = "browser.logingate.serverUrl";
@@ -46,6 +95,7 @@ const PAGE_TITLES = {
   dashboard: "Dashboard",
   users: "Users",
   groups: "User Groups",
+  mcp: "MCP Server",
   profile: "Profile",
 };
 
@@ -400,6 +450,8 @@ function navigate(page) {
     loadGroups();
   } else if (page === "profile") {
     renderProfile();
+  } else if (page === "mcp") {
+    renderMcp();
   }
 }
 
@@ -1570,6 +1622,93 @@ async function saveGroupMembers() {
   }
 }
 
+// ── MCP Server ─────────────────────────────────────────────
+
+// Parse the allowed_tools pref into the set of enabled tool names.
+// "" means every tool; "none" (a non-tool sentinel) means no tools.
+function mcpAllowedSet() {
+  const raw = Services.prefs.getStringPref(MCP_ALLOWED_TOOLS_PREF, "").trim();
+  if (raw === "") {
+    return new Set(MCP_TOOLS.map(t => t.name));
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+  );
+}
+
+function renderMcp() {
+  const enabled = Services.prefs.getBoolPref(MCP_ENABLED_PREF, false);
+  $("mcp-enabled").checked = enabled;
+  $("mcp-port").textContent = String(
+    Services.prefs.getIntPref(MCP_PORT_PREF, 9223)
+  );
+  const badge = $("mcp-status-badge");
+  badge.textContent = enabled ? "Enabled" : "Disabled";
+  badge.classList.toggle("badge-active", enabled);
+  badge.classList.toggle("badge-inactive", !enabled);
+  $("mcp-restart-hint").hidden = false;
+  renderMcpToolList();
+}
+
+function renderMcpToolList() {
+  const allowed = mcpAllowedSet();
+  const listEl = $("mcp-tools-list");
+  clearChildren(listEl);
+  for (const tool of MCP_TOOLS) {
+    const lbl = document.createElement("label");
+    lbl.className = "mcp-tool-item";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "mcp-tool-checkbox";
+    cb.value = tool.name;
+    cb.checked = allowed.has(tool.name);
+    const text = document.createElement("span");
+    text.className = "mcp-tool-text";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "mcp-tool-name";
+    nameSpan.textContent = tool.label;
+    const descSpan = document.createElement("span");
+    descSpan.className = "mcp-tool-desc";
+    descSpan.textContent = tool.desc;
+    text.appendChild(nameSpan);
+    text.appendChild(descSpan);
+    lbl.appendChild(cb);
+    lbl.appendChild(text);
+    listEl.appendChild(lbl);
+  }
+}
+
+function setMcpEnabled(enabled) {
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, enabled);
+  VentoMcp.refresh();
+  renderMcp();
+  showStatus(
+    enabled
+      ? "MCP server enabled. Restart Vento to open the listening port."
+      : "MCP server disabled."
+  );
+}
+
+function saveMcpPermissions() {
+  const checked = [
+    ...document.querySelectorAll(".mcp-tool-checkbox:checked"),
+  ].map(cb => cb.value);
+  let value;
+  if (checked.length === MCP_TOOLS.length) {
+    value = "";
+  } else if (checked.length === 0) {
+    value = "none";
+  } else {
+    value = checked.join(",");
+  }
+  Services.prefs.setStringPref(MCP_ALLOWED_TOOLS_PREF, value);
+  VentoMcp.refresh();
+  showStatus("MCP access permissions saved.");
+}
+
 // ── Profile ───────────────────────────────────────────────
 
 function renderProfile() {
@@ -1644,6 +1783,22 @@ async function init() {
   });
   $("btn-save-members").addEventListener("click", () => saveGroupMembers());
   $("btn-cancel-members").addEventListener("click", () => closeMembersDialog());
+
+  // MCP Server
+  $("mcp-enabled").addEventListener("change", e =>
+    setMcpEnabled(e.target.checked)
+  );
+  $("mcp-select-all").addEventListener("click", () => {
+    for (const cb of document.querySelectorAll(".mcp-tool-checkbox")) {
+      cb.checked = true;
+    }
+  });
+  $("mcp-select-none").addEventListener("click", () => {
+    for (const cb of document.querySelectorAll(".mcp-tool-checkbox")) {
+      cb.checked = false;
+    }
+  });
+  $("btn-save-mcp").addEventListener("click", () => saveMcpPermissions());
 
   // Profile
   $("btn-logout").addEventListener("click", () => logout());
