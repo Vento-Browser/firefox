@@ -28,6 +28,10 @@
     ></script>
     <script
       type="module"
+      src="chrome://global/content/elements/moz-page-nav.mjs"
+    ></script>
+    <script
+      type="module"
       src="chrome://browser/content/vento/vento-page.mjs"
     ></script>
   </head>
@@ -52,29 +56,47 @@
 
     <!-- Main application shell -->
     <div id="full" hidden>
-      <div id="sidebar">
-        <div id="categories">
-          <button class="category" name="dashboard">
-            <span class="category-name">Dashboard</span>
-          </button>
-          <button class="category" name="users" id="nav-users">
-            <span class="category-name">Users</span>
-          </button>
-          <button class="category" name="groups" id="nav-groups">
-            <span class="category-name">User Groups</span>
-          </button>
-          <button class="category" name="mcp">
-            <span class="category-name">MCP Server</span>
-          </button>
-          <button class="category" name="profile">
-            <span class="category-name">Profile</span>
-          </button>
-        </div>
-        <div class="spacer"></div>
-        <button class="category" id="btn-feedback">
-          <span class="category-name">Send feedback</span>
-        </button>
-      </div>
+      <moz-page-nav id="categories" heading="Vento">
+        <moz-page-nav-button
+          view="dashboard"
+          title="Dashboard"
+          iconsrc="chrome://browser/skin/home.svg"
+          >Dashboard</moz-page-nav-button
+        >
+        <moz-page-nav-button
+          view="users"
+          id="nav-users"
+          title="Users"
+          iconsrc="chrome://global/skin/icons/users.svg"
+          >Users</moz-page-nav-button
+        >
+        <moz-page-nav-button
+          view="groups"
+          id="nav-groups"
+          title="User Groups"
+          iconsrc="chrome://global/skin/icons/folder.svg"
+          >User Groups</moz-page-nav-button
+        >
+        <moz-page-nav-button
+          view="mcp"
+          title="MCP Server"
+          iconsrc="chrome://global/skin/icons/developer.svg"
+          >MCP Server</moz-page-nav-button
+        >
+        <moz-page-nav-button
+          view="profile"
+          title="Profile"
+          iconsrc="chrome://global/skin/icons/settings.svg"
+          >Profile</moz-page-nav-button
+        >
+        <moz-page-nav-button
+          slot="secondary-nav"
+          id="btn-feedback"
+          title="Send feedback"
+          iconsrc="chrome://global/skin/icons/heart.svg"
+          >Send feedback</moz-page-nav-button
+        >
+      </moz-page-nav>
 
       <div id="content">
         <div class="sticky-container">

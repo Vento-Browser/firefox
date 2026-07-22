@@ -29,9 +29,9 @@ add_task(async function test_permission_help_popover() {
 
     // The profile page always renders the current user's permissions
     // (the e2e superuser has all of them).
-    const profileLink = doc.querySelector('button.category[name="profile"]');
+    const profileLink = doc.querySelector('moz-page-nav-button[view="profile"]');
     Assert.ok(profileLink, "profile nav entry exists");
-    profileLink.click();
+    profileLink.activate();
 
     await TestUtils.waitForCondition(
       () => doc.querySelector("#profile-perms .perm-badge-clickable"),
@@ -113,7 +113,7 @@ add_task(async function test_permission_help_in_checkbox_grid() {
       "waiting for about:vento to authenticate"
     );
 
-    doc.getElementById("nav-users").click();
+    doc.getElementById("nav-users").activate();
     await TestUtils.waitForCondition(
       () =>
         [...doc.querySelectorAll("tbody tr")].some(tr =>

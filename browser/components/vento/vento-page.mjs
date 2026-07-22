@@ -432,8 +432,9 @@ function navigate(page) {
   renamingGroupId = null;
   showCreateGroupForm = false;
 
-  for (const btn of document.querySelectorAll("#categories .category")) {
-    btn.classList.toggle("selected", btn.getAttribute("name") === page);
+  const nav = $("categories");
+  if (nav.currentView !== page) {
+    nav.currentView = page;
   }
   $("page-title").textContent = PAGE_TITLES[page] ?? "Vento";
 
@@ -1741,9 +1742,12 @@ function openFeedback() {
 }
 
 async function init() {
-  for (const btn of document.querySelectorAll("#categories .category")) {
-    btn.addEventListener("click", () => navigate(btn.getAttribute("name")));
-  }
+  $("categories").addEventListener("change-view", event => {
+    const view = event.target.view;
+    if (view) {
+      navigate(view);
+    }
+  });
   $("btn-feedback").addEventListener("click", () => openFeedback());
 
   // Dashboard

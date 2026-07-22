@@ -2,24 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* ── Category icons ───────────────────────────────────────── */
-
-.category[name="dashboard"] {
-  background-image: url("chrome://browser/skin/home.svg");
-}
-
-.category[name="users"] {
-  background-image: url("chrome://global/skin/icons/edit.svg");
-}
-
-.category[name="profile"] {
-  background-image: url("chrome://global/skin/icons/settings.svg");
-}
-
-.category[name="passwords"] {
-  background-image: url("chrome://browser/skin/login.svg");
-}
-
 /* ── Widen content — aboutaddons.css caps at 664px ─────────── */
 
 #main,
@@ -830,12 +812,6 @@
   justify-content: flex-end;
   padding-block-start: var(--space-small);
   border-block-start: 1px solid var(--border-color-default, var(--border-color));
-}
-
-/* ── Groups category icon ──────────────────────────────────── */
-
-.category[name="groups"] {
-  background-image: url("chrome://global/skin/icons/folder.svg");
 }
 
 /* ── User permissions — group rows in Users table ─────────── */
