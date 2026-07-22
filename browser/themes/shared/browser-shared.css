@@ -1071,6 +1071,11 @@ menupopup::part(drop-indicator) {
   inset: 0;
   z-index: 2147483647;
   background-color: var(--background-color-canvas, Canvas);
+  /* Unlike the lock/offline overlays, this one is filled edge-to-edge by an
+     interactive form (see loginGate.html), so it must never pick up the
+     titlebar's drag region — otherwise clicking/dragging inside a field
+     moves or maximizes the window instead of focusing or selecting text. */
+  -moz-window-dragging: no-drag;
 
   & .vento-login-frame {
     width: 100%;
@@ -1088,6 +1093,7 @@ menupopup::part(drop-indicator) {
   inset: 0;
   z-index: 2147483647;
   background-color: var(--background-color-canvas, Canvas);
+  -moz-window-dragging: no-drag;
 
   & .vento-update-frame {
     width: 100%;
