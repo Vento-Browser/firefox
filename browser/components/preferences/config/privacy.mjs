@@ -495,10 +495,6 @@ if (SECURITY_PRIVACY_STATUS_CARD_ENABLED) {
       type: "bool",
     },
     {
-      id: "browser.preferences.config_warning.warningPasswordManager.dismissed",
-      type: "bool",
-    },
-    {
       id: "browser.preferences.config_warning.warningPopupBlocker.dismissed",
       type: "bool",
     },
@@ -1799,18 +1795,6 @@ if (SECURITY_PRIVACY_STATUS_CARD_ENABLED) {
 
   Preferences.addSetting(
     new WarningSettingConfig(
-      "warningPasswordManager",
-      {
-        enabled: "signon.rememberSignons",
-      },
-      ({ enabled }) => !enabled.value && !enabled.locked,
-      true,
-      "services.passwordSavingEnabled"
-    )
-  );
-
-  Preferences.addSetting(
-    new WarningSettingConfig(
       "warningPopupBlocker",
       {
         enabled: "dom.disable_open_during_load",
@@ -1880,10 +1864,6 @@ if (SECURITY_PRIVACY_STATUS_CARD_ENABLED) {
     {
       l10nId: "security-privacy-issue-warning-third-party-cookies",
       id: "warningThirdPartyCookies",
-    },
-    {
-      l10nId: "security-privacy-issue-warning-password-manager",
-      id: "warningPasswordManager",
     },
     {
       l10nId: "security-privacy-issue-warning-popup-blocker",

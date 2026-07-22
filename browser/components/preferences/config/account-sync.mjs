@@ -302,9 +302,19 @@ Preferences.addSetting({
 
 // Mozilla accounts section
 
-// Account settings are unavailable
+// Account settings are handled by the Vento Panel
 Preferences.addSetting({
   id: "fxaAccountDisabled",
+});
+Preferences.addSetting({ id: "fxaAccountDisabledGroup" });
+Preferences.addSetting({
+  id: "fxaOpenVentoPanel",
+  onUserClick(e) {
+    e.preventDefault();
+    window.browsingContext.topChromeWindow.SidebarController.show(
+      "viewVentoSidebar"
+    );
+  },
 });
 
 // Logged out of Mozilla account
@@ -827,11 +837,23 @@ SettingGroupManager.registerGroups({
         id: "fxaAccountDisabled",
         control: "moz-fieldset",
         l10nId: "account-disabled-group",
-        iconSrc: "chrome://browser/skin/preferences/mozilla-logo.svg",
-        supportPage: "managed-browser-firefox",
+        iconSrc: "chrome://branding/content/about-logo.svg",
         controlAttrs: {
           headinglevel: 2,
         },
+        items: [
+          {
+            id: "fxaAccountDisabledGroup",
+            control: "moz-box-group",
+            items: [
+              {
+                id: "fxaOpenVentoPanel",
+                control: "moz-box-link",
+                l10nId: "account-open-vento-panel",
+              },
+            ],
+          },
+        ],
       },
     ],
   },
@@ -1110,6 +1132,7 @@ SettingGroupManager.registerGroups({
     supportPage: "firefox-backup",
     iconSrc: "chrome://global/skin/icons/reload.svg",
     subcategory: "backup",
+    hidden: true,
     items: [
       {
         id: "backupSettings",

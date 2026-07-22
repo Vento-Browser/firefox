@@ -1272,7 +1272,10 @@ account-group-label2 =
 
 account-disabled-group =
     .label = Account
-    .description = Account settings are unavailable.
+    .description = Account settings are available in the Vento Panel.
+
+account-open-vento-panel =
+    .label = Open Vento Panel
 
 account-placeholder2 =
     .label = You’re not signed in
