@@ -404,15 +404,19 @@
                   <span class="info-label">Status</span>
                   <span class="badge" id="mcp-status-badge"></span>
                 </div>
-                <div class="mcp-status-item">
-                  <span class="info-label">Port</span>
-                  <span id="mcp-port"></span>
+              </div>
+              <div class="mcp-address-row" id="mcp-address-row" hidden>
+                <span class="info-label">Address</span>
+                <div class="mcp-address-value">
+                  <code id="mcp-address"></code>
+                  <moz-button
+                    type="ghost"
+                    size="small"
+                    id="btn-copy-mcp-address"
+                    >Copy</moz-button
+                  >
                 </div>
               </div>
-              <p class="form-hint" id="mcp-restart-hint" hidden>
-                The listening port only opens or closes on the next browser
-                restart.
-              </p>
             </moz-card>
 
             <moz-card heading="Access permissions">

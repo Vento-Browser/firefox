@@ -19,6 +19,10 @@ ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 9222;
 
+const PREF_VENTO_MCP_ENABLED = "browser.vento.mcp.enabled";
+const PREF_VENTO_MCP_PORT = "browser.vento.mcp.port";
+const DEFAULT_VENTO_MCP_PORT = 9223;
+
 // Adds various command-line arguments as environment variables to preserve
 // their values when the application is restarted internally.
 const ENV_ALLOW_SYSTEM_ACCESS = "MOZ_REMOTE_ALLOW_SYSTEM_ACCESS";
@@ -37,6 +41,7 @@ class RemoteAgentParentProcess {
   #host;
   #port;
   #server;
+  #startedViaVentoMcpPref;
 
   #webDriverBiDi;
 
@@ -52,6 +57,7 @@ class RemoteAgentParentProcess {
     this.#host = DEFAULT_HOST;
     this.#port = DEFAULT_PORT;
     this.#server = null;
+    this.#startedViaVentoMcpPref = false;
 
     // Supported protocols
     this.#webDriverBiDi = null;
@@ -199,14 +205,85 @@ class RemoteAgentParentProcess {
    */
   #handleVentoMcpPref() {
     try {
-      if (!Services.prefs.getBoolPref("browser.vento.mcp.enabled", false)) {
+      if (!Services.prefs.getBoolPref(PREF_VENTO_MCP_ENABLED, false)) {
         return false;
       }
-      this.#port = Services.prefs.getIntPref("browser.vento.mcp.port", 9223);
+      this.#port = Services.prefs.getIntPref(
+        PREF_VENTO_MCP_PORT,
+        DEFAULT_VENTO_MCP_PORT
+      );
       return true;
     } catch (e) {
       return false;
     }
+  }
+
+  /**
+   * Reacts to the Vento panel's MCP checkbox: starts or stops the BiDi
+   * endpoint on the spot, without requiring a browser restart.
+   *
+   * This only ever starts or stops a server that was itself started because
+   * of `browser.vento.mcp.enabled` — a session started via
+   * `--remote-debugging-port` is left alone.
+   */
+  async #onVentoMcpEnabledPrefChanged() {
+    const enabled = Services.prefs.getBoolPref(PREF_VENTO_MCP_ENABLED, false);
+    if (enabled) {
+      await this.#startVentoMcp();
+    } else {
+      await this.#stopVentoMcp();
+    }
+  }
+
+  async #startVentoMcp() {
+    if (this.running) {
+      // Already listening, e.g. via --remote-debugging-port.
+      return;
+    }
+
+    this.#port = Services.prefs.getIntPref(
+      PREF_VENTO_MCP_PORT,
+      DEFAULT_VENTO_MCP_PORT
+    );
+    this.#ensureVentoMcpInfra();
+    this.#startedViaVentoMcpPref = true;
+
+    try {
+      await this.#listen(this.#port);
+    } catch (e) {
+      this.#startedViaVentoMcpPref = false;
+      throw e;
+    }
+  }
+
+  async #stopVentoMcp() {
+    if (!this.#startedViaVentoMcpPref || !this.running) {
+      return;
+    }
+    this.#startedViaVentoMcpPref = false;
+    await this.#stop();
+  }
+
+  /**
+   * Lazily perform the one-time setup that normally happens in the
+   * `command-line-startup` handler, for the case where the MCP endpoint is
+   * enabled at runtime rather than at browser startup.
+   */
+  #ensureVentoMcpInfra() {
+    if (this.#webDriverBiDi) {
+      return;
+    }
+
+    Services.appinfo.annotateCrashReport("RemoteAgent", true);
+
+    Services.obs.addObserver(this, "before-cancel-download-prompt");
+    Services.obs.addObserver(this, "quit-application");
+    Services.obs.addObserver(this, "xpcom-shutdown");
+    Services.obs.addObserver(this, "xpcom-shutdown-threads");
+
+    lazy.RecommendedPreferences.applyPreferences();
+
+    this.#webDriverBiDi = new lazy.WebDriverBiDi(this);
   }
 
   #handleAllowHostsFlag(cmdLine) {
@@ -456,9 +533,18 @@ class RemoteAgentParentProcess {
         this.#allowOrigins = this.#handleAllowOriginsFlag(subject);
         this.allowSystemAccess = this.#handleAllowSystemAccessFlag(subject);
 
-        this.#enabled =
-          this.#handleRemoteDebuggingPortFlag(subject) ||
-          this.#handleVentoMcpPref();
+        // Watch the Vento MCP checkbox for the whole browser session so it
+        // can start or stop the endpoint on the spot (see
+        // #onVentoMcpEnabledPrefChanged), regardless of whether the endpoint
+        // happens to already be enabled at this point.
+        Services.prefs.addObserver(PREF_VENTO_MCP_ENABLED, this);
+
+        {
+          const cliRequestedEndpoint =
+            this.#handleRemoteDebuggingPortFlag(subject);
+          this.#enabled = cliRequestedEndpoint || this.#handleVentoMcpPref();
+          this.#startedViaVentoMcpPref = !cliRequestedEndpoint && this.#enabled;
+        }
 
         if (this.#enabled) {
           // Add annotation to crash report to indicate whether the
@@ -530,6 +616,14 @@ class RemoteAgentParentProcess {
       case "xpcom-shutdown":
       case "xpcom-shutdown-threads":
         Services.obs.removeObserver(this, topic);
+        break;
+
+      // The Vento panel's MCP checkbox: start or stop the endpoint without
+      // requiring a browser restart.
+      case "nsPref:changed":
+        if (data === PREF_VENTO_MCP_ENABLED) {
+          this.#onVentoMcpEnabledPrefChanged();
+        }
         break;
     }
   }

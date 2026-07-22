@@ -23,9 +23,11 @@ const { VentoAuth } = ChromeUtils.importESModule(
 const { VentoMcp } = ChromeUtils.importESModule(
   "chrome://browser/content/vento/VentoMcp.sys.mjs"
 );
+const { RemoteAgent } = ChromeUtils.importESModule(
+  "chrome://remote/content/components/RemoteAgent.sys.mjs"
+);
 
 const MCP_ENABLED_PREF = "browser.vento.mcp.enabled";
-const MCP_PORT_PREF = "browser.vento.mcp.port";
 const MCP_ALLOWED_TOOLS_PREF = "browser.vento.mcp.allowed_tools";
 // Must mirror the tool catalogue in vento_mcp/src/tools.rs.
 const MCP_TOOLS = [
@@ -1643,14 +1645,28 @@ function mcpAllowedSet() {
 function renderMcp() {
   const enabled = Services.prefs.getBoolPref(MCP_ENABLED_PREF, false);
   $("mcp-enabled").checked = enabled;
-  $("mcp-port").textContent = String(
-    Services.prefs.getIntPref(MCP_PORT_PREF, 9223)
-  );
+
+  // The badge reflects whether the endpoint is actually listening, which can
+  // briefly lag the checkbox while it comes up or goes down.
+  const listening = enabled && RemoteAgent.running;
   const badge = $("mcp-status-badge");
-  badge.textContent = enabled ? "Enabled" : "Disabled";
-  badge.classList.toggle("badge-active", enabled);
-  badge.classList.toggle("badge-inactive", !enabled);
-  $("mcp-restart-hint").hidden = false;
+  if (listening) {
+    badge.textContent = "Enabled";
+  } else if (enabled) {
+    badge.textContent = "Starting…";
+  } else {
+    badge.textContent = "Disabled";
+  }
+  badge.classList.toggle("badge-active", listening);
+  badge.classList.toggle("badge-inactive", !listening);
+
+  const addressRow = $("mcp-address-row");
+  addressRow.hidden = !listening;
+  if (listening) {
+    $("mcp-address").textContent =
+      `ws://${RemoteAgent.host}:${RemoteAgent.port}/session`;
+  }
+
   renderMcpToolList();
 }
 
@@ -1686,11 +1702,24 @@ function setMcpEnabled(enabled) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, enabled);
   VentoMcp.refresh();
   renderMcp();
-  showStatus(
-    enabled
-      ? "MCP server enabled. Restart Vento to open the listening port."
-      : "MCP server disabled."
-  );
+  showStatus(enabled ? "MCP server enabled." : "MCP server disabled.");
+}
+
+async function copyMcpAddress() {
+  const address = $("mcp-address").textContent;
+  if (!address) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(address);
+    const btn = $("btn-copy-mcp-address");
+    btn.textContent = "Copied!";
+    setTimeout(() => {
+      btn.textContent = "Copy";
+    }, 2000);
+  } catch {
+    // clipboard not available
+  }
 }
 
 function saveMcpPermissions() {
@@ -1803,6 +1832,7 @@ async function init() {
     }
   });
   $("btn-save-mcp").addEventListener("click", () => saveMcpPermissions());
+  $("btn-copy-mcp-address").addEventListener("click", () => copyMcpAddress());
 
   // Profile
   $("btn-logout").addEventListener("click", () => logout());
@@ -1824,8 +1854,18 @@ async function init() {
   const tokenObserver = () => queueRefreshAuth();
   Services.prefs.addObserver(VENTO_TOKEN_PREF, tokenObserver);
 
+  // Keep the MCP status/address in sync as the endpoint actually starts or
+  // stops, which lags the checkbox by a moment.
+  const mcpListeningObserver = () => {
+    if (activePage === "mcp") {
+      renderMcp();
+    }
+  };
+  Services.obs.addObserver(mcpListeningObserver, "remote-listening");
+
   window.addEventListener("unload", () => {
     Services.prefs.removeObserver(VENTO_TOKEN_PREF, tokenObserver);
+    Services.obs.removeObserver(mcpListeningObserver, "remote-listening");
     disconnectWs();
   });
 

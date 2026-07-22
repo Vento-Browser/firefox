@@ -659,6 +659,26 @@
   align-self: flex-start;
 }
 
+.mcp-address-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxsmall);
+  margin-block-end: var(--space-medium);
+}
+
+.mcp-address-value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+}
+
+.mcp-address-value code {
+  font-size: var(--font-size-small, 12px);
+  padding: var(--space-xxsmall) var(--space-xsmall);
+  background-color: var(--button-background-color-ghost-hover, #f0f0f4);
+  border-radius: var(--border-radius-small, 4px);
+}
+
 .mcp-tools-actions {
   display: flex;
   gap: var(--space-small);
