@@ -1,0 +1,83 @@
+name: Release Vento Browser
+
+# Publishes a Vento release: builds every platform, uploads the binaries and
+# update MARs to the GCS bucket in a versioned tree, and registers the new
+# build with the backend so its update.xml starts offering the auto-update.
+#
+# Trigger on a release tag (e.g. `v1.2.0`) or manually. The version/build_id
+# come from the built binaries (application.ini), not the tag — the tag is just
+# the release marker.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Reuse the CI build to get freshly built, signed binaries + signed MARs as
+  # run artifacts. secrets: inherit passes through the signing/notarization
+  # secrets the build steps expect.
+  build:
+    uses: ./.github/workflows/vento-build.yml
+    secrets: inherit
+
+  publish:
+    name: Publish to GCS + register update
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Everything the build jobs uploaded: dmg / installer .exe / *.mar /
+      # *.publish.json, one directory per artifact name.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Lay artifacts out into the bucket tree and rewrite each publish.json's
+      # mar_url to the final public GCS URL of the object we are about to upload.
+      - name: Stage release tree
+        run: |
+          ./.github/scripts/publish-release.sh stage \
+            --artifacts artifacts \
+            --staging gcs-staging \
+            --base-url "https://storage.googleapis.com/${GCS_BUCKET}"
+        env:
+          GCS_BUCKET: ${{ vars.GCS_BUCKET || 'vento-releases' }}
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      # Uploads the staged tree verbatim: parent: false keeps releases/ and
+      # latest/ at the bucket root instead of nesting under gcs-staging/.
+      # Bucket is Uniform access, so no per-object ACL flags (no predefinedAcl).
+      - name: Upload to GCS
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: gcs-staging
+          destination: ${{ vars.GCS_BUCKET || 'vento-releases' }}
+          parent: false
+
+      # Point the backend's update.xml at the new build. Gated on the secrets so
+      # the pipeline stays green (upload still runs) before they are configured.
+      - name: Register update with backend
+        env:
+          VENTO_BACKEND_URL: ${{ vars.VENTO_BACKEND_URL }}
+          VENTO_ADMIN_TOKEN: ${{ secrets.VENTO_ADMIN_TOKEN }}
+        run: |
+          if [ -z "${VENTO_BACKEND_URL:-}" ] || [ -z "${VENTO_ADMIN_TOKEN:-}" ]; then
+            echo "VENTO_BACKEND_URL / VENTO_ADMIN_TOKEN not set - skipping backend registration"
+            exit 0
+          fi
+          ./.github/scripts/publish-release.sh register \
+            --staging gcs-staging \
+            --backend "$VENTO_BACKEND_URL" \
+            --token "$VENTO_ADMIN_TOKEN"
