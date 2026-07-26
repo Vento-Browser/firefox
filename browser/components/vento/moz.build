@@ -10,6 +10,7 @@ JAR_MANIFESTS += ["jar.mn"]
 # its own resource subdir so it can be lifted into a standalone repo with only the
 # nsRFPService injection point (documented in the README) left behind in-tree.
 EXTRA_JS_MODULES.fingerprint += [
+    "fingerprint/VentoAudio.sys.mjs",
     "fingerprint/VentoBehavioralQuantizer.sys.mjs",
     "fingerprint/VentoFingerprintProfile.sys.mjs",
     "fingerprint/VentoInputDevices.sys.mjs",

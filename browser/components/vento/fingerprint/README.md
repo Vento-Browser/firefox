@@ -24,6 +24,22 @@ injection points in Firefox core.
   is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
   already build-constant across machines; only one optional native patch remains
   (deterministic GREASE), the rest is prefs + proxy.
+- `VentoAudio.sys.mjs` — engine-agnostic core for the **audio / AudioContext**
+  channel (section 5 of the research doc: `AudioContext.sampleRate`,
+  `destination.maxChannelCount`, base/output latency, and the classic
+  OfflineAudioContext DSP hash). The static parameters already have spoofing code
+  in Gecko gated behind their RFPTargets, so — like sections 6 and 8 — they need
+  **no native patch of their own**: `overridesFragment()` emits the
+  `+AudioSampleRate,+AudioContext` fragment and `deterministicPrefs()` hard-pins
+  `media.cubeb.force_sample_rate`. The defaults mirror what enabling those targets
+  produces (44100 Hz, 2 channels), with one honest exception pinned fleet-wide:
+  latency, whose RFP constant is OS-dependent. The DSP hash is a special case —
+  Gecko adds **no** RFP noise to WebAudio buffers, and the DynamicsCompressor +
+  ffvpx FFT are pure software, so a same-build/same-SIMD fleet is already
+  byte-identical; the only residual is cross-CPU SIMD divergence, closed
+  optionally by `perturbSamples()`, the byte-for-byte seed-derived micro-noise
+  reference a native buffer hook must reproduce. Both remainders (cross-OS latency,
+  cross-CPU SIMD) are enumerated honestly by `residualVariance()`.
 - `VentoInputDevices.sys.mjs` — engine-agnostic core for the **input devices /
   sensors / media devices** channel (section 6 of the research doc:
   maxTouchPoints/touch, `MediaDevices.enumerateDevices`, MediaCapabilities,
@@ -101,6 +117,8 @@ target to the profile value" edits enumerated in the research doc.
 | time zone / locale (§7) | `nsRFPService::GetSpoofedJSTimeZone()` / `GetSpoofedJSLocale()` (consumed at `js/xpconnect/src/nsXPConnect.cpp` `setTimeZoneOverride` / `setLocaleOverride`) | return `VentoTimeLocale.getSpoofedValues().timezone` / `.locale` per profile instead of the `Atlantic/Reykjavik` / `en-US` constants |
 | Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
 | timer precision (§7) | `nsRFPService::ReduceTimePrecisionImpl` resolution + `nsRFPService::RandomMidpoint` seed | default: pin resolution + jitter off via `deterministicPrefs()` (deterministic floor). Optional jitter-on: seed `sSecretMidpointSeed` from `timerMidpointSeedHex()`; `quantizeTimerUs()` is the reference math |
+| audio parameters (§5) | existing RFPTargets `AudioSampleRate`(39), `AudioContext`(49) + pref `media.cubeb.force_sample_rate` | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (build-constant 44100/2ch). Optional native pin of `AudioContext::OutputLatency()` (`dom/media/webaudio/AudioContext.cpp`) to `getSpoofedValues().outputLatency` for cross-OS identity — see `residualVariance()`. |
+| audio DSP hash (§5) | `dom/media/webaudio/` buffer readback (ffvpx `av_tx` in `FFTBlock.h` + `DynamicsCompressor`) | build-constant for a same-build/same-SIMD fleet (Gecko adds no RFP noise here). Optional: force the scalar ffvpx kernel, or add `VentoAudio.perturbSamples()` output to the rendered buffer to mask cross-CPU SIMD divergence — see `residualVariance()`. |
 | misc web-API surfaces (§8) | existing RFPTargets `ScreenOrientation`(4), `SpeechSynthesis`(5), `VideoElementMozFrames`(32-34), `FrameRate`(46), `UseStandinsForNativeColors`(48), `MediaError`(50), `WebVTT`(63), `IMEStyle`(81) | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native voice-registry / IME hook only for a *positive* unified value — see `residualVariance()`. |
 | input/sensors/media devices (§6) | existing RFPTargets `TouchEvents`(1), `PointerEvents`(2), `KeyboardEvents`(3), `StreamVideoFacingMode`(21), `Gamepad`(24), `MediaDevices`(37), `MediaCapabilities`(38), `NetworkConnection`(40), `DeviceSensors`(45), `CSSPointerCapabilities`(58), `DiskStorageLimit`(70), `MaxTouchPoints`(72), `MaxTouchPointsCollapse`(73) + pref `dom.battery.enabled` | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native hook only for a *positive* touch count / device shape / storage limit — see `residualVariance()`. |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
@@ -123,10 +141,10 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
   `browser/components/tests/unit/test_vento_fingerprint_determinism.js` builds
   two independent profiles from the same data ("two machines") and asserts
   byte-identical seeds, noise streams and spoofed values. Each channel has its
-  own sibling test (`test_vento_input_devices.js`, `test_vento_misc_surfaces.js`,
-  `test_vento_network_fingerprint.js`, `test_vento_fingerprint_behavioral.js`,
-  `test_vento_time_locale.js`) asserting the same two-machine identity plus that
-  channel's mitigation.
+  own sibling test (`test_vento_audio.js`, `test_vento_input_devices.js`,
+  `test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
+  `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
+  the same two-machine identity plus that channel's mitigation.
 - **E2E (hardware-dependent):** `vento-test-env/fingerprint/` — a CreepJS-style
   collector page plus a JSON snapshot comparator, run on two physically
   different stands (different GPU/OS) to catch hardware leaks the unit test
