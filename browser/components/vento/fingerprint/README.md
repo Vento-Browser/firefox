@@ -24,6 +24,27 @@ injection points in Firefox core.
   is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
   already build-constant across machines; only one optional native patch remains
   (deterministic GREASE), the rest is prefs + proxy.
+- `VentoNavigator.sys.mjs` — engine-agnostic core for the **navigator + HTTP
+  client-hints** channel (section 1 of the research doc: User-Agent JS+HTTP,
+  platform/oscpu/appVersion/buildID, hardwareConcurrency, languages/Accept-Language,
+  plugins/pdfViewer, and the derived Sec-CH-UA / `userAgentData` surface). Section 1
+  is the block where Vento's goal DIVERGES from stock RFP: RFP keeps the *real* OS
+  (`nsRFPService::GetSpoofedUserAgent` builds from the per-build `SPOOFED_UA_OS`
+  macro, `Navigator::GetPlatform` returns Win32/MacIntel/Linux per build), so two
+  RFP users on Windows vs. macOS report DIFFERENT navigator.* — the opposite of what
+  Vento needs. So — unlike the deny-by-default sections — the primary mechanism is
+  NOT `overridesFragment()` (enabling a target re-pins each machine to its own per-OS
+  constant) but `deterministicPrefs()`, which emits the `general.*.override` prefs
+  (`useragent`/`appversion`/`platform`/`oscpu`/`buildID`) that Gecko already honours
+  in `Navigator.cpp` / `nsHttpHandler` and that take ONE fleet-wide value regardless
+  of host OS, with no native patch, plus `intl.accept_languages`. `OS_DESCRIPTORS`
+  bundles the mutually-consistent tokens per OS and `consistency()` is the
+  machine-checkable assertion that UA <-> platform <-> oscpu <-> UA-CH cannot
+  contradict (a mismatch is itself a fingerprint). The genuine native remainders —
+  forcing hardwareConcurrency UP past the real core count (the pref only clamps
+  down), emitting a positive Sec-CH-UA/`userAgentData` surface (Firefox implements
+  no UA client hints), and — if the RFP master toggle is on — making `GetSpoofed*`
+  return the profile value cross-OS — are enumerated honestly by `residualVariance()`.
 - `VentoGraphics.sys.mjs` — engine-agnostic core for the **graphics** channel
   (section 3 of the research doc: Canvas 2D / WebGL / WebGPU / WebCodecs — the
   "fattest" entropy channel). Splits into four sub-surfaces. The **parameter**
@@ -172,6 +193,11 @@ target to the profile value" edits enumerated in the research doc.
 | WebGL UNMASKED vendor/renderer (§3) | existing RFPTargets `WebGLRenderInfo`(60), `WebGLVendorConstant`(78), `WebGLRendererConstant`(80) + prefs `webgl.override-unmasked-vendor`/`-renderer` | ENABLE the targets via `overridesFragment()` + pin the strings via `deterministicPrefs()`; no native patch |
 | WebGL limits / WebGPU / WebCodecs (§3) | existing RFPTargets `WebGLRenderCapability`(59), `WebGPULimits`(64), `WebGPUIsFallbackAdapter`(65), `WebGPUSubgroupSizes`(66), `WebCodecs`(71) | ENABLE the targets via `overridesFragment()`; deny/sanitize-by-default constant, no native patch. `getSpoofedValues()` is the fleet-wide reported shape |
 | screen/window/DPI CSS-media (§2) | existing RFPTargets `ScreenPixelDepth`(29), `ScreenRect`(30), `ScreenAvailRect`(31), `WindowOuterSize`(26), `WindowScreenXY`(27), `WindowInnerScreenXY`(28), `RoundWindowSize`(47), `WindowDevicePixelRatio`(41), `CSSDeviceSize`(52), `CSSColorInfo`(53), `CSSResolution`(54), `CSSVideoDynamicRange`(57), `CSSPrefersColorScheme`(6), `CSSPrefersReducedMotion`(7), `CSSPrefersContrast`(8), `CSSPrefersReducedTransparency`(55), `CSSInvertedColors`(56), `SiteSpecificZoom`(61) + pref `browser.zoom.siteSpecific` | ENABLE the targets via `VentoScreenWindow.overridesFragment()` + pin `browser.zoom.siteSpecific=false` via `deterministicPrefs()`. CSS-media half is build-constant, no native patch; the geometry half reports the letterboxed inner-window rect — a *positive* fixed profile screen/DPR/window is the native remainder in `residualVariance()` (`nsScreen::GetRect`/`GetAvailRect`, `nsRFPService::GetDevicePixelRatioAtZoom`, `nsGlobalWindowOuter` geometry) |
+| navigator UA/platform/oscpu/appVersion/buildID (§1) | `general.useragent.override` / `.appversion.override` / `.platform.override` / `.oscpu.override` / `.buildID.override` (honoured in `Navigator.cpp` + `nsHttpHandler::UserAgent`) — RFPTargets `NavigatorUserAgent`(19), `HttpUserAgent`(25), `NavigatorAppVersion`(14), `NavigatorPlatform`(18), `NavigatorOscpu`(17), `NavigatorBuildID`(15) | pin the fleet-wide value via `VentoNavigator.deterministicPrefs()` (one value across all OS — the cross-OS identity stock RFP can't give). Optional native remainder (RFP master toggle on): make `nsRFPService::GetSpoofedUserAgent` / `Navigator::GetPlatform`/`GetOscpu`/`GetAppVersion` return `getSpoofedValues()` instead of the per-OS `SPOOFED_*` macro — see `residualVariance()` |
+| navigator.hardwareConcurrency (§1) | `dom.maxHardwareConcurrency` clamp in `RuntimeService::ClampedHardwareConcurrency` + RFPTargets `NavigatorHWConcurrency`(16), `NavigatorHWConcurrencyTiered`(74) | pin via `deterministicPrefs()` (clamps DOWN only). A value ABOVE the real core count is the native remainder (`residualVariance()`) |
+| navigator languages / Accept-Language (§1) | `intl.accept_languages` (drives `LocaleService::GetAcceptLanguages` + `navigator.languages`) + RFPTarget `JSLocale`(13) | pin via `deterministicPrefs()`; one value across all OS |
+| navigator.pdfViewerEnabled / plugins / mimeTypes (§1) | `pdfjs.disabled` gates `Navigator::PdfViewerEnabled`; plugin shape is a build-constant + RFPTarget `PdfjsSpoof`(20) | pin via `deterministicPrefs()`; the 5-entry PDF plugin shape is already OS-independent |
+| UA client hints `Sec-CH-UA-*` / `navigator.userAgentData` (§1) | none — Firefox implements no UA client hints | default (absent) is already fleet-uniform; a positive surface needs a native emitter seeded from `VentoNavigator.clientHints()` — see `residualVariance()` |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
 | time zone / locale (§7) | `nsRFPService::GetSpoofedJSTimeZone()` / `GetSpoofedJSLocale()` (consumed at `js/xpconnect/src/nsXPConnect.cpp` `setTimeZoneOverride` / `setLocaleOverride`) | return `VentoTimeLocale.getSpoofedValues().timezone` / `.locale` per profile instead of the `Atlantic/Reykjavik` / `en-US` constants |
 | Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
@@ -205,7 +231,8 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
   byte-identical seeds, noise streams and spoofed values. Each channel has its
   own sibling test (`test_vento_audio.js`, `test_vento_fonts.js`,
   `test_vento_graphics.js`, `test_vento_input_devices.js`,
-  `test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
+  `test_vento_misc_surfaces.js`, `test_vento_navigator.js`,
+  `test_vento_network_fingerprint.js`,
   `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
   the same two-machine identity plus that channel's mitigation.
 - **E2E (hardware-dependent):** `vento-test-env/fingerprint/` — a CreepJS-style

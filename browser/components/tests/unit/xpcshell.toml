@@ -66,6 +66,8 @@ run-if = [
 
 ["test_vento_misc_surfaces.js"]
 
+["test_vento_navigator.js"]
+
 ["test_vento_network_fingerprint.js"]
 
 ["test_vento_proxy_enforcement.js"]

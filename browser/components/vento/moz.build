@@ -17,6 +17,7 @@ EXTRA_JS_MODULES.fingerprint += [
     "fingerprint/VentoGraphics.sys.mjs",
     "fingerprint/VentoInputDevices.sys.mjs",
     "fingerprint/VentoMiscSurfaces.sys.mjs",
+    "fingerprint/VentoNavigator.sys.mjs",
     "fingerprint/VentoScreenWindow.sys.mjs",
     "fingerprint/VentoTimeLocale.sys.mjs",
 ]
