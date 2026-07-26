@@ -24,6 +24,20 @@ injection points in Firefox core.
   is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
   already build-constant across machines; only one optional native patch remains
   (deterministic GREASE), the rest is prefs + proxy.
+- `VentoMiscSurfaces.sys.mjs` — engine-agnostic core for the **misc web-API
+  surfaces** channel (section 8 of the research doc: SpeechSynthesis voices,
+  ScreenOrientation, `<video>` moz-frame counters / playback quality, WebVTT,
+  FrameRate/vsync, IMEStyle, MediaError message, native colors). Unlike canvas/
+  WebGL, every one of these already has spoofing code in Gecko gated behind its
+  RFPTarget, so section 8 needs **no native patch of its own**: it is closed by
+  ENABLING the right targets. `overridesFragment()` emits the
+  `+ScreenOrientation,+SpeechSynthesis,...` fragment to merge into
+  `privacy.fingerprintingProtection.overrides`, and `deterministicPrefs()` pins
+  the two genuine value prefs (`layout.frame_rate`,
+  `ui.use_standins_for_native_colors`). The only native remainder — needed solely
+  if a profile wants a *positive* value (a non-empty unified voice list / a
+  specific IME style) instead of the empty/hidden deny-by-default — is enumerated
+  honestly by `residualVariance()`.
 - `VentoBehavioralQuantizer.sys.mjs` — engine-agnostic core for the
   **behavioral** channel (section 10 of the research doc: mouse/keyboard/timing,
   level 1). Derives seed-based grid phases and quantizes event timestamps and
@@ -56,6 +70,7 @@ target to the profile value" edits enumerated in the research doc.
 |---|---|---|
 | canvas/webgl/audio noise | `nsRFPService::GetBrowsingSessionKey` | `surfaceSeedHex(...)` |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
+| misc web-API surfaces (§8) | existing RFPTargets `ScreenOrientation`(4), `SpeechSynthesis`(5), `VideoElementMozFrames`(32-34), `FrameRate`(46), `UseStandinsForNativeColors`(48), `MediaError`(50), `WebVTT`(63), `IMEStyle`(81) | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native voice-registry / IME hook only for a *positive* unified value — see `residualVariance()`. |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
 | pointer coordinates (behavioral) | `MouseEvent` screen-point path (RFPTarget `MouseEventScreenPoint`) | `quantizeCoord(...)` grid coarsening |
 | TLS GREASE bytes (raw JA3 only) | `tls13_ClientSetupGrease` (`security/nss/lib/ssl/tls13con.c`) | deterministic GREASE seed from the profile (only needed for byte-identical raw JA3; JA4 already ignores GREASE) |

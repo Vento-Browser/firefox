@@ -183,6 +183,23 @@ software-путь для canvas-текста) — даёт байт-в-байт 
 | MediaError message | `MediaError`(50) — текст ошибки декодера | Унифицировать. | Низкая | Средняя |
 | Native colors | `UseStandinsForNativeColors`(48) — системная тема | RFP уже даёт стандартные цвета. | Низкая | Высокая |
 
+**Реализация (этап 2):** движко-независимое ядро
+`fingerprint/VentoMiscSurfaces.sys.mjs`. Ключевая находка по разбору дерева
+(`RFPTargets.inc` + `nsRFPService.cpp`): у ВСЕХ поверхностей §8 в Gecko уже есть
+спуф-код, завязанный на соответствующий RFPTarget, и при его включении значение
+форсится в билд-константу (пустой список голосов, обнулённые счётчики кадров,
+скрытые WebVTT/IME, пустой `MediaError.message`, стандартные цвета, фикс. 60 Гц,
+`landscape-primary`/0°). Билд-константа одинакова на всех машинах ⇒ в отличие от
+canvas/WebGL (§3) **свой нативный патч §8 не нужен**: канал закрывается
+**включением** нужных таргетов через `privacy.fingerprintingProtection.overrides`
+(формат `+Target`/`-Target`, парсер `nsRFPService::CreateOverridesFromText`).
+`overridesFragment()` выдаёт этот фрагмент, `deterministicPrefs()` добавляет два
+настоящих pref-значения (`layout.frame_rate`, `ui.use_standins_for_native_colors`).
+Единственный необязательный нативный остаток — если профиль хочет *позитивное*
+значение (непустой унифицированный список голосов / конкретный IME-стиль) вместо
+deny-by-default пустого/скрытого — честно перечислен в `residualVariance()`.
+Детерминизм и покрытие всех таргетов проверяет `test_vento_misc_surfaces.js`.
+
 ---
 
 ## 9. Сетевые/протокольные отпечатки (вне JS — важно не забыть!)
