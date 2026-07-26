@@ -24,6 +24,28 @@ injection points in Firefox core.
   is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
   already build-constant across machines; only one optional native patch remains
   (deterministic GREASE), the rest is prefs + proxy.
+- `VentoGraphics.sys.mjs` — engine-agnostic core for the **graphics** channel
+  (section 3 of the research doc: Canvas 2D / WebGL / WebGPU / WebCodecs — the
+  "fattest" entropy channel). Splits into four sub-surfaces. The **parameter**
+  surfaces (WebGL `getParameter` limits + UNMASKED vendor/renderer, WebGPU limits/
+  `isFallbackAdapter`/subgroup sizes, WebCodecs configs) close like sections 6/8:
+  `overridesFragment()` enables their targets and `deterministicPrefs()` pins
+  `webgl.override-unmasked-vendor`/`-renderer` — no native patch of their own. The
+  **pixel-readback** surface (canvas 2D + WebGL `readPixels`) is the crux and the
+  reason this PoC exists: Firefox already noises readback, but keyed off a RANDOM
+  session UUID, so `canvasSeedHex()`/`webglSeedHex()` replace it with a
+  deterministic seed (the ONE core patch, at `nsRFPService::GetBrowsingSessionKey`,
+  below). That is necessary but NOT sufficient, because the noise rides on a
+  hardware-dependent base render — so `strategyVerdict()` records the decision:
+  **route (b), a unified software render for readback** (`softwareRender` ->
+  `gfx.canvas.accelerated=false`, `webgl.forbid-hardware=true`,
+  `gfx.webrender.software=true`) makes the base bytes identical fleet-wide, and the
+  deterministic seed-noise (`readbackNoise()`/`perturbPixels()`, the byte-for-byte
+  reference a native hook must reproduce) then rides identically on top. Route (a)
+  (noise only) is kept as the cheaper, non-100% option. Hardware rendering stays on
+  for on-screen drawing; the honest costs (software-render perf/parity, canvas-text
+  glyph metrics shared with section 4, cross-CPU software SIMD) are enumerated in
+  `residualVariance()`. The deep write-up is `GRAPHICS_FINGERPRINT_POC.md`.
 - `VentoAudio.sys.mjs` — engine-agnostic core for the **audio / AudioContext**
   channel (section 5 of the research doc: `AudioContext.sampleRate`,
   `destination.maxChannelCount`, base/output latency, and the classic
@@ -128,7 +150,10 @@ target to the profile value" edits enumerated in the research doc.
 
 | Surface | Core hook | Replace with |
 |---|---|---|
-| canvas/webgl/audio noise | `nsRFPService::GetBrowsingSessionKey` | `surfaceSeedHex(...)` |
+| canvas/webgl/audio noise KEY (§3) | `nsRFPService::GetBrowsingSessionKey` | `VentoGraphics.canvasSeedHex(origin)` / `webglSeedHex(origin)` (deterministic seed replaces the random session UUID) — the one core patch |
+| graphics: readback BASE render (§3) | none pref-closeable to 100% | route (b): `VentoGraphics.deterministicPrefs()` forces software canvas/WebGL/WebRender (`gfx.canvas.accelerated=false`, `webgl.forbid-hardware=true`, `gfx.webrender.software=true`) so the pre-noise bytes are fleet-identical; cross-OS identity needs one shared software rasterizer build — see `residualVariance()` |
+| WebGL UNMASKED vendor/renderer (§3) | existing RFPTargets `WebGLRenderInfo`(60), `WebGLVendorConstant`(78), `WebGLRendererConstant`(80) + prefs `webgl.override-unmasked-vendor`/`-renderer` | ENABLE the targets via `overridesFragment()` + pin the strings via `deterministicPrefs()`; no native patch |
+| WebGL limits / WebGPU / WebCodecs (§3) | existing RFPTargets `WebGLRenderCapability`(59), `WebGPULimits`(64), `WebGPUIsFallbackAdapter`(65), `WebGPUSubgroupSizes`(66), `WebCodecs`(71) | ENABLE the targets via `overridesFragment()`; deny/sanitize-by-default constant, no native patch. `getSpoofedValues()` is the fleet-wide reported shape |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
 | time zone / locale (§7) | `nsRFPService::GetSpoofedJSTimeZone()` / `GetSpoofedJSLocale()` (consumed at `js/xpconnect/src/nsXPConnect.cpp` `setTimeZoneOverride` / `setLocaleOverride`) | return `VentoTimeLocale.getSpoofedValues().timezone` / `.locale` per profile instead of the `Atlantic/Reykjavik` / `en-US` constants |
 | Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
@@ -161,7 +186,7 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
   two independent profiles from the same data ("two machines") and asserts
   byte-identical seeds, noise streams and spoofed values. Each channel has its
   own sibling test (`test_vento_audio.js`, `test_vento_fonts.js`,
-  `test_vento_input_devices.js`,
+  `test_vento_graphics.js`, `test_vento_input_devices.js`,
   `test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
   `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
   the same two-machine identity plus that channel's mitigation.

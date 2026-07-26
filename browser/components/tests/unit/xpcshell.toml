@@ -60,6 +60,8 @@ run-if = [
 
 ["test_vento_fonts.js"]
 
+["test_vento_graphics.js"]
+
 ["test_vento_input_devices.js"]
 
 ["test_vento_misc_surfaces.js"]

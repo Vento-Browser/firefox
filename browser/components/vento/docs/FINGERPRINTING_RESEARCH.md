@@ -115,6 +115,30 @@ software-путь для canvas-текста) — даёт байт-в-байт 
 надёжнее (б) хотя бы для отпечатко-снимающих операций (readback), оставляя
 аппаратный рендер для обычной отрисовки. Требует отдельного PoC.
 
+**Реализация / PoC (этап 2):** engine-agnostic ядро —
+`fingerprint/VentoGraphics.sys.mjs` (тест `test_vento_graphics.js`, deep-разбор
+`fingerprint/GRAPHICS_FINGERPRINT_POC.md`). Канал разбит на подповерхности с
+разной ценой. **Параметрические** (WebGL `getParameter`/UNMASKED vendor+renderer,
+WebGPU лимиты/`isFallbackAdapter`/subgroup, WebCodecs) закрываются как §6/§8 —
+`overridesFragment()` включает таргеты 9/59/60/64-66/71/75/76/78/80, а
+`deterministicPrefs()` прибивает vendor/renderer через
+`webgl.override-unmasked-vendor`/`-renderer`; своего нативного патча им не нужно.
+**Readback** (canvas 2D / `readPixels`) — крайний случай: сделать ключ шума
+детерминированным (замена случайного session-UUID в
+`nsRFPService::GetBrowsingSessionKey` на `canvasSeedHex`/`webglSeedHex`) —
+единственная и главная нативная врезка, но её НЕДОСТАТОЧНО: шум ложится поверх
+аппаратно-зависимого базового рендера. **Вердикт PoC (`strategyVerdict()`):
+для readback выбран путь (б)** — унифицированный софт-рендер
+(`softwareRender` → `gfx.canvas.accelerated=false`, `webgl.forbid-hardware=true`,
+`gfx.webrender.software=true`), дающий байт-в-байт одинаковую базу на всех
+машинах, а детерминированный seed-шум (`readbackNoise()`/`perturbPixels()` —
+байт-в-байт эталон для нативного хука) ложится сверху уже идентично. Путь (а)
+(только шум) оставлен как более дешёвая, но не 100%-я опция. Аппаратный рендер
+сохраняется для экранной отрисовки; софт-путь форсируется только на readback.
+Честные остатки — цена софт-рендера (perf/визуальный паритет), метрики глифов
+canvas-текста (общий корень с §4) и низкобитная SIMD-расходимость софт-растера —
+перечислены в `residualVariance()`.
+
 ---
 
 ## 4. Шрифты
