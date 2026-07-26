@@ -12,6 +12,7 @@ JAR_MANIFESTS += ["jar.mn"]
 EXTRA_JS_MODULES.fingerprint += [
     "fingerprint/VentoBehavioralQuantizer.sys.mjs",
     "fingerprint/VentoFingerprintProfile.sys.mjs",
+    "fingerprint/VentoInputDevices.sys.mjs",
     "fingerprint/VentoMiscSurfaces.sys.mjs",
     "fingerprint/VentoTimeLocale.sys.mjs",
 ]

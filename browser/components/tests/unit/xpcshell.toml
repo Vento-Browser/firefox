@@ -56,6 +56,8 @@ run-if = [
 
 ["test_vento_fingerprint_determinism.js"]
 
+["test_vento_input_devices.js"]
+
 ["test_vento_misc_surfaces.js"]
 
 ["test_vento_network_fingerprint.js"]

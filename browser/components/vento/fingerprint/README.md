@@ -24,6 +24,23 @@ injection points in Firefox core.
   is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
   already build-constant across machines; only one optional native patch remains
   (deterministic GREASE), the rest is prefs + proxy.
+- `VentoInputDevices.sys.mjs` — engine-agnostic core for the **input devices /
+  sensors / media devices** channel (section 6 of the research doc:
+  maxTouchPoints/touch, `MediaDevices.enumerateDevices`, MediaCapabilities,
+  Gamepad, DeviceSensors, pointer/keyboard/CSS-pointer capabilities,
+  NetworkConnection, `StorageManager.estimate` quota, Battery). Like section 8,
+  every one of these surfaces already has spoofing code in Gecko gated behind its
+  RFPTarget, so section 6 needs **no native patch of its own**: it is closed by
+  ENABLING the right targets. `overridesFragment()` emits the
+  `+TouchEvents,+MaxTouchPoints,...` fragment to merge into
+  `privacy.fingerprintingProtection.overrides`, and `deterministicPrefs()` pins
+  the one genuine value pref (`dom.battery.enabled`, since Battery is not an
+  RFPTarget). The defaults mirror exactly what enabling those targets produces —
+  a mouse-only, no-touch, no-sensors, no-gamepad desktop with a single
+  camera/mic/speaker, `"unknown"` connection and a 50 GiB quota. The only native
+  remainders — needed solely if a profile wants a *positive* value (a non-zero
+  touch count, a specific device-count shape, a custom storage limit) instead of
+  the deny-by-default constant — are enumerated honestly by `residualVariance()`.
 - `VentoMiscSurfaces.sys.mjs` — engine-agnostic core for the **misc web-API
   surfaces** channel (section 8 of the research doc: SpeechSynthesis voices,
   ScreenOrientation, `<video>` moz-frame counters / playback quality, WebVTT,
@@ -85,6 +102,7 @@ target to the profile value" edits enumerated in the research doc.
 | Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
 | timer precision (§7) | `nsRFPService::ReduceTimePrecisionImpl` resolution + `nsRFPService::RandomMidpoint` seed | default: pin resolution + jitter off via `deterministicPrefs()` (deterministic floor). Optional jitter-on: seed `sSecretMidpointSeed` from `timerMidpointSeedHex()`; `quantizeTimerUs()` is the reference math |
 | misc web-API surfaces (§8) | existing RFPTargets `ScreenOrientation`(4), `SpeechSynthesis`(5), `VideoElementMozFrames`(32-34), `FrameRate`(46), `UseStandinsForNativeColors`(48), `MediaError`(50), `WebVTT`(63), `IMEStyle`(81) | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native voice-registry / IME hook only for a *positive* unified value — see `residualVariance()`. |
+| input/sensors/media devices (§6) | existing RFPTargets `TouchEvents`(1), `PointerEvents`(2), `KeyboardEvents`(3), `StreamVideoFacingMode`(21), `Gamepad`(24), `MediaDevices`(37), `MediaCapabilities`(38), `NetworkConnection`(40), `DeviceSensors`(45), `CSSPointerCapabilities`(58), `DiskStorageLimit`(70), `MaxTouchPoints`(72), `MaxTouchPointsCollapse`(73) + pref `dom.battery.enabled` | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native hook only for a *positive* touch count / device shape / storage limit — see `residualVariance()`. |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
 | pointer coordinates (behavioral) | `MouseEvent` screen-point path (RFPTarget `MouseEventScreenPoint`) | `quantizeCoord(...)` grid coarsening |
 | TLS GREASE bytes (raw JA3 only) | `tls13_ClientSetupGrease` (`security/nss/lib/ssl/tls13con.c`) | deterministic GREASE seed from the profile (only needed for byte-identical raw JA3; JA4 already ignores GREASE) |
@@ -105,9 +123,10 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
   `browser/components/tests/unit/test_vento_fingerprint_determinism.js` builds
   two independent profiles from the same data ("two machines") and asserts
   byte-identical seeds, noise streams and spoofed values. Each channel has its
-  own sibling test (`test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
-  `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
-  the same two-machine identity plus that channel's mitigation.
+  own sibling test (`test_vento_input_devices.js`, `test_vento_misc_surfaces.js`,
+  `test_vento_network_fingerprint.js`, `test_vento_fingerprint_behavioral.js`,
+  `test_vento_time_locale.js`) asserting the same two-machine identity plus that
+  channel's mitigation.
 - **E2E (hardware-dependent):** `vento-test-env/fingerprint/` — a CreepJS-style
   collector page plus a JSON snapshot comparator, run on two physically
   different stands (different GPU/OS) to catch hardware leaks the unit test
