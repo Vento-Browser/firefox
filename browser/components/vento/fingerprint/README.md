@@ -184,6 +184,18 @@ function of `(profileSeed, surface, origin)`. That is the one core patch; the
 rest of the surfaces (navigator/screen/timezone/fonts...) are "pin the RFP
 target to the profile value" edits enumerated in the research doc.
 
+**Status: IMPLEMENTED.** The patch is isolated in `native/VentoFingerprintSeed.{h,cpp}`
+(exported as `mozilla/vento/VentoFingerprintSeed.h`, compiled into libxul). The
+only in-tree change to Firefox core is a single call in
+`nsRFPService::GetBrowsingSessionKey`: when the pref `vento.fingerprint.seed` is
+non-empty it derives the `nsID` session key from that seed instead of
+`nsID::GenerateUUID()`; empty seed keeps stock random behaviour. The derivation
+is a byte-for-byte port of `VentoFingerprintProfile.sys.mjs` (`sessionKeyId()`),
+locked to the JS reference by shared golden vectors in
+`native/gtest/TestVentoFingerprintSeed.cpp` and
+`tests/unit/test_vento_fingerprint_determinism.js`. To lift the feature into a
+standalone repo, remove the `native/` dir and revert that one call.
+
 ## Planned injection points (kept minimal & documented for extraction)
 
 | Surface | Core hook | Replace with |

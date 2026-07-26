@@ -67,6 +67,15 @@ pref("browser.vento.mcp.port", 9223);
 // Managed from the MCP Server section of the Vento panel.
 pref("browser.vento.mcp.allowed_tools", "");
 
+// Vento deterministic-identity fingerprint seed (see
+// browser/components/vento/fingerprint/README.md). Master secret string for the
+// fingerprint profile: when non-empty it replaces Firefox's random per-session
+// canvas/WebGL/audio salt (nsRFPService::GetBrowsingSessionKey) with a
+// seed-derived key, so machines sharing a profile produce byte-identical noise.
+// Empty means stock random-per-session behaviour. Set per profile by the Vento
+// panel / backend, not here.
+pref("vento.fingerprint.seed", "");
+
 // ── Background Mozilla/Google connections ──────────────────────────────────
 // Rationale and the full connection inventory: docs/mozilla-connections-audit.md
 // Everything that stays enabled goes through vento_proxy anyway.

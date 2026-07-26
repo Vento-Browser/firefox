@@ -41,6 +41,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SSE.h"
 #include "mozilla/TextEvents.h"
+#include "mozilla/vento/VentoFingerprintSeed.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/CanvasRenderingContextHelper.h"
 #include "mozilla/dom/CanvasRenderingContext2D.h"
@@ -1357,8 +1358,15 @@ nsresult nsRFPService::GetBrowsingSessionKey(
     return NS_OK;
   }
 
-  nsID& newKey =
-      mBrowsingSessionKeys.InsertOrUpdate(oaSuffix, nsID::GenerateUUID());
+  // Vento deterministic-identity injection point (see
+  // browser/components/vento/fingerprint/README.md and VentoFingerprintSeed.h):
+  // when a Vento profile seed is configured, salt canvas/WebGL/audio
+  // randomization with a seed-derived key so the noise is byte-identical across
+  // machines that share a profile. With no seed set this returns Nothing and we
+  // keep Firefox's stock random per-session UUID.
+  Maybe<nsID> ventoKey = vento::DeterministicBrowsingSessionKey(oaSuffix);
+  nsID& newKey = mBrowsingSessionKeys.InsertOrUpdate(
+      oaSuffix, ventoKey.isSome() ? ventoKey.ref() : nsID::GenerateUUID());
 
   MOZ_LOG(gResistFingerprintingLog, LogLevel::Debug,
           ("Generated browsing session key: %s\n", newKey.ToString().get()));

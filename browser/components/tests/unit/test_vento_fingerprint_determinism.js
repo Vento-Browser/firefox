@@ -64,6 +64,50 @@ add_task(function test_surface_seeds_identical_across_machines() {
   }
 });
 
+add_task(function test_session_key_identical_across_machines() {
+  // The browsing-session key is the value the native injection point
+  // (nsRFPService::GetBrowsingSessionKey) installs in place of the random
+  // per-session UUID. Two machines with the same seed must derive the same key.
+  const m1 = machine(SEED);
+  const m2 = machine(SEED);
+  for (const origin of ORIGINS) {
+    Assert.equal(
+      m1.sessionKeyId(origin),
+      m2.sessionKeyId(origin),
+      `session key identical on two machines for ${origin}`
+    );
+    Assert.ok(
+      /^\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}$/.test(
+        m1.sessionKeyId(origin)
+      ),
+      "session key is a well-formed nsID string"
+    );
+  }
+  Assert.notEqual(
+    m1.sessionKeyId("https://amazon.com"),
+    m1.sessionKeyId("https://example.org"),
+    "session key differs per origin"
+  );
+});
+
+add_task(function test_session_key_matches_native_golden() {
+  // Golden vectors shared with the C++ gtest
+  // (browser/components/vento/fingerprint/native/gtest/TestVentoFingerprintSeed.cpp).
+  // If these diverge, the JS reference and the native injection point disagree.
+  Assert.equal(
+    new VentoFingerprintProfile({ seed: "test-seed" }).sessionKeyId(""),
+    "{3539ee32-9915-7812-bd79-20631155b643}",
+    "session key matches native golden (test-seed)"
+  );
+  Assert.equal(
+    new VentoFingerprintProfile({
+      seed: "vento-default-profile-v1",
+    }).sessionKeyId("^userContextId=1"),
+    "{cb55f5f4-50c4-6968-2700-bafdbc912661}",
+    "session key matches native golden (default profile)"
+  );
+});
+
 add_task(function test_noise_streams_identical_across_machines() {
   const m1 = machine(SEED);
   const m2 = machine(SEED);
