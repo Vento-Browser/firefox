@@ -13,6 +13,7 @@ EXTRA_JS_MODULES.fingerprint += [
     "fingerprint/VentoBehavioralQuantizer.sys.mjs",
     "fingerprint/VentoFingerprintProfile.sys.mjs",
     "fingerprint/VentoMiscSurfaces.sys.mjs",
+    "fingerprint/VentoTimeLocale.sys.mjs",
 ]
 
 EXTRA_JS_MODULES.fingerprint.network += [

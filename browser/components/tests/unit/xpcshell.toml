@@ -65,3 +65,5 @@ run-if = [
 ["test_vento_secure_autofill.js"]
 
 ["test_vento_session_vault.js"]
+
+["test_vento_time_locale.js"]

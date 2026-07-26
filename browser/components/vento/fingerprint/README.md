@@ -38,6 +38,17 @@ injection points in Firefox core.
   if a profile wants a *positive* value (a non-empty unified voice list / a
   specific IME style) instead of the empty/hidden deny-by-default — is enumerated
   honestly by `residualVariance()`.
+- `VentoTimeLocale.sys.mjs` — engine-agnostic core for the **time / timers / TZ /
+  locale / Math** channel (section 7 of the research doc). Math (fdlibm) is a
+  build-constant closed for free by enabling `JSMathFdlibm`; the timer reducer is
+  pinned to a deterministic floor (`deterministicPrefs()` sets the resolution and
+  turns the random-seeded jitter OFF), and TZ/locale default to exactly what RFP
+  forces (Reykjavik / en-US) so an un-configured install is byte-identical to RFP.
+  A real profile wants its own zone/locale (to match the `vento_proxy` egress geo)
+  and, optionally, deterministic jitter-on: those three small native remainders —
+  two return-value swaps in `nsRFPService` and one seed swap in `RandomMidpoint` —
+  are enumerated honestly by `residualVariance()`, and `quantizeTimerUs()` is the
+  byte-for-byte reference the native jitter path must match.
 - `VentoBehavioralQuantizer.sys.mjs` — engine-agnostic core for the
   **behavioral** channel (section 10 of the research doc: mouse/keyboard/timing,
   level 1). Derives seed-based grid phases and quantizes event timestamps and
@@ -70,6 +81,9 @@ target to the profile value" edits enumerated in the research doc.
 |---|---|---|
 | canvas/webgl/audio noise | `nsRFPService::GetBrowsingSessionKey` | `surfaceSeedHex(...)` |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
+| time zone / locale (§7) | `nsRFPService::GetSpoofedJSTimeZone()` / `GetSpoofedJSLocale()` (consumed at `js/xpconnect/src/nsXPConnect.cpp` `setTimeZoneOverride` / `setLocaleOverride`) | return `VentoTimeLocale.getSpoofedValues().timezone` / `.locale` per profile instead of the `Atlantic/Reykjavik` / `en-US` constants |
+| Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
+| timer precision (§7) | `nsRFPService::ReduceTimePrecisionImpl` resolution + `nsRFPService::RandomMidpoint` seed | default: pin resolution + jitter off via `deterministicPrefs()` (deterministic floor). Optional jitter-on: seed `sSecretMidpointSeed` from `timerMidpointSeedHex()`; `quantizeTimerUs()` is the reference math |
 | misc web-API surfaces (§8) | existing RFPTargets `ScreenOrientation`(4), `SpeechSynthesis`(5), `VideoElementMozFrames`(32-34), `FrameRate`(46), `UseStandinsForNativeColors`(48), `MediaError`(50), `WebVTT`(63), `IMEStyle`(81) | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native voice-registry / IME hook only for a *positive* unified value — see `residualVariance()`. |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
 | pointer coordinates (behavioral) | `MouseEvent` screen-point path (RFPTarget `MouseEventScreenPoint`) | `quantizeCoord(...)` grid coarsening |
@@ -90,7 +104,10 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
 - **Unit / CI (deterministic):**
   `browser/components/tests/unit/test_vento_fingerprint_determinism.js` builds
   two independent profiles from the same data ("two machines") and asserts
-  byte-identical seeds, noise streams and spoofed values.
+  byte-identical seeds, noise streams and spoofed values. Each channel has its
+  own sibling test (`test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
+  `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
+  the same two-machine identity plus that channel's mitigation.
 - **E2E (hardware-dependent):** `vento-test-env/fingerprint/` — a CreepJS-style
   collector page plus a JSON snapshot comparator, run on two physically
   different stands (different GPU/OS) to catch hardware leaks the unit test
