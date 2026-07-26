@@ -14,6 +14,10 @@ EXTRA_JS_MODULES.fingerprint += [
     "fingerprint/VentoFingerprintProfile.sys.mjs",
 ]
 
+EXTRA_JS_MODULES.fingerprint.network += [
+    "fingerprint/network/VentoNetworkFingerprint.sys.mjs",
+]
+
 BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 with Files("**"):

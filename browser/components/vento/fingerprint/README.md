@@ -14,6 +14,16 @@ injection points in Firefox core.
   derivation can be re-implemented byte-for-byte in C++/Rust at the injection
   points below and produce identical output. This is what makes "identical
   fingerprint across two machines" a property we can unit-test in CI.
+- `network/VentoNetworkFingerprint.sys.mjs` — engine-agnostic core for the
+  **network/protocol** channel (section 9 of the research doc: TLS JA3/JA4,
+  HTTP/2 & HTTP/3 Akamai fingerprint, header order, IP/ASN). Turns a network
+  profile into a deterministic pref map (`deterministicPrefs()`) that makes every
+  Vento machine emit an identical ClientHello + h2 fingerprint, plus an honest
+  list of what prefs cannot fix (`residualVariance()`). The deep PoC write-up —
+  what a unified build + `vento_proxy` already gives vs. what needs an NSS patch —
+  is in `network/NETWORK_FINGERPRINT_POC.md`. Verdict: the wire fingerprint is
+  already build-constant across machines; only one optional native patch remains
+  (deterministic GREASE), the rest is prefs + proxy.
 - `VentoBehavioralQuantizer.sys.mjs` — engine-agnostic core for the
   **behavioral** channel (section 10 of the research doc: mouse/keyboard/timing,
   level 1). Derives seed-based grid phases and quantizes event timestamps and
@@ -48,6 +58,9 @@ target to the profile value" edits enumerated in the research doc.
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
 | pointer coordinates (behavioral) | `MouseEvent` screen-point path (RFPTarget `MouseEventScreenPoint`) | `quantizeCoord(...)` grid coarsening |
+| TLS GREASE bytes (raw JA3 only) | `tls13_ClientSetupGrease` (`security/nss/lib/ssl/tls13con.c`) | deterministic GREASE seed from the profile (only needed for byte-identical raw JA3; JA4 already ignores GREASE) |
+| TLS/h2 pref-pinnable variance | `Services.prefs` at panel/BrowserGlue | `VentoNetworkFingerprint.deterministicPrefs()` |
+| IP/ASN + TCP/IP stack | none in-browser | `vento_proxy` egress (TZ/locale must match proxy geo) |
 | profile storage/sync | Vento panel + backend component | `export()` / `import()` |
 
 The two behavioral hooks are the level-1 injection points for section 10. The
