@@ -128,6 +128,19 @@ software-путь для canvas-текста) — даёт байт-в-байт 
 низкий риск. А вот **метрики рендера** глифов (ширины, кернинг, hinting)
 зависят от ОС и стыкуются с canvas-проблемой; их выравнивание сложнее.
 
+**Реализация (этап 2):** engine-agnostic ядро — `fingerprint/VentoFonts.sys.mjs`
+(тест `test_vento_fonts.js`). `overridesFragment()` включает таргеты 43/44/62/69/51,
+`deterministicPrefs()` прибивает `layout.css.font-visibility=1` — это зажимает
+видимый набор до base-tier и убирает энтропию пользовательских шрифтов на каждой
+машине. `getSpoofedValues().fonts` — нормализованный (dedup+sort) whitelist из
+профиля, который сайт обязан видеть. Оговорка: base-набор в Firefox **пер-ОС**
+(`StandardFonts-win10/macos/linux.inc`), поэтому байт-в-байт одинаковый список
+между ОС требует нативной врезки — классифицировать видимость по whitelist'у в
+`gfxPlatformFontList::GetVisibilityForFamily` (см. `residualVariance()`).
+**Метрики глифов** (ширины/кернинг/hinting) префами не закрываются — это тот же
+корень, что canvas-текст (п.3): нужны вшитые бинарники шрифтов профиля + единый
+software-растеризатор. Всё это честно перечислено в `residualVariance()`.
+
 ---
 
 ## 5. Аудио

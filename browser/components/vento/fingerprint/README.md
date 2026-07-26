@@ -82,6 +82,22 @@ injection points in Firefox core.
   two return-value swaps in `nsRFPService` and one seed swap in `RandomMidpoint` —
   are enumerated honestly by `residualVariance()`, and `quantizeTimerUs()` is the
   byte-for-byte reference the native jitter path must match.
+- `VentoFonts.sys.mjs` — engine-agnostic core for the **fonts** channel
+  (section 4 of the research doc: the available-font list + glyph render metrics).
+  The list half is the tractable, high-signal one: `overridesFragment()` emits the
+  `+FontVisibilityBaseSystem,+FontVisibilityLangPack,+FontVisibilityRestrictGenerics,+UseHardcodedFontSubstitutes,+DOMStyleOsxFontSmoothing`
+  fragment and `deterministicPrefs()` pins `layout.css.font-visibility=1`, which
+  together clamp the enumerable families to the base tier and hide every
+  user-installed font — killing the biggest entropy source on each machine.
+  `getSpoofedValues().fonts` is the normalised (de-duplicated, sorted) fleet-wide
+  whitelist a site must observe. Unlike section 8 this is NOT fully closed by
+  enabling targets: the base-system set is platform-hard-coded (Win/mac/Linux
+  `StandardFonts-*.inc`), so a *cross-OS-identical* list needs one native
+  remainder — classify visibility against the profile whitelist in
+  `gfxPlatformFontList::GetVisibilityForFamily` — and glyph metrics (advances,
+  kerning, hinting) are hardware-bound and stitch into the canvas-text channel
+  (section 3). Both, plus an optional positive `-moz-osx-font-smoothing` pose, are
+  enumerated honestly by `residualVariance()`.
 - `VentoBehavioralQuantizer.sys.mjs` — engine-agnostic core for the
   **behavioral** channel (section 10 of the research doc: mouse/keyboard/timing,
   level 1). Derives seed-based grid phases and quantizes event timestamps and
@@ -119,6 +135,9 @@ target to the profile value" edits enumerated in the research doc.
 | timer precision (§7) | `nsRFPService::ReduceTimePrecisionImpl` resolution + `nsRFPService::RandomMidpoint` seed | default: pin resolution + jitter off via `deterministicPrefs()` (deterministic floor). Optional jitter-on: seed `sSecretMidpointSeed` from `timerMidpointSeedHex()`; `quantizeTimerUs()` is the reference math |
 | audio parameters (§5) | existing RFPTargets `AudioSampleRate`(39), `AudioContext`(49) + pref `media.cubeb.force_sample_rate` | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (build-constant 44100/2ch). Optional native pin of `AudioContext::OutputLatency()` (`dom/media/webaudio/AudioContext.cpp`) to `getSpoofedValues().outputLatency` for cross-OS identity — see `residualVariance()`. |
 | audio DSP hash (§5) | `dom/media/webaudio/` buffer readback (ffvpx `av_tx` in `FFTBlock.h` + `DynamicsCompressor`) | build-constant for a same-build/same-SIMD fleet (Gecko adds no RFP noise here). Optional: force the scalar ffvpx kernel, or add `VentoAudio.perturbSamples()` output to the rendered buffer to mask cross-CPU SIMD divergence — see `residualVariance()`. |
+| fonts: available list (§4) | existing RFPTargets `FontVisibilityBaseSystem`(43), `FontVisibilityLangPack`(44), `FontVisibilityRestrictGenerics`(62), `UseHardcodedFontSubstitutes`(69), `DOMStyleOsxFontSmoothing`(51) + pref `layout.css.font-visibility` | ENABLE the targets via `overridesFragment()` + pin `layout.css.font-visibility=1` via `deterministicPrefs()`; clamps each machine to its base tier (kills user-font entropy). Cross-OS-identical list needs the native remainder below. |
+| fonts: whitelist → list (§4) | `gfxPlatformFontList::GetVisibilityForFamily` / the per-platform `StandardFonts-*.inc` base classification | return `FontVisibility::Base` iff `VentoFonts.isFontVisible(name)` and enumerate exactly `getSpoofedValues().fonts`, replacing the per-OS base list — see `residualVariance()` |
+| fonts: glyph metrics (§4) | gfx/thebes shaping + gfx/2d text path | not pref-closeable; needs bundled profile font binaries + a deterministic software rasteriser shared with the §3 canvas-text PoC — see `residualVariance()` |
 | misc web-API surfaces (§8) | existing RFPTargets `ScreenOrientation`(4), `SpeechSynthesis`(5), `VideoElementMozFrames`(32-34), `FrameRate`(46), `UseStandinsForNativeColors`(48), `MediaError`(50), `WebVTT`(63), `IMEStyle`(81) | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native voice-registry / IME hook only for a *positive* unified value — see `residualVariance()`. |
 | input/sensors/media devices (§6) | existing RFPTargets `TouchEvents`(1), `PointerEvents`(2), `KeyboardEvents`(3), `StreamVideoFacingMode`(21), `Gamepad`(24), `MediaDevices`(37), `MediaCapabilities`(38), `NetworkConnection`(40), `DeviceSensors`(45), `CSSPointerCapabilities`(58), `DiskStorageLimit`(70), `MaxTouchPoints`(72), `MaxTouchPointsCollapse`(73) + pref `dom.battery.enabled` | ENABLE the targets via `overridesFragment()` + `deterministicPrefs()`; no native patch needed (deny-by-default constant). Optional native hook only for a *positive* touch count / device shape / storage limit — see `residualVariance()`. |
 | event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
@@ -141,7 +160,8 @@ what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
   `browser/components/tests/unit/test_vento_fingerprint_determinism.js` builds
   two independent profiles from the same data ("two machines") and asserts
   byte-identical seeds, noise streams and spoofed values. Each channel has its
-  own sibling test (`test_vento_audio.js`, `test_vento_input_devices.js`,
+  own sibling test (`test_vento_audio.js`, `test_vento_fonts.js`,
+  `test_vento_input_devices.js`,
   `test_vento_misc_surfaces.js`, `test_vento_network_fingerprint.js`,
   `test_vento_fingerprint_behavioral.js`, `test_vento_time_locale.js`) asserting
   the same two-machine identity plus that channel's mitigation.
