@@ -6,6 +6,13 @@
 
 JAR_MANIFESTS += ["jar.mn"]
 
+# Isolated, engine-agnostic fingerprint core (see fingerprint/README.md). Kept in
+# its own resource subdir so it can be lifted into a standalone repo with only the
+# nsRFPService injection point (documented in the README) left behind in-tree.
+EXTRA_JS_MODULES.fingerprint += [
+    "fingerprint/VentoFingerprintProfile.sys.mjs",
+]
+
 BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 with Files("**"):
