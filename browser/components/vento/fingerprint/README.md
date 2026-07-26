@@ -14,6 +14,14 @@ injection points in Firefox core.
   derivation can be re-implemented byte-for-byte in C++/Rust at the injection
   points below and produce identical output. This is what makes "identical
   fingerprint across two machines" a property we can unit-test in CI.
+- `VentoBehavioralQuantizer.sys.mjs` — engine-agnostic core for the
+  **behavioral** channel (section 10 of the research doc: mouse/keyboard/timing,
+  level 1). Derives seed-based grid phases and quantizes event timestamps and
+  pointer coordinates deterministically. Scope note: the behavioral channel can
+  only be *blunted* (lower its resolution), not made byte-identical across two
+  live humans without wrecking UX — so this is intentionally the cheap,
+  high-impact half. Level 2 (synthetic trajectories / keystroke resampling) is
+  out of scope by design.
 
 ## The single most important injection point
 
@@ -38,7 +46,16 @@ target to the profile value" edits enumerated in the research doc.
 |---|---|---|
 | canvas/webgl/audio noise | `nsRFPService::GetBrowsingSessionKey` | `surfaceSeedHex(...)` |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
+| event timestamps (behavioral) | `nsRFPService::ReduceTimePrecisionImpl` / `WidgetEvent` timestamp path (RFPTarget `WidgetEvents`) | `quantizeTimestampMs(...)` — same floor-to-grid with the seed-derived phase instead of RFP's random per-context midpoint |
+| pointer coordinates (behavioral) | `MouseEvent` screen-point path (RFPTarget `MouseEventScreenPoint`) | `quantizeCoord(...)` grid coarsening |
 | profile storage/sync | Vento panel + backend component | `export()` / `import()` |
+
+The two behavioral hooks are the level-1 injection points for section 10. The
+JS module here is the byte-for-byte reference: the C++ side must floor onto the
+same grid using the same seed-derived phase (`unitFromSeed(seed + " behavioral-*-phase")`)
+so a build with the patch and this module agree. Keeping the reference in JS is
+what lets `test_vento_fingerprint_behavioral.js` assert the mitigation
+(determinism + sub-grid collapse) in CI without driving real input hardware.
 
 ## How determinism is tested
 

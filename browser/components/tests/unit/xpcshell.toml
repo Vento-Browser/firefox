@@ -52,6 +52,8 @@ run-if = [
 
 ["test_startupTelemetry_launchOnLoginState.js"]
 
+["test_vento_fingerprint_behavioral.js"]
+
 ["test_vento_fingerprint_determinism.js"]
 
 ["test_vento_proxy_enforcement.js"]
