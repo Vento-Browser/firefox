@@ -93,6 +93,23 @@ injection points in Firefox core.
   if a profile wants a *positive* value (a non-empty unified voice list / a
   specific IME style) instead of the empty/hidden deny-by-default — is enumerated
   honestly by `residualVariance()`.
+- `VentoScreenWindow.sys.mjs` — engine-agnostic core for the **screen / window /
+  DPI / CSS-media** channel (section 2 of the research doc: `screen.*`,
+  `window.outer/inner/screenXY`, `devicePixelRatio`, and the dozens of CSS
+  `@media` features). Splits into two halves. The **CSS-media** half closes like
+  section 8: `overridesFragment()` enables its targets and each collapses to a
+  build-constant — color-gamut => srgb, resolution => the rounded DPR, color =>
+  8bpp, dynamic-range => standard, prefers-* => the light/no-preference pose — no
+  native patch of their own. The **geometry** half (ScreenRect/ScreenAvailRect/
+  Window*Size/DevicePixelRatio) is the honest exception: enabling the targets makes
+  Gecko report the *letterboxed inner-window* rect and the *rounded* window size
+  (a function of the actual window), not a fixed profile screen, so pinning to a
+  *positive* profile value identical across two differently-sized real monitors is
+  the one genuine native remainder, enumerated by `residualVariance()`. Ownership
+  note: the CSS `pointer`/`hover` features (RFPTarget `CSSPointerCapabilities`(58))
+  are owned by the section-6 module (VentoInputDevices) since they are an
+  input-device property; this module only mirrors their fleet-wide values in
+  `getSpoofedValues().cssMedia`, it does not enable the target.
 - `VentoTimeLocale.sys.mjs` — engine-agnostic core for the **time / timers / TZ /
   locale / Math** channel (section 7 of the research doc). Math (fdlibm) is a
   build-constant closed for free by enabling `JSMathFdlibm`; the timer reducer is
@@ -154,6 +171,7 @@ target to the profile value" edits enumerated in the research doc.
 | graphics: readback BASE render (§3) | none pref-closeable to 100% | route (b): `VentoGraphics.deterministicPrefs()` forces software canvas/WebGL/WebRender (`gfx.canvas.accelerated=false`, `webgl.forbid-hardware=true`, `gfx.webrender.software=true`) so the pre-noise bytes are fleet-identical; cross-OS identity needs one shared software rasterizer build — see `residualVariance()` |
 | WebGL UNMASKED vendor/renderer (§3) | existing RFPTargets `WebGLRenderInfo`(60), `WebGLVendorConstant`(78), `WebGLRendererConstant`(80) + prefs `webgl.override-unmasked-vendor`/`-renderer` | ENABLE the targets via `overridesFragment()` + pin the strings via `deterministicPrefs()`; no native patch |
 | WebGL limits / WebGPU / WebCodecs (§3) | existing RFPTargets `WebGLRenderCapability`(59), `WebGPULimits`(64), `WebGPUIsFallbackAdapter`(65), `WebGPUSubgroupSizes`(66), `WebCodecs`(71) | ENABLE the targets via `overridesFragment()`; deny/sanitize-by-default constant, no native patch. `getSpoofedValues()` is the fleet-wide reported shape |
+| screen/window/DPI CSS-media (§2) | existing RFPTargets `ScreenPixelDepth`(29), `ScreenRect`(30), `ScreenAvailRect`(31), `WindowOuterSize`(26), `WindowScreenXY`(27), `WindowInnerScreenXY`(28), `RoundWindowSize`(47), `WindowDevicePixelRatio`(41), `CSSDeviceSize`(52), `CSSColorInfo`(53), `CSSResolution`(54), `CSSVideoDynamicRange`(57), `CSSPrefersColorScheme`(6), `CSSPrefersReducedMotion`(7), `CSSPrefersContrast`(8), `CSSPrefersReducedTransparency`(55), `CSSInvertedColors`(56), `SiteSpecificZoom`(61) + pref `browser.zoom.siteSpecific` | ENABLE the targets via `VentoScreenWindow.overridesFragment()` + pin `browser.zoom.siteSpecific=false` via `deterministicPrefs()`. CSS-media half is build-constant, no native patch; the geometry half reports the letterboxed inner-window rect — a *positive* fixed profile screen/DPR/window is the native remainder in `residualVariance()` (`nsScreen::GetRect`/`GetAvailRect`, `nsRFPService::GetDevicePixelRatioAtZoom`, `nsGlobalWindowOuter` geometry) |
 | navigator/screen/timezone/fonts | `nsRFPService::GetSpoofed*` targets | `getSpoofedValues()` field |
 | time zone / locale (§7) | `nsRFPService::GetSpoofedJSTimeZone()` / `GetSpoofedJSLocale()` (consumed at `js/xpconnect/src/nsXPConnect.cpp` `setTimeZoneOverride` / `setLocaleOverride`) | return `VentoTimeLocale.getSpoofedValues().timezone` / `.locale` per profile instead of the `Atlantic/Reykjavik` / `en-US` constants |
 | Math ULP (§7) | RFPTarget `JSMathFdlibm`(23) | ENABLE via `overridesFragment()`; build-constant, no native patch |
