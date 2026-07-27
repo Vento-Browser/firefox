@@ -270,7 +270,7 @@ export class VentoFonts {
       `hardcoded=${+v.useHardcodedFontSubstitutes}`,
       `restrictGenerics=${+v.restrictGenerics}`,
       `osxsmooth=${+v.osxFontSmoothingHidden}`,
-      `hash=${fnv1a(v.fonts.join(" "))}`,
+      `hash=${fnv1a(v.fonts.join("\x00"))}`,
     ].join("|");
   }
 

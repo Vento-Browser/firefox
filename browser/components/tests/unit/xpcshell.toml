@@ -56,7 +56,11 @@ run-if = [
 
 ["test_vento_fingerprint_behavioral.js"]
 
+["test_vento_fingerprint_composer.js"]
+
 ["test_vento_fingerprint_determinism.js"]
+
+["test_vento_fingerprint_service.js"]
 
 ["test_vento_fonts.js"]
 

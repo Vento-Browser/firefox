@@ -15,7 +15,9 @@ DIRS += ["fingerprint/native"]
 EXTRA_JS_MODULES.fingerprint += [
     "fingerprint/VentoAudio.sys.mjs",
     "fingerprint/VentoBehavioralQuantizer.sys.mjs",
+    "fingerprint/VentoFingerprintComposer.sys.mjs",
     "fingerprint/VentoFingerprintProfile.sys.mjs",
+    "fingerprint/VentoFingerprintService.sys.mjs",
     "fingerprint/VentoFonts.sys.mjs",
     "fingerprint/VentoGraphics.sys.mjs",
     "fingerprint/VentoInputDevices.sys.mjs",
